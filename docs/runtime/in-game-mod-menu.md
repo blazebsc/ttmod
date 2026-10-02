@@ -83,24 +83,59 @@ Menu_Add wrapper offer (logged once); the start menu stays stock. Mod
 loading and the plugin chunk queue are unaffected. Checked once per
 process at the first Menu.lua load (`menumods_button_enabled()`).
 
+## Colour-property probe (diagnostic)
+`TTMOD_PROBE=1` env (any value but `0`) or an empty `config/probe-props` file
+turns on one-shot property enumeration: the first label clone the menu builds
+is probed with ~28 candidate `AgentSetProperty` colour names, each result
+logged as `probe: <name> set=<bool> reads=<bool> [type=… val=…]`, and the
+winner as `probe-winner: <name>`. Off by default; costs one launch.
+This is how UI property names are learned now - offline decryption of the
+game's own UI Lua is unresolved (see toolchain section).
+
 ## Plugin Lua queue (v5 ABI, 2026-10-02)
 `host->queue_ui_chunk(code)` (see plugins.md) executes plugin-authored
 Lua on the game's script thread; drained in the same LoadResource hook
 that offers the Menu_Add wrapper, via the one shared `bridge_run_chunk`
 (balanced-stack + error-sink). Unit queue semantics: `tests/test_uiqueue.cpp`.
 
-## Toolchain: reading any game script offline (REPRODUCIBLE)
+## Toolchain: reading game scripts offline (PARTIAL - decrypt UNVERIFIED)
+> 2026-10-02 correction. The decrypt recipe below did NOT reproduce. It is kept
+> because the failure is itself the useful finding. **Do not trust it.**
+
 - Clone: `git clone https://github.com/iMrShadow/TelltaleToolKit` (MIT;
   the old Telltale-Modding-Group org URL is gone). Data folder: `data/`.
-- Extract+decrypt helper: `tools/build_menu_button.sh` documents the C#
-  shape; the actual runner used: csproj referencing
-  `src/TelltaleToolKit/TelltaleToolKit.csproj`, then:
-  `ws.LoadArchive(path,"m",1000)` → `ctx.ExtractFile("<Name>.lua")` →
-  skip 4-byte `LEn` magic → Blowfish(profile key, 7) Decipher → prepend
-  `\x1bLua` → stock Lua 5.2 bytecode. Needs `TTK_DATA=<toolkit>/data` in env
-  (ArgumentNullException path1 otherwise) and a built csproj (`dotnet build`
-  before `dotnet run --no-build`).
-- Disassemble: `python3 tools/lua52_dis.py <file>.dec.lua` (RK-resolved
+- Extraction works and is useful for browsing `.ttarch2` contents:
+  csproj referencing `src/TelltaleToolKit/TelltaleToolKit.csproj`, then
+  `ws.LoadArchive(path,"m",1000)` → `ws.ExtractFile("<Name>.lua")`.
+  Current TTK has **no CLI** (library only), and its `GameProfile` JSON loader
+  yields empty objects when driven that way - register the profile by hand.
+  `RegisterGameProfile` keys on `profile.Name`, NOT `profile.Id`.
+- **Decrypt does not work (VERIFIED FAILING 2026-10-02).** The documented
+  recipe - skip the 4-byte `LEn` magic → `Blowfish(key, 7).Decipher` →
+  prepend `\x1bLua` - produces random bytes, not Lua. Evidence:
+  - Distinct-byte ratio 1.00 (fully random), never Lua bytecode.
+  - Decrypting DIFFERENT loose files (`_resdesc_50_Boot.lua`,
+    `_resdesc_50_Menu.lua`, `_resdesc_50_German108.lua`) yields the IDENTICAL
+    head `FCCB6B219911AAF8`. Real encryption cannot do that: the Blowfish
+    keystream prefix repeats, so either the key or the whole framing is wrong.
+  - Both the modified-v7 and standard variants fail identically.
+  - `MCSM_pc_Menu_data.ttarch2` reports `IsRawDeflateCompressed` (NOT
+    encrypted), yet entry bytes stay random - so there is a layer the container
+    path is not reaching.
+  - TTK's `Blowfish` is a non-standard variant: on identical input it differs
+    from pycryptodome's standard Blowfish, so a standard implementation is NOT a
+    valid cross-check.
+  - The profile key is `"Mcsm"` (`data/game_profiles/minecraft-story-mode-2015.json`).
+- **Working alternative (2026-10-02): in-game property probe.** Do not
+  disassemble to learn UI property names. Enable `TTMOD_PROBE=1` (env) or
+  `config/probe-props`, then open the Mods menu: the UI dumps ~28 candidate
+  `AgentSetProperty` colour names against a real label clone, writes each set /
+  reads-back result to `logs/ttmod.log` (`probe: <name> set=… reads=…`), and
+  logs `probe-winner: <name>` for whichever sticks. One launch answers it.
+  Used to find the label text-colour property without any offline decryption.
+- Disassembler (works on real bytecode once you HAVE some; never yet applied to
+  a game script because decryption is unresolved):
+  `python3 tools/lua52_dis.py <file>.dec.lua` (RK-resolved
   constants; validated byte-exact vs stock luac 5.2.4).
 
 ## Historical (kept for evidence)
@@ -118,8 +153,13 @@ that offers the Menu_Add wrapper, via the one shared `bridge_run_chunk`
   `Menu_Main.lua`, `MenuBoot.lua`, all `Menu_*.lua` screens, widgets
   (`BouncyListBoxWidget`, `ButtonDispatch*`, `ClickText`, `CoverFlow`),
   `ui_menuMain.scene`, `chapters.dlog`, `chapters_*.landb`.
-- Script crypto: loose `.lua` = `LEo` + Blowfish(key `Mcsm`) → ASCII;
-  archived = `LEn` + Blowfish → stock 5.2 bytecode + `\x1bLua` header.
-  Round-trip byte-exact. (Version dispute settled: scripts are 5.2.)
+- Script crypto: loose `.lua` = `LEo` magic (4 bytes) then opaque bytes;
+  archived = `LEn` magic then opaque bytes. **The 2026-09-17 claim that
+  Blowfish(key `Mcsm`) yields ASCII / 5.2 bytecode is FALSIFIED 2026-10-02**
+  (see the toolchain section: different inputs decrypt to the same head, so the
+  key/framing is wrong). Format claims here are the only trustworthy part.
+- Version dispute settled 2026-09-17: scripts are 5.2 (exe strings say
+  5.2.3). That remains plausible; the in-game runtime, however, is missing
+  5.2-only globals such as `setmetatable` (see the 5.1 note below).
 - Menu streams open twice per long session (boot + revisit) via CreateFileW;
   whole-archive M5 override of Menu_data mechanically viable.

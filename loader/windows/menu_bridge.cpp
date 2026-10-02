@@ -250,6 +250,22 @@ void menumods_register(lua_State* L, LuaLoadstringFn loadstring, LuaPcallkFn pca
     reg_fn(L, pushcclosure, setglobal, fn_set_enabled, "ttmod_menu_set_enabled");
     reg_fn(L, pushcclosure, setglobal, fn_set_value, "ttmod_menu_set_value");
     reg_fn(L, pushcclosure, setglobal, fn_log, "ttmod_menu_log");
+    // Colour-property probe: TTMOD_PROBE=1 (env) or config/probe-props makes the
+    // UI dump every candidate AgentSetProperty name against a real label clone
+    // and log which one reads back. Diagnostic only, logged, off by default.
+    {
+        char probe[8] = {};
+        bool on = GetEnvironmentVariableA("TTMOD_PROBE", probe, sizeof probe) > 0 &&
+                  strcmp(probe, "0") != 0;
+        if (!on && GetFileAttributesA((g_gamedir + "\\config\\probe-props").c_str()) !=
+                       INVALID_FILE_ATTRIBUTES)
+            on = true;
+        if (on) {
+            emit("menumods: probe mode on, will dump colour properties to the log");
+            bridge_run_chunk(L, g_loadstring, g_pcallk, g_gettop, g_setglobal, g_tolstring,
+                             "probe-enable", "_G.TTMOD_PROBE_PROPS = 1");
+        }
+    }
     bridge_run_chunk(L, g_loadstring, g_pcallk, g_gettop, g_setglobal, g_tolstring, "ui-defs",
                   kMenuModsUi);
     emit("menumods: ui registered on state");

@@ -54,6 +54,57 @@ function Menu_Mods_RowCount()
     return n
 end
 
+-- Property-name probe (diagnostic). We do NOT know which AgentSetProperty key
+-- sets a label's text colour - 'Color', 'Tint Color', ... were guesses and all
+-- failed. This enumerates a real label clone: set each candidate, read it back
+-- through AgentGetProperty, and log whatever actually sticks. One launch
+-- answers the question; the names below are the union of every spelling seen
+-- in Telltale UI scripts and engine widget property tables.
+-- Enabled by _G.TTMOD_PROBE_PROPS = 1 (or TTMOD_PROBE=1 queued by a mod).
+local TT_PROBE_DONE = false
+local TT_PROP_CANDIDATES = {
+    'Color', 'Tint Color', 'Font Color', 'Text Color', 'Diffuse', 'Colour',
+    'Color Tint', 'Tint', 'TextColour', 'TextColor', 'FontColour', 'FontColor',
+    'Label Color', 'Label Text Color', 'Foreground Color', 'Label Tint',
+    'ColorModulate', 'Modulate Color', 'Emissive Color', 'Text Diffuse',
+    'Color State Normal', 'ColorNormal', 'Text Color Normal', 'Font Color Normal',
+    'Color Highlight', 'Color Pressed', 'Color Disabled', 'Color Disabled Text',
+}
+local function probe_props(agent)
+    if agent == nil or AgentGetProperty == nil or AgentSetProperty == nil then
+        mlog('probe: AgentGetProperty/SetProperty unavailable, cannot probe')
+        return
+    end
+    local int = theme_int('#FF00FF')
+    mlog('probe: begin on ' .. tostring(agent))
+    for _, prop in ipairs(TT_PROP_CANDIDATES) do
+        local ok = pcall(AgentSetProperty, agent, prop, '#FF00FF')
+        local back = nil
+        if ok then local ok2, v = pcall(AgentGetProperty, agent, prop); if ok2 then back = v end end
+        local readable = back ~= nil
+        local is_ours = readable and (tostring(back) == '#FF00FF' or tostring(back) == tostring(int))
+        -- readable-but-not-ours means the property EXISTS but we wrote the wrong
+        -- value type; log the type so the next attempt uses the right form.
+        local detail = ''
+        if readable then detail = ' type=' .. type(back) .. ' val=' .. tostring(back) end
+        mlog('probe: ' .. prop .. ' set=' .. tostring(ok) .. ' reads=' .. tostring(readable) ..
+             (is_ours and ' *** MATCH ***' or '') .. detail)
+        if is_ours then
+            mlog('probe-winner: ' .. prop)
+            return
+        end
+    end
+    -- Nothing matched by value. Report which properties are readable at all:
+    -- the real name is in that set even if the value format is unknown.
+    local readable = {}
+    for _, prop in ipairs(TT_PROP_CANDIDATES) do
+        local ok, v = pcall(AgentGetProperty, agent, prop)
+        if ok and v ~= nil then readable[#readable + 1] = prop end
+    end
+    mlog('probe: readable-but-not-set = ' .. table.concat(readable, ', '))
+    mlog('probe: end (no match)')
+end
+
 local theme_winner = nil
 local theme_probed = false
 -- Swatch preview cache: per-agent last paint, so re-rendering a row does not
@@ -128,7 +179,15 @@ local function setlabel(btn, text)
         if ok and lab ~= nil then
             local ok2 = pcall(AgentSetProperty, lab, 'Text String', T(text))
             mlog('setlabel: ' .. n .. ' propset=' .. tostring(ok2))
-            if ok2 then apply_theme(lab) return lab end
+            if ok2 then
+                -- Diagnostic: probe once, on the first real label clone.
+                if _G.TTMOD_PROBE_PROPS == 1 and not TT_PROBE_DONE then
+                    TT_PROBE_DONE = true
+                    probe_props(lab)
+                end
+                apply_theme(lab)
+                return lab
+            end
         end
     end
     mlog('setlabel: no usable label clone')
