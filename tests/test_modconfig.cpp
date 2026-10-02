@@ -3,6 +3,8 @@
 #include "ttmod/modstate.hpp"
 #include <cassert>
 #include <cstdio>
+#include <cstdlib>
+#include <string>
 
 static ttmod::ModManifest with_config() {
     return ttmod::parse_manifest(
@@ -109,9 +111,17 @@ int main() {
     assert(lit.find("value=7") != std::string::npos);
     assert(lit.find("enabled=true") != std::string::npos);
     assert(lit.rfind("}}") == lit.size() - 2);
-    // dump for the stock-Lua parse check (see test_menumods_ui.py tail)
-    FILE* lf = fopen("/tmp/opencode/menu_literal_check.lua", "w");
-    assert(lf);
+    // dump for the stock-Lua parse check (see test_menumods_ui.py tail).
+    // Path must be creatable anywhere: CI has no /tmp/opencode, and a failed
+    // fopen aborted the whole test with no useful message.
+    const char* tmpdir = getenv("TTMOD_TEST_TMP");
+    std::string litpath = std::string(tmpdir && *tmpdir ? tmpdir : "/tmp") +
+                          "/ttmod_menu_literal_check.lua";
+    FILE* lf = fopen(litpath.c_str(), "w");
+    if (!lf) {
+        fprintf(stderr, "test_modconfig: cannot write %s\n", litpath.c_str());
+        return 1;
+    }
     fwrite(lit.data(), 1, lit.size(), lf);
     fprintf(lf, "\nassert(ttmod_menu.seq==7 and #ttmod_menu.mods==1)\n");
     fclose(lf);

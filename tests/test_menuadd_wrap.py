@@ -88,9 +88,9 @@ Menu_Add(ListButton, 'store', 'label_store', 'Menu_Store()')
 assert(#adds == _n + 1, 'plain row clean')
 """
 
-r = subprocess.run(
-    ["nix-shell", "-p", "lua5_2", "--run", "lua -e " + "'" + DRIVER.replace("'", "'\\''") + "'"],
-    cwd=ROOT, capture_output=True, text=True, timeout=300)
+import lua_runner
+
+r = lua_runner.run("5.2", DRIVER)
 sys.stdout.write(r.stdout)
 sys.stderr.write(r.stderr)
 # NOTE: no print() marker (print needs tostring, nilled here); rc==0 means

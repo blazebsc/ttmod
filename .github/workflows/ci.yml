@@ -10,7 +10,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install deps
-        run: sudo apt-get update && sudo apt-get install -y cmake g++ python3
+        # lua5.1 + lua5.2 are REQUIRED, not optional: the Lua proofs run on
+        # both, because the game behaves as 5.1 (no setmetatable, nil _G) while
+        # stock 5.2 would hide both bugs. They also need a writable shared tmp
+        # dir for the menu-literal round trip between test_modconfig and
+        # test_menumods_ui.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ python3 lua5.1 lua5.2
+      - name: Show resolved Lua versions
+        run: |
+          lua5.1 -v
+          lua5.2 -v
       - name: Build and test
         run: cmake -S . -B build && cmake --build build && ctest --test-dir build
 

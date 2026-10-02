@@ -237,22 +237,30 @@ print('menumods-ui: screen logic OK')
 # there - a setmetatable in menumods_ui.lua killed every menu screen in-game
 # while this suite stayed green on 5.2) and has _G == nil. So the same proof
 # runs on BOTH interpreters, against the game's actual missing-global shape.
-for interp in ("lua5_1", "lua5_2"):
-    r = subprocess.run(
-        ["nix-shell", "-p", interp, "--run", "lua -e " + "'" + DRIVER.replace("'", "'\\''") + "'"],
-        cwd=ROOT, capture_output=True, text=True, timeout=300)
+# Interpreters are resolved portably (system lua5.1/lua5.2, then nix); this used
+# to hardcode `nix-shell`, which exists on the author's box and nowhere else,
+# so every Lua test failed on CI in 0.1s.
+import lua_runner
+
+for version in lua_runner.VERSIONS:
+    r = lua_runner.run(version, DRIVER)
     sys.stdout.write(r.stdout)
     sys.stderr.write(r.stderr)
     if r.returncode != 0 or "menumods-ui: screen logic OK" not in r.stdout:
-        print(f"FAIL: menumods_ui.lua screen logic on {interp}")
+        print(f"FAIL: menumods_ui.lua screen logic on Lua {version}")
         sys.exit(1)
-# the C++-built literal must PARSE on stock 5.2 (needs test_modconfig run first)
-r2 = subprocess.run(
-    ["nix-shell", "-p", "lua5_2", "--run", "lua /tmp/opencode/menu_literal_check.lua"],
-    cwd=ROOT, capture_output=True, text=True, timeout=300)
-sys.stdout.write(r2.stdout)
-sys.stderr.write(r2.stderr)
-if r2.returncode != 0:
-    print("FAIL: build_menu_literal output does not parse")
-    sys.exit(1)
+
+# The C++-built literal must PARSE on stock 5.2 (needs test_modconfig run
+# first). Path comes from the same shared location the C++ test writes to.
+literal = lua_runner.share_path("ttmod_menu_literal_check.lua")
+if not os.path.exists(literal):
+    print(f"SKIP: {literal} not found - run test_modconfig first")
+else:
+    r2 = lua_runner.run_file("5.2", literal)
+    sys.stdout.write(r2.stdout)
+    sys.stderr.write(r2.stderr)
+    if r2.returncode != 0:
+        print("FAIL: build_menu_literal output does not parse")
+        print(r2.stderr[-2000:])
+        sys.exit(1)
 print("menumods-ui: deterministic proof passed")

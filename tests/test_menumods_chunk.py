@@ -39,13 +39,9 @@ with open(os.path.join(ROOT, "loader", "windows", "menu_bridge.hpp"), encoding="
 for needle in ("kMenuModsChunk", "kMenuModsCalls", "kMenuModsPressed", "bridge_run_chunk"):
     assert needle in src, needle
 
-r = subprocess.run(
-    ["nix-shell", "-p", "lua5_2", "--run", "lua -e " + "'" + DRIVER.replace("'", "'\\''") + "'"],
-    cwd=ROOT,
-    capture_output=True,
-    text=True,
-    timeout=300,
-)
+import lua_runner
+
+r = lua_runner.run("5.2", DRIVER)
 sys.stdout.write(r.stdout)
 sys.stderr.write(r.stderr)
 if r.returncode != 0 or "exists+called+returned OK" not in r.stdout:

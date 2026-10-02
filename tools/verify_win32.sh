@@ -6,11 +6,18 @@ set -u
 D="${1:?usage: verify_win32.sh <build-win32-dir>}"
 fail=0
 for f in "$D/dinput8.dll" "$D/ttmod_framework.dll"; do
-  if ! file "$f" | grep -q "PE32.*Intel i386"; then
-    echo "FAIL: $f is not PE32/i386:"; file "$f"; fail=1
-  else
-    echo "PASS: $f is $(file -b "$f" | cut -d, -f1-2)"
-  fi
+  # `file` renders the machine type differently depending on the toolchain that
+  # built it: the nix mingw says "Intel i386", apt mingw says "Intel 80386".
+  # Both are PE32 with machine type 0x014C. Matching only one spelling failed
+  # every CI run while the artifacts were perfectly fine, so accept either - and
+  # fail loudly on the two things that actually matter (32-bit PE, or x64).
+  desc=$(file -b "$f")
+  case "$desc" in
+    *PE32*Intel\ i386*|*PE32*Intel\ 80386*)
+      echo "PASS: $f is $(echo "$desc" | cut -d, -f1-2)" ;;
+    *)
+      echo "FAIL: $f is not PE32/i386:"; echo "$desc"; fail=1 ;;
+  esac
 done
 if ! objdump -p "$D/dinput8.dll" | grep -q "DirectInput8Create$"; then
   echo "FAIL: dinput8.dll missing undecorated DirectInput8Create export"
