@@ -17,4 +17,11 @@ bool uiqueue_push(const std::string& code);
 // Atomically move out all queued chunks (drain). Empty vector if none.
 std::vector<std::string> uiqueue_take();
 
+// Every chunk ever submitted, oldest first. For REPLAY on a second lua_State:
+// the game runs menu Lua in a different state than engine Lua, so globals a
+// plugin sets during the script-thread drain do not exist where the menu is
+// built. Bounded by the same capacity*states worth of history in practice;
+// kept separate from g_queue so take() still drains.
+std::vector<std::string> uiqueue_recent();
+
 } // namespace ttmod

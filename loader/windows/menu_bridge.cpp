@@ -250,6 +250,14 @@ void menumods_register(lua_State* L, LuaLoadstringFn loadstring, LuaPcallkFn pca
     reg_fn(L, pushcclosure, setglobal, fn_set_enabled, "ttmod_menu_set_enabled");
     reg_fn(L, pushcclosure, setglobal, fn_set_value, "ttmod_menu_set_value");
     reg_fn(L, pushcclosure, setglobal, fn_log, "ttmod_menu_log");
+    // Replay plugin chunks ON THE MENU STATE. The LoadResource drain already ran
+    // them, but on the engine state (_engine.lua et al) - a different lua_State.
+    // Globals a plugin sets (TTMOD_ACCENT, ...) therefore never reach the state
+    // menumods_ui.lua runs in, so the menu could never be themed. Queued chunks
+    // are already drained, so replay from the retained queue snapshot instead.
+    for (const std::string& c : ttmod::uiqueue_recent())
+        bridge_run_chunk(L, loadstring, pcallk, gettop, setglobal, tolstring, "menu-plugin",
+                         c.c_str());
     // Colour-property probe: TTMOD_PROBE=1 (env) or config/probe-props makes the
     // UI dump every candidate AgentSetProperty name against a real label clone
     // and log which one reads back. Diagnostic only, logged, off by default.

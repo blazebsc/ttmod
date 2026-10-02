@@ -23,6 +23,16 @@ int main() {
     q = ttmod::uiqueue_take();
     assert(q.size() == 16 && q[15] == "c15 = 15");
     assert(ttmod::uiqueue_take().empty());
+    // Replay history survives the drain: the menu runs in a DIFFERENT lua_State
+    // than the script thread, so globals set during the drain must be replayed
+    // there. take() must NOT consume the history, or menu replay has nothing to
+    // play (this is what left the menu unthemed on 2026-10-03).
+    auto h = ttmod::uiqueue_recent();
+    assert(!h.empty());
+    assert(h.back() == "c15 = 15");
+    assert(std::string(h.back()).find("c15 = 15") == 0);
+    assert(ttmod::uiqueue_recent().size() == h.size()); // repeatable, not drained
+    assert(ttmod::uiqueue_take().empty());               // still drained
     std::puts("uiqueue: all asserts passed");
     return 0;
 }

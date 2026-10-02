@@ -139,6 +139,22 @@ winner as `probe-winner: <name>`. Off by default; costs one launch.
 This is how UI property names are learned now - offline decryption of the
 game's own UI Lua is unresolved (see toolchain section).
 
+## Plugin chunks must run on the MENU state too (2026-10-03)
+The game uses **two distinct `lua_State`s**: engine scripts (`_engine.lua`,
+`StoryBoardTracker.lua`) and menu scripts (`Menu.lua`, and every state the
+Mods menu is built in). The v5 queue drains inside `ScriptManager::LoadResource`,
+which fires on the ENGINE state — so a global a plugin sets (`TTMOD_ACCENT`)
+simply does not exist where `menumods_ui.lua` runs, and menu theming can never
+work.
+
+Fix: `menumods_register()` replays `uiqueue_recent()` (history, not the drained
+queue) on the menu state, logging as `menu-plugin`. `uiqueue_take()` still
+drains, so script-thread semantics are unchanged; the history is bounded (64)
+and replayed per menu state. Unit semantics: `tests/test_uiqueue.cpp`.
+
+**General rule for mods:** a queued chunk that must affect the *menu* must not
+assume it ran on the engine state.
+
 ## Plugin Lua queue (v5 ABI, 2026-10-02)
 `host->queue_ui_chunk(code)` (see plugins.md) executes plugin-authored
 Lua on the game's script thread; drained in the same LoadResource hook
