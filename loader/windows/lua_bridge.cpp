@@ -78,8 +78,8 @@ static int __cdecl hook_loadresource(lua_State* L, char* filename) {
     // after the script load, on that state. Before the Menu.lua branch so
     // observe-only mode (TTMOD_LUA_LRCHUNK=0) still drains plugin chunks.
     for (const std::string& c : ttmod::uiqueue_take())
-        bridge_run_chunk(L, g_fnLoadstring, g_fnPcallk, g_fnGettop, g_fnSetglobal, "plugin",
-                         c.c_str());
+        bridge_run_chunk(L, g_fnLoadstring, g_fnPcallk, g_fnGettop, g_fnSetglobal, g_fnTolstring,
+                         "plugin", c.c_str());
     // Menu_Add wrapper: Menu.lua defines Menu_Add. Suffix "Menu.lua" does
     // NOT match "Menu_Main.lua" (ends in "Main.lua"), so only Menu.lua
     // itself triggers; the chunk one-shot guard covers reloads anyway.
@@ -98,7 +98,7 @@ static int __cdecl hook_loadresource(lua_State* L, char* filename) {
         }
         g_fnPushCClosure(L, append_log, 0);
         g_fnSetglobal(L, "Menu_Main_AppendLog");
-        bridge_run_chunk(L, g_fnLoadstring, g_fnPcallk, g_fnGettop, g_fnSetglobal,
+        bridge_run_chunk(L, g_fnLoadstring, g_fnPcallk, g_fnGettop, g_fnSetglobal, g_fnTolstring,
                          "Menu_Add wrapper", ttmod_win::kMenuAddWrapChunk);
         char m[96];
         snprintf(m, sizeof m, "lua: Menu_Add wrapper offered");

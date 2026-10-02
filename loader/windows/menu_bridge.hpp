@@ -95,9 +95,11 @@ inline constexpr const char* kMenuAddWrapChunk =
     "end";
 // ONE chunk runner: balanced-stack + error-sink discipline shared by the
 // Menu_Add wrapper offer, the plugin chunk queue drain, and the menu
-// refresh/ui-defs runs. Callers pass their own ABI fns; failures log.
+// refresh/ui-defs runs. Callers pass their own ABI fns; failures log the
+// pcall error MESSAGE (tolstring), not just the code - click-path errors are
+// swallowed by the engine, so this line is the only diagnostic.
 void bridge_run_chunk(lua_State* L, LuaLoadstringFn loadstring, LuaPcallkFn pcallk,
-                      LuaGettopFn gettop, LuaSetglobalFn setglobal, const char* what,
-                      const char* chunk);
+                      LuaGettopFn gettop, LuaSetglobalFn setglobal, LuaTolstringFn tolstring,
+                      const char* what, const char* chunk);
 } // namespace ttmod_win
 #endif

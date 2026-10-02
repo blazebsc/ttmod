@@ -87,23 +87,43 @@ static std::vector<ttmod::MenuModSnapshot> snapshot() {
 
 } // namespace
 
+// Read the error object a failed pcallk left on the stack, then restore the
+// stack. pcall's return code alone ("2" = a value error) names no cause; the
+// message is the only usable diagnostic and click-path errors are swallowed.
+static const char* take_error(lua_State* L, LuaGettopFn gettop, LuaTolstringFn tolstring) {
+    if (!tolstring || !gettop) return nullptr;
+    int top = gettop(L);
+    const char* msg = top >= 1 ? tolstring(L, -1, nullptr) : nullptr;
+    static thread_local char buf[512];
+    snprintf(buf, sizeof buf, "%s", msg ? msg : "?");
+    return buf; // caller restores the stack (it owns the pop policy)
+}
+
 void bridge_run_chunk(lua_State* L, LuaLoadstringFn loadstring, LuaPcallkFn pcallk,
-                      LuaGettopFn gettop, LuaSetglobalFn setglobal, const char* what,
-                      const char* chunk) {
+                      LuaGettopFn gettop, LuaSetglobalFn setglobal, LuaTolstringFn tolstring,
+                      const char* what, const char* chunk) {
     if (!L || !loadstring || !pcallk || !gettop || !chunk) return;
     int t0 = gettop(L);
     int lr = loadstring(L, chunk);
     int pr = -1;
-    if (lr == 0) pr = pcallk(L, 0, 0, 0, 0, nullptr);
+    const char* err = nullptr;
+    if (lr == 0) {
+        pr = pcallk(L, 0, 0, 0, 0, nullptr);
+        if (pr != 0) {
+            err = take_error(L, gettop, tolstring);
+            // balance first, before any other call can touch the error object
+            if (setglobal) setglobal(L, "ttmod_last_error");
+        }
+    }
     int t1 = gettop(L);
     if (t1 != t0 && setglobal) {
-        setglobal(L, "ttmod_last_error"); // sink stray error, keep balance
+        setglobal(L, "ttmod_last_error"); // sink stray leftovers, keep balance
         t1 = gettop(L);
     }
     if (lr != 0 || pr != 0 || t1 != t0) {
-        char m[192];
-        snprintf(m, sizeof m, "lua: %s chunk load=%d pcall=%d balanced=%d", what ? what : "?",
-                 lr, pr, t1 == t0);
+        char m[640];
+        snprintf(m, sizeof m, "lua: %s chunk load=%d pcall=%d balanced=%d err=%s",
+                 what ? what : "?", lr, pr, t1 == t0, err ? err : "-");
         emit(m);
     }
 }
@@ -114,7 +134,8 @@ static int __cdecl fn_refresh(lua_State* L) {
     unsigned seq = (unsigned)InterlockedIncrement(&g_seq);
     auto snap = snapshot();
     std::string chunk = ttmod::build_menu_literal(snap, seq);
-    bridge_run_chunk(L, g_loadstring, g_pcallk, g_gettop, g_setglobal, "refresh", chunk.c_str());
+    bridge_run_chunk(L, g_loadstring, g_pcallk, g_gettop, g_setglobal, g_tolstring, "refresh",
+                      chunk.c_str());
     char m[128]; // menu opens are rare; one line each is fine
     snprintf(m, sizeof m, "menumods: refresh seq=%u mods=%u", seq, (unsigned)snap.size());
     emit(m);
@@ -229,7 +250,8 @@ void menumods_register(lua_State* L, LuaLoadstringFn loadstring, LuaPcallkFn pca
     reg_fn(L, pushcclosure, setglobal, fn_set_enabled, "ttmod_menu_set_enabled");
     reg_fn(L, pushcclosure, setglobal, fn_set_value, "ttmod_menu_set_value");
     reg_fn(L, pushcclosure, setglobal, fn_log, "ttmod_menu_log");
-    bridge_run_chunk(L, g_loadstring, g_pcallk, g_gettop, g_setglobal, "ui-defs", kMenuModsUi);
+    bridge_run_chunk(L, g_loadstring, g_pcallk, g_gettop, g_setglobal, g_tolstring, "ui-defs",
+                  kMenuModsUi);
     emit("menumods: ui registered on state");
 }
 
