@@ -212,6 +212,13 @@ if(TTMOD_BUILD_WIN_RUNTIME)
   if(MINGW)
     target_link_options(modcount PRIVATE -static-libgcc -static-libstdc++ -static)
   endif()
+  add_library(menu_theme SHARED examples/menu-theme/plugin.cpp)
+  target_include_directories(menu_theme PRIVATE core/include)
+  set_target_properties(menu_theme PROPERTIES PREFIX "" OUTPUT_NAME "plugin"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/example-plugins/menu-theme")
+  if(MINGW)
+    target_link_options(menu_theme PRIVATE -static-libgcc -static-libstdc++ -static)
+  endif()
   # Drop-in names: dinput8.dll / ttmod_framework.dll (no lib prefix).
   set_target_properties(dinput8 PROPERTIES PREFIX "" SUFFIX ".dll")
   set_target_properties(ttmod_framework PROPERTIES PREFIX "" SUFFIX ".dll")

@@ -25,6 +25,49 @@ local function mlog(s)
     if ttmod_menu_log ~= nil then ttmod_menu_log(s) end
 end
 
+-- Optional menu theming (menu-theme mod sets _G.TTMOD_ACCENT = "#RRGGBB").
+-- Absent = stock appearance (silent return, no log lines, zero behavior
+-- change). Present = probe candidate color properties via pcall (failures
+-- are silent engine-side); the first candidate the engine accepts wins for
+-- the session. Only our Mods-menu labels are themed (via setlabel below);
+-- game screens are never touched.
+local theme_winner = nil
+local theme_probed = nil
+local function theme_int(s)
+    if type(s) ~= 'string' then return nil end
+    local r, g, b = s:match('^#(%x%x)(%x%x)(%x%x)$')
+    if r == nil then return nil end
+    return 255 * 16777216 + tonumber(r, 16) * 65536 + tonumber(g, 16) * 256 + tonumber(b, 16)
+end
+local function apply_theme(agent)
+    if _G == nil or _G.TTMOD_ACCENT == nil then return end
+    local acc = _G.TTMOD_ACCENT
+    if type(acc) ~= 'string' then return end
+    if agent == nil or pcall == nil or AgentSetProperty == nil then return end
+    if theme_winner ~= nil then
+        pcall(AgentSetProperty, agent, theme_winner.prop, theme_winner.value)
+        return
+    end
+    if theme_probed then return end
+    local num = theme_int(acc)
+    for _, prop in ipairs({'Color', 'Tint Color', 'Font Color', 'Text Color', 'Diffuse'}) do
+        local ok = pcall(AgentSetProperty, agent, prop, acc)
+        local used = acc
+        if not ok and num ~= nil then
+            ok = pcall(AgentSetProperty, agent, prop, num)
+            if ok then used = num end
+        end
+        mlog('theme-probe: ' .. prop .. '=' .. (ok and 'ok' or 'fail'))
+        if ok then
+            theme_winner = {prop = prop, value = used}
+            mlog('theme-winner: ' .. prop)
+            return
+        end
+    end
+    mlog('theme-winner: none')
+    theme_probed = true
+end
+
 local function setlabel(btn, text)
     if btn == nil then mlog('setlabel: nil btn') return end
     if pcall == nil then mlog('setlabel: no pcall') return end
@@ -34,7 +77,7 @@ local function setlabel(btn, text)
         if ok and lab ~= nil then
             local ok2 = pcall(AgentSetProperty, lab, 'Text String', T(text))
             mlog('setlabel: ' .. n .. ' propset=' .. tostring(ok2))
-            if ok2 then return end
+            if ok2 then apply_theme(lab) return end
         end
     end
     mlog('setlabel: no usable label clone')
