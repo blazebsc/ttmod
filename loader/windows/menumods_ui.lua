@@ -180,6 +180,12 @@ local function paint(agent, hex)
     if r == nil then return false end
     local num = theme_int(hex)
     local ri, gi, bi = tonumber(r, 16), tonumber(g, 16), tonumber(b, 16)
+    -- Named fields FIRST: the in-game probe showed the engine stores this
+    -- property as {r=..,g=..,b=..,a=..}, so a positional array is silently
+    -- ignored (which is why every earlier attempt looked like a failure).
+    if pcall(AgentSetProperty, agent, theme_winner,
+             { r = ri, g = gi, b = bi, a = 255 }) then return true end
+    -- Fallbacks for other builds/properties that want a different shape.
     if pcall(AgentSetProperty, agent, theme_winner, hex) then return true end
     if pcall(AgentSetProperty, agent, theme_winner, { ri, gi, bi, 255 }) then return true end
     if pcall(AgentSetProperty, agent, theme_winner, { ri, gi, bi }) then return true end

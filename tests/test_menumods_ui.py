@@ -30,7 +30,7 @@ function AgentSetProperty(a, k, v) rec('setprop', tostring(a and a.of), k, tostr
   local key = (tostring(a and a.of) or '?') .. '/' .. (a and a.clone or '') .. '/' .. k
   -- Only 'Text Color' exists on a label (in-game probe 2026-10-03); every other
   -- name is accepted-then-ignored, the silent-failure case read-back catches.
-  if k == 'Text Color' then _props[key] = v end
+  if k == 'Text Color' then _props[key] = v; _color[key] = v end
   _wrote[key] = v end
 -- Agent identity = widget id .. '/' .. clone name, so the getter sees the same
 -- key the setter wrote.
@@ -40,6 +40,7 @@ local function AgentGetPropertyImpl(a, k)
   return _props[(tostring(a and a.of) or '?') .. '/' .. (a and a.clone or '') .. '/' .. k]
 end
 _wrote = {}
+_color = {}
 _props = {}
 AgentGetProperty = AgentGetPropertyImpl
 function EscapeText2(s) return tostring(s) end
@@ -179,6 +180,18 @@ for _, c in ipairs(calls) do
     assert(c:find('|Text Color|', 1, true), 'only the proven property painted: ' .. c)
   end
 end
+-- The engine stores this property as NAMED fields {r,g,b,a} (in-game probe
+-- 2026-10-03: 'type=table {a=0 b=0 g=0 r=0}'). A positional array is silently
+-- ignored, so pin the named shape: swatch 1 is #FFFFFF.
+local painted = 0
+for _, v in pairs(_color) do
+  if type(v) == 'table' then
+    assert(v.r ~= nil and v.g ~= nil and v.b ~= nil and v.a ~= nil,
+      'colour written with NAMED r/g/b/a fields, got ' .. type(v))
+    painted = painted + 1
+  end
+end
+assert(painted == 6, 'all six swatch colours written as named fields, got ' .. painted)
 -- picking a swatch writes it and returns to details
 setter_log = {}
 calls = {}

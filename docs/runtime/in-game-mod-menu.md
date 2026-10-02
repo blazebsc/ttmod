@@ -117,10 +117,15 @@ probe: Text Color    set=true reads=true type=table   <- THE ONE
 probe-winner: Text Color (exists, value format differs)
 ```
 - The property name is **`Text Color`** (exactly that spacing/casing).
-- Its value is a **TABLE**, not a string - writing `"#RR00FF"` silently does
-  nothing, which is why every string/int attempt looked like a failure.
-- `paint()` therefore tries, in order: the hex string, `{r,g,b,255}`,
-  `{r,g,b}`, `0xFFRRGGBB`. The first the engine accepts wins.
+- Its value is a **TABLE with NAMED fields** - the probe dumped
+  `type=table {a=0 b=0 g=0 r=0}`. Writing `"#FF8000"` silently does nothing,
+  and so does a positional `{r,g,b}`; the engine only honours
+  `{ r = .., g = .., b = .., a = 255 }`. That is why every string/int/array
+  attempt looked like a failure.
+- `paint()` therefore tries, in order: `{r=,g=,b=,a=}` (the proven shape), then
+  the hex string, `{r,g,b,255}`, `{r,g,b}`, `0xFFRRGGBB`. First accepted wins.
+  `tests/test_menumods_ui.py` pins the named-field shape so a positional-array
+  regression fails the suite.
 - Only OUR Mods-menu labels are themed. Game screens are untouched.
 - `paint()` stays a no-op until the probe has run once per session: the
   property is discovered, never guessed, on the first label clone built.
