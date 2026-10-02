@@ -28,6 +28,7 @@
 #include "ttmod/pathnorm.hpp"
 #include "ttmod/sigmatch.hpp"
 #include "hooks.hpp"
+#include "win32_path.hpp"
 
 namespace ttmod_win {
 namespace {
@@ -85,11 +86,8 @@ static HANDLE WINAPI hook_CreateFileW(LPCWSTR name, DWORD access, DWORD share,
         // M5 resolver: game-root-relative override lookup (index built at init).
         // Only the filename may change; every other argument passes through.
         if (name && mods_try(name, req, repl, winner)) {
-            std::string win = repl;
-            for (char& c : win)
-                if (c == '/') c = '\\';
-            int n = MultiByteToWideChar(CP_UTF8, 0, win.c_str(), -1, replaced, MAX_PATH);
-            if (n > 0) {
+            std::string win = to_win(repl);
+            if (widen(win, replaced)) {
                 use = replaced;
                 overridden = true;
             }

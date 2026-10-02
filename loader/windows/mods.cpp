@@ -15,6 +15,7 @@
 #include "ttmod/resolver.hpp"
 #include "mods.hpp"
 #include "modscan.hpp"
+#include "win32_path.hpp"
 
 namespace ttmod_win {
 namespace {
@@ -40,32 +41,6 @@ static void emit(const std::string& msg) {
     if (log.open(g_logpath)) log.info(msg);
 }
 
-// UTF-8 narrow <-> wide. Normalization only touches ASCII bytes, so UTF-8
-// multibyte sequences pass through untouched.
-static std::string narrow(const wchar_t* w) {
-    if (!w) return "";
-    int n = WideCharToMultiByte(CP_UTF8, 0, w, -1, nullptr, 0, nullptr, nullptr);
-    if (n <= 1) return "";
-    std::string s((size_t)n - 1, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, w, -1, s.data(), n, nullptr, nullptr);
-    return s;
-}
-
-static bool widen(const std::string& s, wchar_t* out) {
-    int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
-    if (n <= 0 || n > MAX_PATH) return false;
-    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, out, n);
-    return true;
-}
-
-static bool file_exists_norm(const std::string& norm_abs_slashes) {
-    std::string win = norm_abs_slashes;
-    for (char& c : win)
-        if (c == '/') c = '\\';
-    DWORD a = GetFileAttributesA(win.c_str());
-    return a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY);
-}
-
 } // namespace
 
 void mods_init(const std::vector<ScannedMod>& all, const char* game_root, const char* log_path) {
@@ -84,7 +59,7 @@ void mods_init(const std::vector<ScannedMod>& all, const char* game_root, const 
         if (m.files.empty()) continue; // native-only; plugins loader owns it
         ttmod::ModDef def{m.id, s.dir, m.priority, true, m.files};
         size_t before = g_resolver.problems().size();
-        bool used = g_resolver.add_mod(def, file_exists_norm);
+        bool used = g_resolver.add_mod(def, exists);
         char sum[192];
         snprintf(sum, sizeof sum, "mods: %s indexed (priority %d, %s)", m.id.c_str(), m.priority,
                  used ? "overrides registered" : "no usable overrides");
@@ -145,9 +120,7 @@ bool mods_resolve(const wchar_t* requested, wchar_t* out_path) {
     std::string req, replacement, winner;
     if (!mods_try(requested, req, replacement, winner)) return false;
     // Internal '/' -> Windows '\' for the real CreateFileW call.
-    std::string win = replacement;
-    for (char& c : win)
-        if (c == '/') c = '\\';
+    std::string win = to_win(replacement);
     return widen(win, out_path);
 }
 

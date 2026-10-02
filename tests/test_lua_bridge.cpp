@@ -48,28 +48,8 @@ int main() {
     assert(!ttmod::lua_bridge_anchor_ok(ttmod::kLuaNewstateAnchor, reader));
     // proof chunk sets exactly the proof global (keeps Lua surface minimal)
     assert(strstr(ttmod::kLuaBridgeTestChunk, ttmod::kLuaBridgeTestGlobal) != nullptr);
-    // Menu_Mods chunk: defines Menu_Mods, bumps the call counter, sets the
-    // pressed marker, guarded transition (no unconditional game calls)
-    assert(strstr(ttmod::kMenuModsChunk, "function Menu_Mods()") != nullptr);
-    assert(strstr(ttmod::kMenuModsChunk, ttmod::kMenuModsCalls) != nullptr);
-    assert(strstr(ttmod::kMenuModsChunk, ttmod::kMenuModsPressed) != nullptr);
-    assert(strstr(ttmod::kMenuModsChunk, "if Menu_Options then") != nullptr);
-    // wrapper chunk: one-shot guard, zero library calls (bare-safe),
-    // Mods append after the exit row; label overwritten to "Mods" via the
-    // game's own pattern, pcall-protected (unguarded Clone_Find on the
-    // widget table killed the menu once — must stay protected)
-    assert(strstr(ttmod::kMenuAddWrapChunk, "ttmod_orig_Add") != nullptr);
-    assert(strstr(ttmod::kMenuAddWrapChunk, "ttmod_appended") != nullptr);
-    assert(strstr(ttmod::kMenuAddWrapChunk, "Menu_Mods()") != nullptr);
-    assert(strstr(ttmod::kMenuAddWrapChunk, "__b.agent or __b, 'label'") != nullptr);
-    assert(strstr(ttmod::kMenuAddWrapChunk, "Text String', 'Mods'") != nullptr);
-    assert(strstr(ttmod::kMenuAddWrapChunk, "pcall") != nullptr);
-    assert(strstr(ttmod::kMenuAddWrapChunk, "mods-appended") != nullptr);
-    assert(strstr(ttmod::kMenuAddWrapChunk, "if Menu_Mods then") != nullptr); // dead-click guard
-    assert(strstr(ttmod::kMenuAddWrapChunk, "ttmod_appended = nil") != nullptr); // revisit re-arm
-    assert(strstr(ttmod::kMenuAddWrapChunk, "Menu_Main_Exit") == nullptr); // id-only trigger
-    assert(strstr(ttmod::kMenuAddWrapChunk, "table.pack") == nullptr);
-    assert(strstr(ttmod::kMenuAddWrapChunk, "tostring(") == nullptr);
+    // Game-idiom menu chunks live loader-side (loader/windows/menu_bridge.hpp);
+    // core keeps only the portable validation proven above.
     std::puts("lua_bridge: all asserts passed");
     return 0;
 }

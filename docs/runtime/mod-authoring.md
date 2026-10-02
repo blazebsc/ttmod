@@ -51,6 +51,10 @@ Missing/low-version/conflicting = your mod is skipped with a logged reason.
 ## 6. Enable/disable
 Ship `"enabled": true` (default). Users override per-mod in
 `config/mods.json` without touching your package. Test both states.
+Effective rule (one query everywhere): manifest `enabled` is the default,
+`config/mods.json` wins when present, missing entry = manifest default.
+Discovery, the Mods menu snapshot, and the `Disabled:` summary count all
+read that answer; log `Skipped: <id>: disabled` lines only render it.
 
 ## 7. Mod menu + per-mod config
 - The menu backend lists every installed mod via the host (id/version/enabled). No registration needed - ship a valid mod and it appears.

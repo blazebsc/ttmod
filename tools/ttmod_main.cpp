@@ -217,7 +217,8 @@ int main(int argc, char** argv) {
                 return 0;
             }
             for (auto& m : mods) {
-                bool en = st.enabled_for(m.id, m.m.ok ? m.m.enabled : true);
+                bool en = m.m.ok ? ttmod::effective_enabled(m.m, st)
+                                 : st.enabled_for(m.id, true);
                 std::printf("[%c] %-28s %-10s %s%s\n", en ? 'x' : ' ', m.id.c_str(), m.version.c_str(),
                         m.src.c_str(), m.m.ok ? "" : "  INVALID");
             }
@@ -229,7 +230,7 @@ int main(int argc, char** argv) {
                 auto st = load_state(dir);
                 std::printf("id: %s\nversion: %s\nsource: %s\nenabled: %s\napi: %d\ngames:",
                         m.id.c_str(), m.version.c_str(), m.src.c_str(),
-                        st.enabled_for(m.id, m.m.enabled) ? "true" : "false", m.m.api);
+                        ttmod::effective_enabled(m.m, st) ? "true" : "false", m.m.api);
                 for (auto& g : m.m.games) std::printf(" %s", g.c_str());
                 std::printf("\nfiles: %u\n", (unsigned)m.m.files.size());
                 return 0;

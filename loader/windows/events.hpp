@@ -19,5 +19,7 @@ void events_unsubscribe(int token);
 int events_get_state(ttmod_state* out);
 // Detach-safe one-line summary into caller buffer (no IO/alloc).
 int events_state_summary(char* buf, size_t len);
+// Detach-safe structured snapshot line (primary artifact) into caller buffer.
+int events_snapshot_json(char* buf, size_t len);
 } // namespace ttmod_win
 #endif

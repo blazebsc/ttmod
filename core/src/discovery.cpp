@@ -99,7 +99,7 @@ Discovery discover_mods(const std::string& mods_dir, const ModState& state, cons
             d.skipped.push_back(c.id + ": game not supported");
             continue;
         }
-        if (!state.enabled_for(c.id, m.enabled)) {
+        if (!effective_enabled(m, state)) {
             d.skipped.push_back(c.id + ": disabled");
             d.disabled.push_back({c.id, c.source, c.packaged, m}); // menu-visible
             continue;

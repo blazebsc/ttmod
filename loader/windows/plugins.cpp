@@ -17,6 +17,7 @@
 #include "mods.hpp"
 #include "modscan.hpp"
 #include "plugins.hpp"
+#include "win32_path.hpp"
 
 namespace ttmod_win {
 namespace {
@@ -62,9 +63,7 @@ void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, co
             emit("plugins: " + m.id + " rejected (arch " + m.arch + " != x86)");
             continue;
         }
-        std::string dllpath = s.dir + "\\" + s.plugin_rel;
-        for (char& c : dllpath)
-            if (c == '/') c = '\\';
+        std::string dllpath = join(s.dir, s.plugin_rel);
         ttmod::ExeInfo pe = ttmod::parse_pe(dllpath);
         if (!pe.ok || pe.machine != 0x014C) {
             emit("plugins: " + m.id + " rejected (plugin is not x86 PE)");

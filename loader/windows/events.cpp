@@ -16,7 +16,7 @@ namespace {
 static std::string g_logpath;
 static ttmod::EventBus g_bus;
 static ttmod::GameTracker g_tracker;
-static std::mutex g_mtx; // subscribe/unsubscribe/tracker/dispatch
+static std::mutex g_mtx; // tracker/logpath (bus locks itself)
 
 static void emit(const std::string& msg) {
     ttmod::Logger log;
@@ -36,7 +36,6 @@ void dispatch_file_event(const std::string& requested_utf8, const std::string& n
     if (category == "resdesc") id = ttmod::EV_RESDESC_OPEN;
     else if (category == "archive") id = ttmod::EV_ARCHIVE_OPEN;
     {
-        std::lock_guard<std::mutex> l(g_mtx);
         if (!g_bus.has(id)) return;
     }
     static volatile LONG s_live = 0;
@@ -51,16 +50,13 @@ void dispatch_file_event(const std::string& requested_utf8, const std::string& n
     ev.overridden = overridden;
     ev.succeeded = succeeded;
     ev.thread = (unsigned long)GetCurrentThreadId();
-    // Snapshot under lock, invoke WITHOUT it: callbacks re-enter the bridge
-    // (get_state/subscribe). Unsubscribe-during-dispatch may still deliver one
-    // stale call — documented, harmless (strings are per-dispatch copies).
-    std::vector<ttmod::EventBus::Cb> cbs;
+    // Bus snapshots + invokes internally (re-entry safe, lock held across
+    // neither feed nor callbacks). Stale-delivery edge documented on EventBus.
     {
         std::lock_guard<std::mutex> l(g_mtx);
         g_tracker.feed(category, normalized);
-        cbs = g_bus.snapshot(id);
     }
-    for (auto& cb : cbs) cb(ev);
+    g_bus.dispatch(ev);
 }
 
 int events_subscribe(int event_id, ttmod_event_cb cb, void* ctx) {
@@ -110,7 +106,9 @@ int events_get_state(ttmod_state* out) {
     return 0;
 }
 
-// Detach-safe summary: plain snprintf into caller buffer, no IO, no alloc.
+// Detach-safe summary: struct snapshot formatted with snprintf only, no
+// log-text parsing. Episodes render into a stack buffer (no heap); the
+// rendered line is byte-identical to prior builds (offline grep keeps working).
 int events_state_summary(char* buf, size_t len) {
     if (!buf || !len) return -1;
     ttmod::GameSnapshot s;
@@ -118,15 +116,33 @@ int events_state_summary(char* buf, size_t len) {
         std::lock_guard<std::mutex> l(g_mtx);
         s = g_tracker.snapshot();
     }
-    std::string eps;
-    for (size_t i = 0; i < s.episodes_seen.size(); ++i) {
-        if (i) eps += ',';
-        eps += std::to_string(s.episodes_seen[i]);
+    char eps[64] = {};
+    size_t pos = 0;
+    for (size_t i = 0; i < s.episodes_seen.size() && pos + 1 < sizeof eps; ++i) {
+        int n = snprintf(eps + pos, sizeof eps - pos, "%s%d", i ? "," : "",
+                         s.episodes_seen[i]);
+        if (n < 0) break;
+        if ((size_t)n >= sizeof eps - pos) break; // truncated, eps stays NUL-ended
+        pos += (size_t)n;
     }
     return snprintf(buf, len,
                     "state: episodes=[%s] archives=%d resdesc=%d saves=%d others=%d save_dir=%s\r\n",
-                    eps.c_str(), s.archives_opened, s.resdesc_opened, s.saves_observed,
+                    eps, s.archives_opened, s.resdesc_opened, s.saves_observed,
                     s.others_opened, s.save_dir.c_str());
+}
+
+// Structured twin of the summary above: same snapshot, JSON rendering via the
+// portable core formatter (no log-text parsing, snprintf only, no heap).
+// Written to ttmod.exit.log next to the human line; the JSON is the primary
+// machine artifact, the human line stays byte-identical for grep.
+int events_snapshot_json(char* buf, size_t len) {
+    if (!buf || !len) return -1;
+    ttmod::GameSnapshot s;
+    {
+        std::lock_guard<std::mutex> l(g_mtx);
+        s = g_tracker.snapshot();
+    }
+    return ttmod::format_snapshot_json(s, buf, len);
 }
 
 } // namespace ttmod_win

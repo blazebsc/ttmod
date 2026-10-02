@@ -3,8 +3,11 @@
 ## Bus (`core/events.*`, portable, unit-tested)
 Synchronous `subscribe/unsubscribe/dispatch`. Dispatch runs subscribers inline
 on the caller thread; callbacks must be non-blocking and reentrant-safe.
-`dispatch` iterates a snapshot view; mutating the bus from a callback is
-forbidden (documented).
+`dispatch` snapshots subscriber callbacks under an internal lock, then invokes
+the copy with the lock released, so callbacks may freely
+subscribe/unsubscribe and call sites need no snapshot/lock dance. One edge:
+unsubscribe-during-dispatch may still deliver one in-flight stale call
+(copied before removal); harmless, strings are per-dispatch copies.
 
 ## Events (precise names - file request + open ATTEMPT, not execution)
 - `onFileOpen` (1): any CreateFileW through the hook.
@@ -40,3 +43,14 @@ worked by luck of intact stack).
 ## Demo (`examples/event-log`, api v2)
 Subscribes to all three; logs first 3 per category + every 100th total.
 Proven: `resdesc #99`, `archive #145`, `other #1 ok=0` in a normal boot.
+
+## State summary (struct-derived, never parsed from log text)
+`events_state_summary()` snapshots the live `GameTracker` struct and formats
+one line (`state: episodes=[...] archives=.. resdesc=.. saves=.. others=..
+save_dir=..`) with `snprintf` only. `exit_dump()` writes that line to
+`ttmod.exit.log` at detach, plus a structured JSON twin from
+`events_snapshot_json()` (same snapshot, portable `format_snapshot_json()`
+renderer — the primary machine artifact). Nothing greps `ttmod.log`/`CreateFileW#` for live
+counts; `ttmod map` replays old logs for forensics only (extraction, then the
+same struct feed). `menumods-lua:` lines are UI trace only, never a count
+source. All rendered lines stay byte-identical so existing grep keeps working.

@@ -71,7 +71,7 @@ static std::vector<ttmod::MenuModSnapshot> snapshot() {
         s.name = m.name;
         s.version = m.version;
         s.description = m.description;
-        s.enabled = st.enabled_for(m.id, m.enabled);
+        s.enabled = ttmod::effective_enabled(m, st);
         ttmod_modinfo mi{};
         if (mods_menu_info(i, &mi) == 0) {
             s.has_plugin = mi.has_plugin != 0;
@@ -85,20 +85,25 @@ static std::vector<ttmod::MenuModSnapshot> snapshot() {
     return out;
 }
 
-static void run_chunk(lua_State* L, const char* what, const char* chunk) {
-    if (!g_loadstring || !g_pcallk || !g_gettop) return;
-    int t0 = g_gettop(L);
-    int lr = g_loadstring(L, chunk);
+} // namespace
+
+void bridge_run_chunk(lua_State* L, LuaLoadstringFn loadstring, LuaPcallkFn pcallk,
+                      LuaGettopFn gettop, LuaSetglobalFn setglobal, const char* what,
+                      const char* chunk) {
+    if (!L || !loadstring || !pcallk || !gettop || !chunk) return;
+    int t0 = gettop(L);
+    int lr = loadstring(L, chunk);
     int pr = -1;
-    if (lr == 0) pr = g_pcallk(L, 0, 0, 0, 0, nullptr);
-    int t1 = g_gettop(L);
-    if (t1 != t0 && g_setglobal) {
-        g_setglobal(L, "ttmod_last_error"); // sink stray error, keep balance
-        t1 = g_gettop(L);
+    if (lr == 0) pr = pcallk(L, 0, 0, 0, 0, nullptr);
+    int t1 = gettop(L);
+    if (t1 != t0 && setglobal) {
+        setglobal(L, "ttmod_last_error"); // sink stray error, keep balance
+        t1 = gettop(L);
     }
     if (lr != 0 || pr != 0 || t1 != t0) {
-        char m[160];
-        snprintf(m, sizeof m, "menumods: %s FAILED load=%d pcall=%d", what, lr, pr);
+        char m[192];
+        snprintf(m, sizeof m, "lua: %s chunk load=%d pcall=%d balanced=%d", what ? what : "?",
+                 lr, pr, t1 == t0);
         emit(m);
     }
 }
@@ -109,7 +114,7 @@ static int __cdecl fn_refresh(lua_State* L) {
     unsigned seq = (unsigned)InterlockedIncrement(&g_seq);
     auto snap = snapshot();
     std::string chunk = ttmod::build_menu_literal(snap, seq);
-    run_chunk(L, "refresh", chunk.c_str());
+    bridge_run_chunk(L, g_loadstring, g_pcallk, g_gettop, g_setglobal, "refresh", chunk.c_str());
     char m[128]; // menu opens are rare; one line each is fine
     snprintf(m, sizeof m, "menumods: refresh seq=%u mods=%u", seq, (unsigned)snap.size());
     emit(m);
@@ -179,8 +184,6 @@ static void reg_fn(lua_State* L, LuaPushCClosureFn pushcclosure, LuaSetglobalFn 
     setglobal(L, name);
 }
 
-} // namespace
-
 void menumods_init(const char* game_dir, const char* log_path) {
     g_gamedir = game_dir ? game_dir : "";
     g_logpath = log_path ? log_path : "";
@@ -226,7 +229,7 @@ void menumods_register(lua_State* L, LuaLoadstringFn loadstring, LuaPcallkFn pca
     reg_fn(L, pushcclosure, setglobal, fn_set_enabled, "ttmod_menu_set_enabled");
     reg_fn(L, pushcclosure, setglobal, fn_set_value, "ttmod_menu_set_value");
     reg_fn(L, pushcclosure, setglobal, fn_log, "ttmod_menu_log");
-    run_chunk(L, "ui-defs", kMenuModsUi);
+    bridge_run_chunk(L, g_loadstring, g_pcallk, g_gettop, g_setglobal, "ui-defs", kMenuModsUi);
     emit("menumods: ui registered on state");
 }
 

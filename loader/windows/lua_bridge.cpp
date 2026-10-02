@@ -66,28 +66,6 @@ static int __cdecl append_log(lua_State* L) {
     return 0;
 }
 
-// Run one chunk on L with the bridge's balanced-stack + error-sink
-// discipline. Used by the Menu_Add wrapper offer and the plugin chunk
-// queue drain — both same-thread on the game's script loader.
-static void run_bridge_chunk(lua_State* L, const char* what, const char* chunk) {
-    if (!g_fnLoadstring || !g_fnPcallk || !g_fnGettop) return;
-    int t0 = g_fnGettop(L);
-    int lr = g_fnLoadstring(L, chunk);
-    int pr = -1;
-    if (lr == 0) pr = g_fnPcallk(L, 0, 0, 0, 0, nullptr);
-    int t1 = g_fnGettop(L);
-    if (t1 != t0 && g_fnSetglobal) {
-        g_fnSetglobal(L, "ttmod_last_error"); // sink stray error, keep balance
-        t1 = g_fnGettop(L);
-    }
-    if (lr != 0 || pr != 0 || t1 != t0) {
-        char m[192];
-        snprintf(m, sizeof m, "lua: %s chunk load=%d pcall=%d balanced=%d", what, lr, pr,
-                 t1 == t0);
-        emit(m);
-    }
-}
-
 static int __cdecl hook_loadresource(lua_State* L, char* filename) {
     int rc = g_origLoadResource(L, filename);
     if (!L || g_dead) return rc;
@@ -100,7 +78,8 @@ static int __cdecl hook_loadresource(lua_State* L, char* filename) {
     // after the script load, on that state. Before the Menu.lua branch so
     // observe-only mode (TTMOD_LUA_LRCHUNK=0) still drains plugin chunks.
     for (const std::string& c : ttmod::uiqueue_take())
-        run_bridge_chunk(L, "plugin", c.c_str());
+        bridge_run_chunk(L, g_fnLoadstring, g_fnPcallk, g_fnGettop, g_fnSetglobal, "plugin",
+                         c.c_str());
     // Menu_Add wrapper: Menu.lua defines Menu_Add. Suffix "Menu.lua" does
     // NOT match "Menu_Main.lua" (ends in "Main.lua"), so only Menu.lua
     // itself triggers; the chunk one-shot guard covers reloads anyway.
@@ -119,7 +98,8 @@ static int __cdecl hook_loadresource(lua_State* L, char* filename) {
         }
         g_fnPushCClosure(L, append_log, 0);
         g_fnSetglobal(L, "Menu_Main_AppendLog");
-        run_bridge_chunk(L, "Menu_Add wrapper", ttmod::kMenuAddWrapChunk);
+        bridge_run_chunk(L, g_fnLoadstring, g_fnPcallk, g_fnGettop, g_fnSetglobal,
+                         "Menu_Add wrapper", ttmod_win::kMenuAddWrapChunk);
         char m[96];
         snprintf(m, sizeof m, "lua: Menu_Add wrapper offered");
         emit(m);

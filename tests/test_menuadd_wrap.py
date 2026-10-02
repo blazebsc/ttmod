@@ -9,13 +9,22 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-HDR = os.path.join(ROOT, "core", "include", "ttmod", "lua_bridge.hpp")
+HDR = os.path.join(ROOT, "loader", "windows", "menu_bridge.hpp")
 with open(HDR, encoding="utf-8") as f:
     hsrc = f.read()
 i = hsrc.index("kMenuAddWrapChunk")
 j = hsrc.index(";", i)
 CHUNK = "".join(re.findall(r'"([^"]*)"', hsrc[i:j]))
 assert "ttmod_orig_Add" in CHUNK, CHUNK
+# Static pins (moved from tests/test_lua_bridge.cpp with the chunk):
+# one-shot guard, guarded Mods callback, pcall-protected label overwrite.
+for needle in ("ttmod_appended", "Menu_Mods()", "__b.agent or __b, 'label'",
+               "Text String', 'Mods'", "pcall", "mods-appended",
+               "if Menu_Mods then", "ttmod_appended = nil"):
+    assert needle in CHUNK, needle
+assert "Menu_Main_Exit" not in CHUNK, "id-only trigger"
+assert "table.pack" not in CHUNK, CHUNK
+assert "tostring(" not in CHUNK, CHUNK
 
 DRIVER = r"""
 adds = {}

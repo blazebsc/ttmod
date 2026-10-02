@@ -14,7 +14,7 @@ apply on restart. 20/20 tests green (15 native + 5 Python); win32 DLLs staged.
   detours on game `lua_newstate` + `ScriptManager::LoadResource`; installs
   the Menu_Add wrapper chunk when `Menu.lua` loads and registers the menu
   bridge on EVERY captured Lua state.
-- `core/include/ttmod/lua_bridge.hpp::kMenuAddWrapChunk` - wraps `Menu_Add`,
+- `loader/windows/menu_bridge.hpp::kMenuAddWrapChunk` - wraps `Menu_Add`,
   census-logs main-menu rows via AppendLog, re-arms on the 'play' row
   (always first → revisit re-append), and appends ONE Mods row when the
   'exit' row passes: `Menu_Add(ListButton,'mods','label_help',
@@ -86,8 +86,8 @@ process at the first Menu.lua load (`menumods_button_enabled()`).
 ## Plugin Lua queue (v5 ABI, 2026-10-02)
 `host->queue_ui_chunk(code)` (see plugins.md) executes plugin-authored
 Lua on the game's script thread; drained in the same LoadResource hook
-that offers the Menu_Add wrapper, same balanced-stack discipline. Unit
-queue semantics: `tests/test_uiqueue.cpp` (capacity/drop/drain).
+that offers the Menu_Add wrapper, via the one shared `bridge_run_chunk`
+(balanced-stack + error-sink). Unit queue semantics: `tests/test_uiqueue.cpp`.
 
 ## Toolchain: reading any game script offline (REPRODUCIBLE)
 - Clone: `git clone https://github.com/iMrShadow/TelltaleToolKit` (MIT;

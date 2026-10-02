@@ -1,4 +1,5 @@
 #include "ttmod/modstate.hpp"
+#include "ttmod/manifest.hpp"
 #include <cctype>
 
 namespace ttmod {
@@ -6,6 +7,10 @@ namespace ttmod {
 bool ModState::enabled_for(const std::string& id, bool manifest_default) const {
     auto it = overrides.find(id);
     return it == overrides.end() ? manifest_default : it->second;
+}
+
+bool effective_enabled(const ModManifest& manifest, const ModState& state) {
+    return state.enabled_for(manifest.id, manifest.enabled);
 }
 
 void ModState::set(const std::string& id, bool enabled) {

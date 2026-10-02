@@ -66,6 +66,30 @@ int main() {
         assert(m.resdesc_order.size() == 1 && m.archive_order.size() == 1); // dedupe
         assert(m.save_paths.size() == 1);
         assert(ttmod::map_boot_log("no opens here").total == 0);
+        // Struct-fed path (no log text): same tallies from normalized paths.
+        {
+            std::vector<std::string> paths = {
+                "h:/g/archives/_resdesc_50_boot.lua",
+                "h:/g/archives/mcsm_pc_menu_ms.ttarch2",
+                "h:/g/archives/mcsm_pc_menu_ms.ttarch2",
+                "c:/u/documents/telltale games/x/prefs.prop",
+                "c:/w/x.dll",
+            };
+            auto n = ttmod::map_from_paths(paths);
+            assert(n.ok && n.total == 5);
+            assert(n.by_ext[".lua"] == 1 && n.by_ext[".ttarch2"] == 2 &&
+                   n.by_ext[".prop"] == 1 && n.by_ext[".dll"] == 1);
+            assert(n.by_category["resdesc"] == 1 && n.by_category["archive"] == 2 &&
+                   n.by_category["save"] == 1 && n.by_category["other"] == 1);
+            assert(n.resdesc_order.size() == 1 && n.archive_order.size() == 1);
+            assert(n.save_paths.size() == 1);
+            ttmod::LogMap one;
+            one.ok = true;
+            ttmod::logmap_feed(one, "h:/g/archives/_resdesc_50_boot.lua");
+            assert(one.total == 1 && one.by_category["resdesc"] == 1);
+            ttmod::LogMap empty = ttmod::map_from_paths({});
+            assert(empty.ok && empty.total == 0);
+        }
     }
     std::puts("offline: all asserts passed");
     return 0;

@@ -13,12 +13,14 @@ std::string classify_path(const std::string& normalized) {
 }
 
 int EventBus::subscribe(int event_id, Cb cb) {
+    std::lock_guard<std::mutex> l(mtx_);
     int t = next_++;
     subs_[event_id].emplace_back(t, std::move(cb));
     return t;
 }
 
 void EventBus::unsubscribe(int token) {
+    std::lock_guard<std::mutex> l(mtx_);
     for (auto& [id, v] : subs_)
         for (auto it = v.begin(); it != v.end(); ++it)
             if (it->first == token) {
@@ -28,13 +30,12 @@ void EventBus::unsubscribe(int token) {
 }
 
 void EventBus::dispatch(const FileEvent& ev) const {
-    auto it = subs_.find(ev.id);
-    if (it == subs_.end()) return;
-    // Snapshot size only; callbacks must not mutate the bus (documented).
-    for (auto& [tok, cb] : it->second) cb(ev);
+    std::vector<Cb> cbs = snapshot(ev.id); // locks internally, copy only
+    for (auto& cb : cbs) cb(ev); // WITHOUT the lock: re-entry safe
 }
 
 std::vector<EventBus::Cb> EventBus::snapshot(int event_id) const {
+    std::lock_guard<std::mutex> l(mtx_);
     std::vector<Cb> out;
     auto it = subs_.find(event_id);
     if (it == subs_.end()) return out;
@@ -43,6 +44,7 @@ std::vector<EventBus::Cb> EventBus::snapshot(int event_id) const {
 }
 
 bool EventBus::has(int event_id) const {
+    std::lock_guard<std::mutex> l(mtx_);
     auto it = subs_.find(event_id);
     return it != subs_.end() && !it->second.empty();
 }

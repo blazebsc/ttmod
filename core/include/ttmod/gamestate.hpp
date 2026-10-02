@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -26,9 +27,19 @@ int parse_episode(const std::string& normalized_basename);
 // Save-like file? prefs.prop / elfdl.prop / session_*.estore (observed names).
 bool is_save_file(const std::string& normalized_basename);
 
+// Single category decision shared by the live tracker and the offline logmap:
+// classify_path with the save-file override ("resdesc" | "archive" | "save" |
+// "other"). Note the event ABI category stays classify_path-only ("save" is
+// not a valid event category — see plugin_api.h); the tracker applies the
+// override internally so the two tallies cannot disagree.
+std::string classify_category(const std::string& normalized);
+
 class GameTracker {
 public:
-    // Feed a classified event (category from classify_path, save override below).
+    // Feed one observed open. The category argument is accepted for call-site
+    // convenience but NOT trusted: the tally re-derives it via
+    // classify_category(normalized), so a disagreeing caller cannot skew live
+    // counts away from the offline replay.
     void feed(const std::string& category, const std::string& normalized);
     GameSnapshot snapshot() const;
 
@@ -38,5 +49,12 @@ private:
     std::string save_dir_;
     static std::string basename(const std::string& n);
 };
+
+// Structured rendering of a snapshot: the primary detach artifact in
+// ttmod.exit.log, written next to the human-readable state: line (which stays
+// byte-identical for grep). snprintf-only into the caller buffer, no heap, so
+// the Windows detach path can use it directly. Returns the snprintf count
+// (negative on bad args). Ends with CRLF like the rest of the exit log.
+int format_snapshot_json(const GameSnapshot& s, char* buf, size_t len);
 
 } // namespace ttmod

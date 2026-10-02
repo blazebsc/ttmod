@@ -1,6 +1,7 @@
 #pragma once
 #include <functional>
 #include <map>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -27,23 +28,29 @@ struct FileEvent {
 // Pure classifier on a normalized path's basename. Unit-tested.
 std::string classify_path(const std::string& normalized);
 
-// Tiny synchronous bus. Callers that invoke callbacks while holding their own
-// locks must use snapshot() and invoke outside the lock: callbacks may
-// re-enter subscribe/get_state. Callbacks must be non-blocking and
-// reentrancy-safe (file hooks dispatch!).
+// Tiny synchronous bus. Dispatch is safe by construction: it snapshots
+// subscriber callbacks under an internal lock, then invokes the copy WITHOUT
+// holding the lock (callbacks may re-enter subscribe/unsubscribe/get_state).
+// Callbacks must be non-blocking and reentrancy-safe (file hooks dispatch!).
+//
+// Single stale-delivery edge: unsubscribe-during-dispatch may still deliver
+// one in-flight call to the removed subscriber (it was copied before the
+// removal). Harmless: event strings are per-dispatch copies.
 class EventBus {
 public:
     using Cb = std::function<void(const FileEvent&)>;
     // Returns subscription token.
     int subscribe(int event_id, Cb cb);
     void unsubscribe(int token);
+    // Snapshot-and-invoke: the only call site pattern. Never iterate live.
     void dispatch(const FileEvent& ev) const;
     bool has(int event_id) const;
-    // Copy of subscriber callbacks (for invoking WITHOUT holding any
-    // external lock — callbacks may re-enter subscribe/get_state).
+    // Copy of subscriber callbacks. Prefer dispatch(); exposed for
+    // diagnostics/tests only.
     std::vector<Cb> snapshot(int event_id) const;
 
 private:
+    mutable std::mutex mtx_;
     int next_ = 1;
     std::map<int, std::vector<std::pair<int, Cb>>> subs_; // id -> (token, cb)
 };
