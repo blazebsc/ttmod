@@ -74,6 +74,36 @@ local theme_winner = nil
 -- press, which is why an accent applied only to the base property reverts to
 -- white the moment the cursor touches a row.
 local theme_state_props = {}
+
+-- DUMP EVERY REAL PROPERTY of an agent. `AgentGetProperties` (verified present
+-- in the exe string table, alongside AgentGetProperty/AgentSetProperty) returns
+-- the agent's actual property list, so we can read the true names instead of
+-- guessing them. Returns a space-separated string, or nil when unavailable.
+local function dump_props(agent)
+    if agent == nil then return nil end
+    for _, fn in ipairs({ AgentGetProperties, AgentGetClassProperties,
+                          AgentGetRuntimeProperties }) do
+        if fn ~= nil then
+            local ok, list = pcall(fn, agent)
+            if ok and list ~= nil then
+                local parts = {}
+                -- A list may be a table of names or one space-joined string.
+                if type(list) == 'string' then
+                    for w in string.gmatch(list, '[^%s,]+') do parts[#parts + 1] = w end
+                elseif type(list) == 'table' then
+                    for _, v in ipairs(list) do
+                        if type(v) == 'string' then parts[#parts + 1] = v
+                        elseif type(v) == 'table' and type(v.name) == 'string' then
+                            parts[#parts + 1] = v.name
+                        end
+                    end
+                end
+                if #parts > 0 then return table.concat(parts, ' ') end
+            end
+        end
+    end
+    return nil
+end
 local TT_PROP_CANDIDATES = {
     'Color', 'Tint Color', 'Font Color', 'Text Color', 'Diffuse', 'Colour',
     'Color Tint', 'Tint', 'TextColour', 'TextColor', 'FontColour', 'FontColor',
@@ -99,6 +129,17 @@ local function probe_props(agent)
         return
     end
     mlog('probe: getprop=' .. type(AgentGetProperty) .. ' setprop=' .. type(AgentSetProperty))
+    -- Truth first: the agent's real property list. Guessing names is what cost
+    -- a day; the exe exports AgentGetProperties/AgentGetClassProperties/
+    -- AgentGetRuntimeProperties, so just ask.
+    do
+        local list = dump_props(agent)
+        if list ~= nil then
+            mlog('probe-all: ' .. list)
+        else
+            mlog('probe-all: unavailable')
+        end
+    end
     for _, prop in ipairs(TT_PROP_CANDIDATES) do
         local ok = pcall(AgentSetProperty, agent, prop, '#FF00FF')
         local back, is_ours = nil, false
