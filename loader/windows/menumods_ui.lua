@@ -99,19 +99,46 @@ local function probe_props(agent)
         end
         local readable = back ~= nil
         -- readable-but-not-ours => property EXISTS, wrong value form. type() and
-        -- a length-bounded string are safe on any value.
+        -- a length-bounded string are safe on any value. For a table, dump its
+        -- KEYS and scalar field values: that is the value shape we must write
+        -- back (a colour property returning a table almost always wants
+        -- {r,g,b[,a]}), and it is the only way to learn the format in one pass.
         local detail = ''
         if readable then
             local tv = type(back)
             detail = ' type=' .. tv
-            if tv == 'string' then detail = detail .. ' val=' .. string.sub(back, 1, 32) end
-            if tv == 'number' then detail = detail .. ' val=' .. tostring(back) end
+            if tv == 'string' then
+                detail = detail .. ' val=' .. string.sub(back, 1, 32)
+            elseif tv == 'number' then
+                detail = detail .. ' val=' .. tostring(back)
+            elseif tv == 'table' then
+                local parts = {}
+                for k, v in pairs(back) do
+                    local kt = type(v)
+                    if kt == 'number' or kt == 'string' or kt == 'boolean' then
+                        parts[#parts + 1] = tostring(k) .. '=' .. tostring(v)
+                    else
+                        parts[#parts + 1] = tostring(k) .. '=<' .. kt .. '>'
+                    end
+                end
+                table.sort(parts)
+                detail = detail .. ' {' .. table.concat(parts, ' ') .. '}'
+            end
         end
         mlog('probe: ' .. prop .. ' set=' .. tostring(ok) .. ' reads=' .. tostring(readable) ..
              (is_ours and ' *** MATCH ***' or '') .. detail)
         if is_ours then
             theme_winner = prop   -- arms paint() for the rest of the session
             mlog('probe-winner: ' .. prop)
+            return
+        end
+        -- A property that READS BACK exists, even if our string value didn't
+        -- stick (it wanted a table). Adopt it as the winner and stop guessing:
+        -- paint() then tries every format including {r,g,b}. Continuing to probe
+        -- past a readable property is pointless - it is the only one that exists.
+        if readable then
+            theme_winner = prop
+            mlog('probe-winner: ' .. prop .. ' (exists, value format differs)')
             return
         end
     end
@@ -143,13 +170,21 @@ end
 -- probe_props. Until one exists this is a deliberate no-op: spraying unknown
 -- property names at every label during a screen build is what killed the game
 -- mid-menu on 2026-10-02. Discovery happens once, inside probe_props.
+-- Value formats tried, cheapest first. Probing showed the label's real colour
+-- property reads back as a TABLE, so {r,g,b} is included; the string and int
+-- forms are kept because a different property/locale may want those.
 local function paint(agent, hex)
     if agent == nil or pcall == nil or AgentSetProperty == nil then return false end
     if theme_winner == nil then return false end
+    local r, g, b = hex:match('^#(%x%x)(%x%x)(%x%x)$')
+    if r == nil then return false end
     local num = theme_int(hex)
-    local ok = pcall(AgentSetProperty, agent, theme_winner, hex)
-    if not ok and num ~= nil then ok = pcall(AgentSetProperty, agent, theme_winner, num) end
-    return ok
+    local ri, gi, bi = tonumber(r, 16), tonumber(g, 16), tonumber(b, 16)
+    if pcall(AgentSetProperty, agent, theme_winner, hex) then return true end
+    if pcall(AgentSetProperty, agent, theme_winner, { ri, gi, bi, 255 }) then return true end
+    if pcall(AgentSetProperty, agent, theme_winner, { ri, gi, bi }) then return true end
+    if num ~= nil and pcall(AgentSetProperty, agent, theme_winner, num) then return true end
+    return false
 end
 local function apply_theme(agent)
     -- Bare global, NOT _G.TTMOD_ACCENT: _G is NIL in the game's Lua runtime

@@ -27,16 +27,19 @@ function Menu_Pop() rec('pop') end
 function Clone_Find(b, what) return {of = (type(b) == 'table' and b.of or '?'), what = what, clone = what} end
 function AgentSetProperty(a, k, v) rec('setprop', tostring(a and a.of), k, tostring(v))
   if k == nil then error('nil property') end
-  _props[(tostring(a and a.of) or '?') .. '/' .. (a and a.clone or '') .. '/' .. k] = tostring(v) end
--- Only 'Color' is a real engine property in this stub; anything else is
--- accepted-then-ignored (the silent-failure case the read-back guards).
+  local key = (tostring(a and a.of) or '?') .. '/' .. (a and a.clone or '') .. '/' .. k
+  -- Only 'Text Color' exists on a label (in-game probe 2026-10-03); every other
+  -- name is accepted-then-ignored, the silent-failure case read-back catches.
+  if k == 'Text Color' then _props[key] = v end
+  _wrote[key] = v end
 -- Agent identity = widget id .. '/' .. clone name, so the getter sees the same
 -- key the setter wrote.
 local function AgentGetPropertyImpl(a, k)
   if k == nil then return nil end
-  if k ~= 'Color' then return nil end
+  if k ~= 'Text Color' then return nil end
   return _props[(tostring(a and a.of) or '?') .. '/' .. (a and a.clone or '') .. '/' .. k]
 end
+_wrote = {}
 _props = {}
 AgentGetProperty = AgentGetPropertyImpl
 function EscapeText2(s) return tostring(s) end
@@ -149,7 +152,7 @@ assert(nrec('add|prevpage|') == 1 and nrec('add|nextpage|') == 0, 'Previous on l
 local function color_props(list)
   local n = 0
   for _, c in ipairs(list) do
-    if c:sub(1, 7) == 'setprop' and c:find('|Color|#', 1, true) then n = n + 1 end
+    if c:sub(1, 7) == 'setprop' and c:find('|Text Color|', 1, true) then n = n + 1 end
   end
   return n
 end
@@ -164,8 +167,8 @@ local probed = 0
 for _, c in ipairs(calls) do if c:find('probe:', 1, true) then probed = probed + 1 end end
 assert(probed >= 3, 'probe dumped candidate properties, got ' .. probed)
 local won = false
-for _, c in ipairs(calls) do if c:find('probe-winner:', 1, true) then won = true end end
-assert(won, 'probe found a colour property')
+for _, c in ipairs(calls) do if c:find('probe-winner: Text Color', 1, true) then won = true end end
+assert(won, 'probe found Text Color')
 TTMOD_PROBE_PROPS = nil
 -- winner armed: swatches now paint, and ONLY with the proven property
 calls = {}
@@ -173,7 +176,7 @@ Menu_Mods_PickColor('demo.config', 'accent', 1)
 assert(color_props(calls) == 6, 'six swatches painted after the probe')
 for _, c in ipairs(calls) do
   if c:sub(1, 7) == 'setprop' and not c:find('Text String', 1, true) then
-    assert(c:find('|Color|#', 1, true), 'only the proven property painted: ' .. c)
+    assert(c:find('|Text Color|', 1, true), 'only the proven property painted: ' .. c)
   end
 end
 -- picking a swatch writes it and returns to details

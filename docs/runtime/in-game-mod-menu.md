@@ -107,6 +107,24 @@ process at the first Menu.lua load (`menumods_button_enabled()`).
 - `bridge_run_chunk` logs the pcall error MESSAGE, not just the code (a bare
   `pcall=2` names no cause, and these are the only diagnostics available).
 
+## Label colour property: `Text Color` (PROVEN in-game 2026-10-03)
+The in-game probe (below) settled it on the first clean run:
+```
+probe: Color         set=true reads=false      <- does not exist
+probe: Tint Color    set=true reads=false      <- does not exist
+probe: Font Color    set=true reads=false      <- does not exist
+probe: Text Color    set=true reads=true type=table   <- THE ONE
+probe-winner: Text Color (exists, value format differs)
+```
+- The property name is **`Text Color`** (exactly that spacing/casing).
+- Its value is a **TABLE**, not a string - writing `"#RR00FF"` silently does
+  nothing, which is why every string/int attempt looked like a failure.
+- `paint()` therefore tries, in order: the hex string, `{r,g,b,255}`,
+  `{r,g,b}`, `0xFFRRGGBB`. The first the engine accepts wins.
+- Only OUR Mods-menu labels are themed. Game screens are untouched.
+- `paint()` stays a no-op until the probe has run once per session: the
+  property is discovered, never guessed, on the first label clone built.
+
 ## Colour-property probe (diagnostic)
 `TTMOD_PROBE=1` env (any value but `0`) or an empty `config/probe-props` file
 turns on one-shot property enumeration: the first label clone the menu builds
