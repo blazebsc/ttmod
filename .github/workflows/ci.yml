@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y cmake g++ python3
+      - name: Build and test
+        run: cmake -S . -B build && cmake --build build && ctest --test-dir build
+
+  cross-win32:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install MinGW
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64
+      - name: Cross-build win32 runtime
+        run: cmake -S . -B build-win32 -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-i686.cmake -DTTMOD_BUILD_WIN_RUNTIME=ON && cmake --build build-win32
+      - name: Verify win32 artifacts
+        run: sh tools/verify_win32.sh build-win32
