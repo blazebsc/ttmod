@@ -154,14 +154,18 @@ assert(nrec('add|nomods') == 1, 'empty row')
 print('menumods-ui: screen logic OK')
 """
 
-r = subprocess.run(
-    ["nix-shell", "-p", "lua5_2", "--run", "lua -e " + "'" + DRIVER.replace("'", "'\\''") + "'"],
-    cwd=ROOT, capture_output=True, text=True, timeout=300)
-sys.stdout.write(r.stdout)
-sys.stderr.write(r.stderr)
-if r.returncode != 0 or "menumods-ui: screen logic OK" not in r.stdout:
-    print("FAIL: menumods_ui.lua screen logic")
-    sys.exit(1)
+# The GAME runs Lua 5.1 (setmetatable/table.unpack are 5.2-only and are nil
+# there - a setmetatable in menumods_ui.lua killed every menu screen in-game
+# while this suite stayed green on 5.2). So the same proof runs on BOTH.
+for interp in ("lua5_1", "lua5_2"):
+    r = subprocess.run(
+        ["nix-shell", "-p", interp, "--run", "lua -e " + "'" + DRIVER.replace("'", "'\\''") + "'"],
+        cwd=ROOT, capture_output=True, text=True, timeout=300)
+    sys.stdout.write(r.stdout)
+    sys.stderr.write(r.stderr)
+    if r.returncode != 0 or "menumods-ui: screen logic OK" not in r.stdout:
+        print(f"FAIL: menumods_ui.lua screen logic on {interp}")
+        sys.exit(1)
 # the C++-built literal must PARSE on stock 5.2 (needs test_modconfig run first)
 r2 = subprocess.run(
     ["nix-shell", "-p", "lua5_2", "--run", "lua /tmp/opencode/menu_literal_check.lua"],

@@ -34,8 +34,9 @@ end
 local theme_winner = nil
 local theme_probed = false
 -- Swatch preview cache: per-agent last paint, so re-rendering a row does not
--- re-probe or fight the engine's own refresh.
-local theme_painted = setmetatable({}, {})
+-- re-probe or fight the engine's own refresh. Plain table, NOT setmetatable:
+-- the game's Lua is 5.1 (no setmetatable, no table.unpack) - verified in-game.
+local theme_painted = {}
 local function theme_int(s)
     if type(s) ~= 'string' then return nil end
     local r, g, b = s:match('^#(%x%x)(%x%x)(%x%x)$')
