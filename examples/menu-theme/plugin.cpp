@@ -1,10 +1,11 @@
-// menu-theme mod: reads config/menu-theme.json {"accent": "#RRGGBB"} and
-// tints the native Mods menu by setting _G.TTMOD_ACCENT (see
-// loader/windows/menumods_ui.lua: absent = stock, present = first engine-
-// accepted color property wins for the session). Missing file / missing key
-// = manifest default #E0A040. Garbage = log + stay unloaded. Needs host api
-// >= 5 (queue_ui_chunk); older hosts = log + stay unloaded.
-// Hand parser like titleprefix/demo-config (no JSON lib in plugins).
+// menu-theme mod: reads config/menu.theme.json {"accent": "#RRGGBB"} (the
+// framework's per-mod config path: <manifest id>.json - the same file the
+// Mods menu's Accent color row writes) and tints the native Mods menu by
+// setting _G.TTMOD_ACCENT (see loader/windows/menumods_ui.lua).
+// Missing file / missing key = manifest default #E0A040. Garbage = log +
+// stay unloaded. Needs host api >= 5 (queue_ui_chunk); older hosts = log +
+// stay unloaded. Hand parser like titleprefix/demo-config (no JSON lib in
+// plugins).
 #include "ttmod/plugin_api.h"
 #include <windows.h>
 #include <cstdio>
@@ -82,13 +83,19 @@ extern "C" __declspec(dllexport) int ttmod_plugin_init(const ttmod_host* host) {
     const char* src = "default";
     std::string root = game_root();
     if (!root.empty()) {
-        std::string t = read_all(root + "\\config\\menu-theme.json");
+        // The framework writes per-mod config as config/<manifest id>.json, and
+        // the Mods menu's config rows write there. So the id, not the directory
+        // name, is the file - the dashed path was silently never read (the pick
+        // landed in menu.theme.json and the mod kept using its default).
+        std::string t = read_all(root + "\\config\\menu.theme.json");
         if (!t.empty()) {
             std::string a = get_str(t, "\"accent\"");
             if (!a.empty()) {
                 accent = a;
-                src = "config/menu-theme.json";
+                src = "config/menu.theme.json";
             }
+        } else {
+            say("menu-theme: no config/menu.theme.json yet, using the manifest default");
         }
     }
     if (!valid_accent(accent)) {
