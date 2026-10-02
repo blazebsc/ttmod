@@ -37,9 +37,19 @@ function AgentSetProperty(a, k, v) rec('setprop', tostring(a and a.of), k, tostr
   _wrote[key] = v end
 -- Agent identity = widget id .. '/' .. clone name, so the getter sees the same
 -- key the setter wrote.
+-- Properties the widget actually exposes. 'Text Color Highlight'/'Pressed'
+-- stand in for the engine's per-state names: they are what the read-only sweep
+-- has to discover, since the framework cannot guess them.
+local REAL_PROPS = {
+  ['Text Color'] = { r = 0, g = 0, b = 0, a = 0 },
+  ['Text Color Highlight'] = { r = 255, g = 255, b = 255, a = 255 },
+  ['Text Color Pressed'] = { r = 200, g = 200, b = 200, a = 255 },
+}
 local function AgentGetPropertyImpl(a, k)
   if k == nil then return nil end
-  if k ~= 'Text Color' and k ~= 'Text Color Highlight' and k ~= 'Text Color Pressed' then
+  -- the BUTTON agent (no clone) exposes the state names; the LABEL only Text Color
+  if a ~= nil and a.clone == nil then
+    if REAL_PROPS[k] ~= nil then return REAL_PROPS[k] end
     return nil
   end
   return _props[(tostring(a and a.of) or '?') .. '/' .. (a and a.clone or '') .. '/' .. k]
@@ -202,6 +212,25 @@ for _, c in ipairs(calls) do
     assert(c:find('|Text Color', 1, true), 'only proven properties painted: ' .. c)
   end
 end
+-- The read-only sweep must discover colour properties WITHOUT any debug flag:
+-- it runs automatically the first time a theme is applied. This is the route to
+-- the real state names (2026-10-03: hover reverted to stock because no guessed
+-- name existed). Earlier assertions already triggered the one-shot, so reset it
+-- and drive the real hook (not a stand-in) to actually exercise discovery.
+TTMOD_THEME_SCOPE = 'all'
+TTMOD_ACCENT = '#FF8000'
+TTMOD_THEME_RESET_SWEEP()
+calls = {}
+TTMOD_THEME_WIDGET({ id = 'sweep_widget', agent = { of = 'sweep_widget' } })
+local all_names = ''
+for _, c in ipairs(calls) do all_names = all_names .. c .. '\n' end
+-- PLAIN search (4th arg true), so literal text - no '%' pattern escapes here.
+assert(all_names:find('names tried', 1, true) ~= nil,
+  'read-only sweep ran automatically, no debug flag needed')
+assert(all_names:find('sweep-button-all:', 1, true) ~= nil,
+  'sweep summarised what the button agent exposes')
+assert(all_names:find('Text Color', 1, true) ~= nil,
+  'sweep reported the colour property it found')
 -- The engine stores this property as NAMED fields {r,g,b,a} (in-game probe
 -- 2026-10-03: 'type=table {a=0 b=0 g=0 r=0}'). A positional array is silently
 -- ignored, so pin the named shape: swatch 1 is #FFFFFF.

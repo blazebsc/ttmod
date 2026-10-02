@@ -343,6 +343,55 @@ end
 -- background/highlight properties. Called for EVERY widget the engine creates
 -- (our screens and the game's own), so one colour in config re-themes all menus.
 -- Best-effort and fully pcall'd: this runs inside the engine's own screen build.
+--
+-- READ-ONLY property discovery. AgentGetProperty on a real agent returns nil
+-- for a name that does not exist, so sweeping hundreds of candidates is safe -
+-- no writes, no flashes, nothing for the engine to fault on. The earlier probe
+-- WROTE values, which caused the magenta flash and, with a forward reference,
+-- the process kill. Runs ONCE per session, automatically, the first time a
+-- theme is applied: discovery is triggered by need, not by a debug file.
+local TT_SWEEP_DONE = false
+local TT_SWEEP_BASES = {
+    'Text', 'Label', 'Font', 'Button', 'Bg', 'Background', 'Panel', 'Row',
+    'Widget', 'Highlight', 'Hover', 'Pressed', 'Press', 'Select', 'Selected',
+    'Focus', 'Active', 'Icon', 'Title', 'Header', 'Caption', 'Backdrop',
+    'Overlay', 'Fill', 'Glow', 'Shadow', 'Edge', 'Border', 'Accent', 'Tint',
+    'Diffuse', 'Modulate', 'State',
+}
+local TT_SWEEP_SUFFIXES = {
+    'Color', 'Colour', 'ColorNormal', 'ColorHighlight', 'ColorHover',
+    'ColorPressed', 'ColorSelected', 'ColorDisabled', 'StateNormal',
+}
+local function sweep_props(agent, tag)
+    if agent == nil or AgentGetProperty == nil then return end
+    local found = {}
+    local listed = dump_props(agent)
+    if listed ~= nil then
+        mlog('sweep-' .. tag .. '-enumerated: ' .. listed)
+        for w in string.gmatch(listed, '[^%s,]+') do found[w] = true end
+    end
+    local tries = 0
+    for _, base in ipairs(TT_SWEEP_BASES) do
+        for _, suf in ipairs(TT_SWEEP_SUFFIXES) do
+            local name = base .. ' ' .. suf
+            tries = tries + 1
+            local ok, v = pcall(AgentGetProperty, agent, name)
+            if ok and v ~= nil then
+                found[name] = true
+                mlog('sweep-' .. tag .. '-found: ' .. name .. ' type=' .. type(v))
+            end
+        end
+    end
+    mlog('sweep-' .. tag .. ': ' .. tries .. ' names tried')
+    local names = {}
+    for k in pairs(found) do names[#names + 1] = k end
+    table.sort(names)
+    if #names > 0 then
+        mlog('sweep-' .. tag .. '-all: ' .. table.concat(names, ' | '))
+    else
+        mlog('sweep-' .. tag .. '-all: (none readable)')
+    end
+end
 local function theme_widget(widget)
     if widget == nil or pcall == nil then return end
     -- Scope: "all" (default) re-themes the game's own menus as well as ours,
@@ -365,10 +414,30 @@ local function theme_widget(widget)
             end)
         end
     end
+    -- One read-only discovery pass per session, on the first themed widget.
+    -- Sweeps the BUTTON agent (where hover state lives) and its label.
+    if not TT_SWEEP_DONE then
+        TT_SWEEP_DONE = true
+        pcall(sweep_props, ag, 'button')
+        if Clone_Find ~= nil then
+            pcall(function()
+                local okc, c = pcall(Clone_Find, ag, 'label')
+                if okc and c ~= nil then sweep_props(c, 'label') end
+            end)
+        end
+    end
 end
 -- Exposed so the Menu_Add wrapper (loader/windows/menu_bridge.hpp) can theme
 -- every widget the engine creates, including the game's own screens.
 TTMOD_THEME_WIDGET = theme_widget
+-- Test seam: force the next themed widget to sweep again AND drop the per-agent
+-- paint cache (an agent already painted would otherwise return early and the
+-- sweep would be the only thing left to observe). Only used by
+-- tests/test_menumods_ui.py, which cannot reach these upvalues directly.
+TTMOD_THEME_RESET_SWEEP = function()
+    TT_SWEEP_DONE = false
+    theme_painted = {}
+end
 
 -- Returns the label agent it wrote to (nil when nothing usable was found), so
 -- callers that need to paint the same clone don't have to re-find it.
