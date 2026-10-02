@@ -83,6 +83,22 @@ Menu_Add wrapper offer (logged once); the start menu stays stock. Mod
 loading and the plugin chunk queue are unaffected. Checked once per
 process at the first Menu.lua load (`menumods_button_enabled()`).
 
+## Runtime Lua quirks that COST a debug round (verified in-game)
+- **`_G` is nil.** The stripped environment table is not exposed. Any
+  `_G.Foo` reference throws `attempt to index global '_G' (a nil value)`.
+  Use bare globals (`TTMOD_ACCENT = "..."`). This silently disabled menu
+  theming for one full day: the code read `_G.TTMOD_ACCENT`, always nil, and
+  returned early, so no colour was ever attempted.
+- **`setmetatable` is nil too** (Lua 5.1, not 5.2). Also `table.unpack`.
+- Stock `lua5_1` and `lua5_2` BOTH provide `_G` and `setmetatable`, so a suite
+  run on either cannot catch either bug. `tests/test_menumods_ui.py` now nils
+  `_G` in its stubs and runs the proof on BOTH interpreters, and it fails if
+  `_G` reappears in the UI.
+- Click callbacks swallow errors: trace with `ttmod_menu_log(s)` →
+  `menumods-lua:` lines in `logs/ttmod.log`.
+- `bridge_run_chunk` logs the pcall error MESSAGE, not just the code (a bare
+  `pcall=2` names no cause, and these are the only diagnostics available).
+
 ## Colour-property probe (diagnostic)
 `TTMOD_PROBE=1` env (any value but `0`) or an empty `config/probe-props` file
 turns on one-shot property enumeration: the first label clone the menu builds

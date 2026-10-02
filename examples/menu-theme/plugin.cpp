@@ -1,7 +1,8 @@
 // menu-theme mod: reads config/menu.theme.json {"accent": "#RRGGBB"} (the
 // framework's per-mod config path: <manifest id>.json - the same file the
 // Mods menu's Accent color row writes) and tints the native Mods menu by
-// setting _G.TTMOD_ACCENT (see loader/windows/menumods_ui.lua).
+// setting the bare global TTMOD_ACCENT (see loader/windows/menumods_ui.lua;
+// _G is nil in this runtime, so _G.TTMOD_ACCENT would throw).
 // Missing file / missing key = manifest default #E0A040. Garbage = log +
 // stay unloaded. Needs host api >= 5 (queue_ui_chunk); older hosts = log +
 // stay unloaded. Hand parser like titleprefix/demo-config (no JSON lib in
@@ -105,9 +106,11 @@ extern "C" __declspec(dllexport) int ttmod_plugin_init(const ttmod_host* host) {
         say(m);
         return -3;
     }
-    // Validated #RRGGBB: no quoting risk.
+    // Validated #RRGGBB: no quoting risk. Bare global, NOT _G.TTMOD_ACCENT:
+    // _G is nil in the game's Lua runtime (verified in-game 2026-10-02), so the
+    // _G form threw and theming never ran.
     char chunk[64];
-    snprintf(chunk, sizeof chunk, "_G.TTMOD_ACCENT = \"%s\"", accent.c_str());
+    snprintf(chunk, sizeof chunk, "TTMOD_ACCENT = \"%s\"", accent.c_str());
     int q = host->queue_ui_chunk(chunk);
     char m[192];
     snprintf(m, sizeof m, "menu-theme: accent '%s' from %s (%s)", accent.c_str(), src,

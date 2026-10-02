@@ -25,12 +25,13 @@ local function mlog(s)
     if ttmod_menu_log ~= nil then ttmod_menu_log(s) end
 end
 
--- Optional menu theming (menu-theme mod sets _G.TTMOD_ACCENT = "#RRGGBB").
--- Absent = stock appearance (silent return, no log lines, zero behavior
--- change). Present = probe candidate color properties via pcall (failures
--- are silent engine-side); the first candidate the engine accepts wins for
--- the session. Only our Mods-menu labels are themed (via setlabel below);
--- game screens are never touched.
+-- Optional menu theming (menu-theme mod sets the bare global
+-- TTMOD_ACCENT = "#RRGGBB" - NOT _G.TTMOD_ACCENT, because _G is nil in this
+-- runtime). Absent = stock appearance (silent return, no log lines, zero
+-- behavior change). Present = probe candidate color properties via pcall
+-- (failures are silent engine-side); the first candidate the engine accepts
+-- AND READS BACK wins for the session. Only our Mods-menu labels are themed
+-- (via setlabel below); game screens are never touched.
 -- Visible row count for the active list, or nil. Read-only probe used to size
 -- screens: the engine renders a FIXED number of ListButton rows per menu, and
 -- rows past that are added but never rendered (blank boxes, no label). Menus
@@ -38,10 +39,11 @@ end
 function Menu_Mods_RowCount()
     local n = 0
     local m = nil
-    if _G.Menu_GetCurrent ~= nil then
+    -- bare globals: _G is nil in this runtime
+    if Menu_GetCurrent ~= nil then
         m = Menu_GetCurrent()
-    elseif _G.currentMenu ~= nil then
-        m = _G.currentMenu
+    elseif currentMenu ~= nil then
+        m = currentMenu
     end
     if m == nil then return nil end
     for k, v in pairs(m) do
@@ -60,7 +62,8 @@ end
 -- through AgentGetProperty, and log whatever actually sticks. One launch
 -- answers the question; the names below are the union of every spelling seen
 -- in Telltale UI scripts and engine widget property tables.
--- Enabled by _G.TTMOD_PROBE_PROPS = 1 (or TTMOD_PROBE=1 queued by a mod).
+-- Enabled by the bare global TTMOD_PROBE_PROPS = 1 (the C++ side sets it when
+-- TTMOD_PROBE=1 or config/probe-props exists).
 local TT_PROBE_DONE = false
 local TT_PROP_CANDIDATES = {
     'Color', 'Tint Color', 'Font Color', 'Text Color', 'Diffuse', 'Colour',
@@ -156,8 +159,9 @@ local function paint(agent, hex)
     end
 end
 local function apply_theme(agent)
-    if _G == nil or _G.TTMOD_ACCENT == nil then return end
-    local acc = _G.TTMOD_ACCENT
+    -- Bare global, NOT _G.TTMOD_ACCENT: _G is NIL in the game's Lua runtime
+    -- (verified in-game 2026-10-02), so the _G form silently disabled theming.
+    local acc = TTMOD_ACCENT
     if type(acc) ~= 'string' then return end
     if agent == nil then return end
     if theme_painted[agent] == acc then return end
@@ -181,7 +185,7 @@ local function setlabel(btn, text)
             mlog('setlabel: ' .. n .. ' propset=' .. tostring(ok2))
             if ok2 then
                 -- Diagnostic: probe once, on the first real label clone.
-                if _G.TTMOD_PROBE_PROPS == 1 and not TT_PROBE_DONE then
+                if TTMOD_PROBE_PROPS == 1 and not TT_PROBE_DONE then
                     TT_PROBE_DONE = true
                     probe_props(lab)
                 end

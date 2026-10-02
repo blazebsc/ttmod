@@ -263,7 +263,7 @@ void menumods_register(lua_State* L, LuaLoadstringFn loadstring, LuaPcallkFn pca
         if (on) {
             emit("menumods: probe mode on, will dump colour properties to the log");
             bridge_run_chunk(L, g_loadstring, g_pcallk, g_gettop, g_setglobal, g_tolstring,
-                             "probe-enable", "_G.TTMOD_PROBE_PROPS = 1");
+                             "probe-enable", "TTMOD_PROBE_PROPS = 1");
         }
     }
     bridge_run_chunk(L, g_loadstring, g_pcallk, g_gettop, g_setglobal, g_tolstring, "ui-defs",

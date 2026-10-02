@@ -11,6 +11,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UI = os.path.join(ROOT, "loader", "windows", "menumods_ui.lua")
 
 STUBS = r"""
+-- The GAME's Lua runtime has _G == nil (verified in-game 2026-10-02): a stripped
+-- environment table. Stock 5.1 and 5.2 both PROVIDE _G, so a suite that leaves
+-- it defined cannot catch a menumods_ui.lua that uses _G.X. Nil it here.
+_G = nil
 calls = {}
 function rec(...) local t = {} for i = 1, select('#', ...) do t[#t+1] = tostring(select(i, ...)) end calls[#calls+1] = table.concat(t, '|') end
 ListMenu, Header, ListButton = {}, {}, {}
@@ -181,7 +185,8 @@ print('menumods-ui: screen logic OK')
 
 # The GAME runs Lua 5.1 (setmetatable/table.unpack are 5.2-only and are nil
 # there - a setmetatable in menumods_ui.lua killed every menu screen in-game
-# while this suite stayed green on 5.2). So the same proof runs on BOTH.
+# while this suite stayed green on 5.2) and has _G == nil. So the same proof
+# runs on BOTH interpreters, against the game's actual missing-global shape.
 for interp in ("lua5_1", "lua5_2"):
     r = subprocess.run(
         ["nix-shell", "-p", interp, "--run", "lua -e " + "'" + DRIVER.replace("'", "'\\''") + "'"],
