@@ -167,7 +167,11 @@ local function color_props(list)
 end
 calls = {}
 Menu_Mods_PickColor('demo.config', 'accent', 1)
-assert(color_props(calls) == 0, 'no colour property before the probe')
+-- No probe has run yet, and none is required: theme_winner is pre-seeded with
+-- the in-game-proven name. The shipped mod must theme the menu with no debug
+-- flag present - it used to depend on config/probe-props existing.
+local base0, state0 = color_props(calls)
+assert(base0 == 6, 'six swatches painted WITHOUT any probe, got ' .. base0)
 -- run the probe against a real label clone (TTMOD_PROBE_PROPS arms it)
 calls = {}
 TTMOD_PROBE_PROPS = 1

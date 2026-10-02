@@ -68,7 +68,13 @@ end
 -- EXIST before it runs. A forward reference to a later `local` is a nil global
 -- at call time, which killed the game mid-menu (2026-10-02, theme_int).
 local TT_PROBE_DONE = false
-local theme_winner = nil
+-- PROVEN in-game 2026-10-03: the label's colour property is exactly this, and
+-- its value is a table with named fields (see set_color). Defaulted here so the
+-- mod themes the menu with no diagnostic flag present - previously theme_winner
+-- started nil and was only ever set by probe_props, which meant the shipped
+-- feature silently did nothing unless a debug file happened to exist. probe_props
+-- re-verifies and can override it when diagnostics are on.
+local theme_winner = 'Text Color'
 -- State variants of the winner that the engine actually exposes, discovered by
 -- probe_props. The engine repaints a row with a per-state colour on hover/
 -- press, which is why an accent applied only to the base property reverts to
@@ -213,19 +219,25 @@ local function probe_props(agent)
         end
         mlog('probe: ' .. prop .. ' set=' .. tostring(ok) .. ' reads=' .. tostring(readable) ..
              (is_ours and ' *** MATCH ***' or '') .. detail)
-        -- Any property that reads back EXISTS. The first one is the winner; the
-        -- rest are its per-state variants, which the engine repaints with on
-        -- hover/press (accent applied only to the base property reverts to
-        -- stock the moment the cursor touches a row). Never early-return: the
-        -- variants only turn up AFTER the winner in the list.
+        -- Any property that reads back EXISTS. theme_winner arrives pre-seeded
+        -- with the proven name, so this confirms it and collects any OTHER
+        -- readable property as a per-state variant - those are what the engine
+        -- repaints with on hover/press (accent on the base property alone
+        -- reverts to stock the moment the cursor touches a row). Never
+        -- early-return: variants only turn up after the winner in the list.
         if readable then
-            if theme_winner == nil then
-                theme_winner = prop   -- arms paint() for the rest of the session
+            if prop == theme_winner then
                 mlog('probe-winner: ' .. prop ..
-                     (is_ours and '' or ' (exists, value format differs)'))
-            elseif prop ~= theme_winner then
-                theme_state_props[#theme_state_props + 1] = prop
-                mlog('probe-state: ' .. prop)
+                     (is_ours and ' (confirmed)' or ' (confirmed, value format differs)'))
+            else
+                local already = false
+                for _, p in ipairs(theme_state_props) do
+                    if p == prop then already = true break end
+                end
+                if not already then
+                    theme_state_props[#theme_state_props + 1] = prop
+                    mlog('probe-state: ' .. prop)
+                end
             end
         end
     end
