@@ -60,6 +60,14 @@ inline constexpr const char* kMenuModsChunk =
 // Menu_Mods, and an unguarded call there = silent dead click (reported).
 // The actual exit cb is reported once via AppendLog for the record.
 // No bytecode edits anywhere.
+//
+// The wrapper also calls TTMOD_THEME_WIDGET (defined in menumods_ui.lua) on
+// EVERY widget the engine creates, so a colour set in a mod's config re-themes
+// the game's own menus too, not just the framework's Mods screens. That call is
+// pcall'd and absent-tolerant: it is a no-op until a theme mod sets a colour.
+//
+// NOTE: no "--" comments inside the literal below. The fragments concatenate
+// without newlines, so a comment would swallow the rest of the chunk.
 inline constexpr const char* kMenuAddWrapChunk =
     "if Menu_Add ~= nil and ttmod_orig_Add == nil then "
     "ttmod_orig_Add = Menu_Add "
@@ -90,7 +98,9 @@ inline constexpr const char* kMenuAddWrapChunk =
     "end "
     "if Menu_Main_AppendLog ~= nil then Menu_Main_AppendLog('mods-appended') end "
     "end "
-    "return ttmod_orig_Add(widget, id, label, cb, ...) "
+    "local __r = ttmod_orig_Add(widget, id, label, cb, ...) "
+    "if TTMOD_THEME_WIDGET ~= nil then pcall(TTMOD_THEME_WIDGET, __r) end "
+    "return __r "
     "end "
     "end";
 // ONE chunk runner: balanced-stack + error-sink discipline shared by the

@@ -106,11 +106,26 @@ extern "C" __declspec(dllexport) int ttmod_plugin_init(const ttmod_host* host) {
         say(m);
         return -3;
     }
-    // Validated #RRGGBB: no quoting risk. Bare global, NOT _G.TTMOD_ACCENT:
-    // _G is nil in the game's Lua runtime (verified in-game 2026-10-02), so the
-    // _G form threw and theming never ran.
-    char chunk[64];
-    snprintf(chunk, sizeof chunk, "TTMOD_ACCENT = \"%s\"", accent.c_str());
+    // Scope: "all" themes every widget the engine creates (the game's own menus
+    // too, via the Menu_Add wrapper); "ttmod" themes only the framework's Mods
+    // screens. Read as a bare string, validated against the manifest enum.
+    std::string scope = "all";
+    {
+        std::string sc;
+        if (!root.empty()) {
+            std::string t = read_all(root + "\\config\\menu.theme.json");
+            sc = get_str(t, "\"menus\"");
+        }
+        if (!sc.empty()) scope = sc;
+    }
+    if (scope != "all" && scope != "ttmod") scope = "all";
+    // Validated #RRGGBB and a closed enum: no quoting risk. Bare globals, NOT
+    // _G.X: _G is nil in the game's Lua runtime (verified in-game 2026-10-02),
+    // so the _G form threw and theming never ran.
+    char chunk[128];
+    snprintf(chunk, sizeof chunk,
+             "TTMOD_ACCENT = \"%s\" TTMOD_THEME_SCOPE = \"%s\"", accent.c_str(),
+             scope.c_str());
     int q = host->queue_ui_chunk(chunk);
     char m[192];
     snprintf(m, sizeof m, "menu-theme: accent '%s' from %s (%s)", accent.c_str(), src,

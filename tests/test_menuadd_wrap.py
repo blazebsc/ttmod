@@ -25,10 +25,19 @@ for needle in ("ttmod_appended", "Menu_Mods()", "__b.agent or __b, 'label'",
 assert "Menu_Main_Exit" not in CHUNK, "id-only trigger"
 assert "table.pack" not in CHUNK, CHUNK
 assert "tostring(" not in CHUNK, CHUNK
+# Every widget must reach the theming hook, so one config colour re-themes the
+# game's own menus too - not just the framework's Mods screens.
+for needle in ("TTMOD_THEME_WIDGET", "pcall(TTMOD_THEME_WIDGET, __r)"):
+    assert needle in CHUNK, needle
+# A "--" comment inside the literal would swallow the rest of the chunk: the
+# fragments concatenate with no newlines between them.
+assert "--" not in CHUNK, "comment in chunk literal would comment out the rest"
 
 DRIVER = r"""
 adds = {}
 append_log = {}
+themed = {}
+function TTMOD_THEME_WIDGET(w) themed[#themed+1] = (w and w.id) or '?' end
 function Menu_Main_AppendLog(s) append_log[#append_log+1] = s end
 ListButton = {}
 propset = {}
@@ -86,6 +95,15 @@ Clone_Find = real_find
 local _n = #adds
 Menu_Add(ListButton, 'store', 'label_store', 'Menu_Store()')
 assert(#adds == _n + 1, 'plain row clean')
+-- EVERY widget (not just the Mods row) reaches the theming hook, so a colour
+-- set in a mod's config re-themes the game's own menus as well as ours.
+local nt = #themed
+assert(nt > 0, 'themed widgets recorded')
+assert(themed[#themed] == 'store', 'every widget themed, last=' .. tostring(themed[#themed]))
+-- the hook is pcall'd: a throwing themer must not reach the game
+function TTMOD_THEME_WIDGET() error('theme boom') end
+Menu_Add(ListButton, 'help', 'label_help', 'Menu_Help()')
+assert(adds[#adds] == 'help|label_help|Menu_Help()|vx0', 'throwing themer survived')
 """
 
 import lua_runner

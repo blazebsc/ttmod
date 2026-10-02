@@ -68,13 +68,17 @@ end
 -- EXIST before it runs. A forward reference to a later `local` is a nil global
 -- at call time, which killed the game mid-menu (2026-10-02, theme_int).
 local TT_PROBE_DONE = false
--- PROVEN in-game 2026-10-03: the label's colour property is exactly this, and
--- its value is a table with named fields (see set_color). Defaulted here so the
--- mod themes the menu with no diagnostic flag present - previously theme_winner
--- started nil and was only ever set by probe_props, which meant the shipped
--- feature silently did nothing unless a debug file happened to exist. probe_props
--- re-verifies and can override it when diagnostics are on.
+-- Colour properties the framework paints on EVERY widget it sees. Discovered
+-- in-game by read-only probing (AgentGetProperty on a real agent returns nil
+-- for names that do not exist, which makes a safe sweep possible):
+--   Text Color       - label/button text, proven
+-- Buttons carry their own background/highlight properties; the sweep in
+-- probe_props adds anything else it finds, so this list grows without a rebuild
+-- once the engine's real names are known.
 local theme_winner = 'Text Color'
+local TT_COLOUR_PROPS = { 'Text Color', 'Label Color', 'Font Color' }
+-- Per-role colours, settable from config by the theme mod. nil = leave stock.
+local theme_roles = {}
 -- State variants of the winner that the engine actually exposes, discovered by
 -- probe_props. The engine repaints a row with a per-state colour on hover/
 -- press, which is why an accent applied only to the base property reverts to
@@ -101,12 +105,22 @@ local function dump_props(agent)
         if type(list) == 'string' then
             for w in string.gmatch(list, '[^%s,]+') do parts[#parts + 1] = w end
         elseif type(list) == 'table' then
+            -- array of names, or of {name=..} / {..} records
             for _, v in ipairs(list) do
                 if type(v) == 'string' then parts[#parts + 1] = v
-                elseif type(v) == 'table' and type(v.name) == 'string' then
-                    parts[#parts + 1] = v.name
-                elseif type(v) == 'table' and type(v[1]) == 'string' then
-                    parts[#parts + 1] = v[1]
+                elseif type(v) == 'table' then
+                    if type(v.name) == 'string' then parts[#parts + 1] = v.name
+                    elseif type(v[1]) == 'string' then parts[#parts + 1] = v[1] end
+                end
+            end
+            -- map shape: { ['Text Color'] = <value>, ... }
+            for k, v in pairs(list) do
+                if type(k) == 'string' and type(v) ~= 'table' then
+                    local have = false
+                    for _, p in ipairs(parts) do
+                        if p == k then have = true break end
+                    end
+                    if not have then parts[#parts + 1] = k end
                 end
             end
         else
@@ -117,6 +131,10 @@ local function dump_props(agent)
     end
     -- Shapes to try, cheapest first: (agent), (agent, true), (agent, nil),
     -- (agent, '') for a "runtime only" / "class defaults" style flag.
+    -- EVERY return value is inspected: a Lua C binding commonly returns
+    -- (count, table), and reading only the first gave a number, which is why
+    -- this reported "no shape returned names" on 2026-10-02 when the function
+    -- had in fact answered.
     local shapes = {
         { name = '(agent)', call = function(f, a) return f(a) end },
         { name = '(agent,true)', call = function(f, a) return f(a, true) end },
@@ -127,10 +145,15 @@ local function dump_props(agent)
         local fname, fn = e[1], e[2]
         if fn ~= nil then
             for _, sh in ipairs(shapes) do
-                local ok, list = pcall(sh.call, fn, agent)
+                local packed = { pcall(sh.call, fn, agent) }
+                local ok = packed[1]
                 if ok then
-                    local got = names_of(list)
-                    if got ~= nil then return fname .. sh.name .. ' ' .. got end
+                    for i = 2, #packed do
+                        local got = names_of(packed[i])
+                        if got ~= nil then
+                            return fname .. sh.name .. ' ret' .. (i - 1) .. ' ' .. got
+                        end
+                    end
                 end
             end
             mlog('probe-all: ' .. fname .. ' present, no shape returned names')
@@ -315,6 +338,37 @@ local function apply_theme(agent)
         theme_probed = true
     end
 end
+
+-- Theme a whole widget, not just its label: the button's own agent carries the
+-- background/highlight properties. Called for EVERY widget the engine creates
+-- (our screens and the game's own), so one colour in config re-themes all menus.
+-- Best-effort and fully pcall'd: this runs inside the engine's own screen build.
+local function theme_widget(widget)
+    if widget == nil or pcall == nil then return end
+    -- Scope: "all" (default) re-themes the game's own menus as well as ours,
+    -- because the Menu_Add wrapper routes every widget here. "ttmod" leaves the
+    -- game's own screens alone. Set by the menu-theme mod from config.
+    if TTMOD_THEME_SCOPE == 'ttmod' then return end
+    if type(TTMOD_ACCENT) ~= 'string' and next(theme_roles) == nil then return end
+    local ok, ag = pcall(function()
+        return (widget.agent ~= nil) and widget.agent or widget
+    end)
+    if not ok or ag == nil then return end
+    pcall(apply_theme, ag)
+    -- its common children, which is where the visible text lives
+    if Clone_Find ~= nil then
+        for _, child in ipairs({ 'label', 'caption', 'text', 'ui_listButton_label',
+                                 'ui_header_header' }) do
+            pcall(function()
+                local okc, c = pcall(Clone_Find, ag, child)
+                if okc and c ~= nil then apply_theme(c) end
+            end)
+        end
+    end
+end
+-- Exposed so the Menu_Add wrapper (loader/windows/menu_bridge.hpp) can theme
+-- every widget the engine creates, including the game's own screens.
+TTMOD_THEME_WIDGET = theme_widget
 
 -- Returns the label agent it wrote to (nil when nothing usable was found), so
 -- callers that need to paint the same clone don't have to re-find it.

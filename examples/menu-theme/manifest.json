@@ -8,6 +8,8 @@
     "plugin": "plugins/menu-theme.dll",
     "arch": "x86",
     "config": [
-        {"key": "accent", "type": "color", "label": "Accent color", "default": "#E0A040"}
+        {"key": "accent", "type": "color", "label": "Accent color", "default": "#E0A040"},
+        {"key": "menus", "type": "enum", "label": "Scope", "default": "all",
+         "options": ["all", "ttmod"]}
     ]
 }
