@@ -18,8 +18,23 @@ function Menu_Create(w, scene) rec('create', scene) return {scene = scene} end
 function Menu_Add(w, id, label, cb) rec('add', tostring(id), tostring(label), tostring(cb)) return {id = id, agent = {of = tostring(id)}} end
 function Menu_Push(m) rec('push') if m.Populate then m:Populate() end end
 function Menu_Pop() rec('pop') end
-function Clone_Find(b, what) return {of = (type(b) == 'table' and b.of or '?'), what = what} end
-function AgentSetProperty(a, k, v) rec('setprop', tostring(a and a.of), k, tostring(v)) end
+-- Clone_Find returns a CLONE AGENT (the engine's real return value), so the
+-- fake carries `of` through; returning the widget table would not model it.
+function Clone_Find(b, what) return {of = (type(b) == 'table' and b.of or '?'), what = what, clone = what} end
+function AgentSetProperty(a, k, v) rec('setprop', tostring(a and a.of), k, tostring(v))
+  if k == nil then error('nil property') end
+  _props[(tostring(a and a.of) or '?') .. '/' .. (a and a.clone or '') .. '/' .. k] = tostring(v) end
+-- Only 'Color' is a real engine property in this stub; anything else is
+-- accepted-then-ignored (the silent-failure case the read-back guards).
+-- Agent identity = widget id .. '/' .. clone name, so the getter sees the same
+-- key the setter wrote.
+local function AgentGetPropertyImpl(a, k)
+  if k == nil then return nil end
+  if k ~= 'Color' then return nil end
+  return _props[(tostring(a and a.of) or '?') .. '/' .. (a and a.clone or '') .. '/' .. k]
+end
+_props = {}
+AgentGetProperty = AgentGetPropertyImpl
 function EscapeText2(s) return tostring(s) end
 function WidgetInputHandler_EnableInput(b) rec('input', tostring(b)) end
 function Menu_OpenTextEntryBox(init, prompt) rec('textbox', tostring(init), tostring(prompt)) return 'Typed!', true end
@@ -41,6 +56,7 @@ ttmod_menu = { seq = 1, mods = {
     { key = 'level', type = 'int', label = 'Level', value = 3, min = 1, max = 3, step = 1 },
     { key = 'mode', type = 'enum', label = 'Mode', value = 'a', options = {'a', 'b'} },
     { key = 'greet', type = 'string', label = 'Greet', value = 'Hi' },
+    { key = 'accent', type = 'color', label = 'Accent', value = '#00E000' },
   } },
   { id = 'plain.mod', name = 'Plain', version = '0.1', enabled = false },
 } }
@@ -89,6 +105,42 @@ Menu_Mods_Adjust('demo.config', 'greet')
 assert(nrec('textbox|Hi|Greet') == 1, 'native textbox opened with current+label')
 assert(setter_log[1] == 'set:demo.config.greet=Typed!', 'typed text saved')
 assert(nrec('input|false') == 1 and nrec('input|true') == 1, 'input disabled around dialog')
+-- color row opens the palette grid (16 swatches + back), current marked
+setter_log = {}
+calls = {}
+Menu_Mods_Adjust('demo.config', 'accent')
+assert(nrec('add|sw_1|') == 1 and nrec('add|sw_16|') == 1, 'palette grid rows')
+assert(nrec('add|back|') == 1, 'palette back row')
+assert(#setter_log == 0, 'opening palette writes nothing')
+local marked = false
+for _, c in ipairs(calls) do if c:find('#00E000 *', 1, true) then marked = true end end
+assert(marked, 'current swatch marked')
+-- every swatch row painted with 'Color' exactly once (the only property the
+-- stub reads back: unknown keys are accepted-then-ignored, the silent-failure
+-- case the read-back guard handles; 'Tint Color' must NOT be attempted after
+-- 'Color' proved itself)
+for i = 1, 16 do
+  local row = '|sw_' .. i .. '|'
+  local n, bad = 0, nil
+  for _, c in ipairs(calls) do
+    if c:sub(1, 7) == 'setprop' and c:find(row, 1, true) then
+      if c:find('|Color|#', 1, true) then n = n + 1
+      elseif not c:find('Text String', 1, true) then bad = c end
+    end
+  end
+  assert(n == 1, 'swatch ' .. i .. ' painted once, got ' .. n)
+  assert(bad == nil, 'swatch ' .. i .. ' painted only Color, got ' .. tostring(bad))
+end
+-- picking a swatch writes it and returns to details
+setter_log = {}
+calls = {}
+Menu_Mods_SetColor('demo.config', 'accent', '#0080FF')
+assert(setter_log[1] == 'set:demo.config.accent=#0080FF', 'swatch write, got ' .. tostring(setter_log[1]))
+assert(nrec('pop') == 1 and nrec('create|ui_menu_options') == 1, 'pick pops to details')
+-- garbage hex is refused without touching config
+setter_log = {}
+Menu_Mods_SetColor('demo.config', 'accent', 'blue')
+assert(#setter_log == 0, 'non-hex refused')
 -- unknown mod is a safe no-op (trace logs don't count)
 calls = {}
 Menu_Mods_Select('nope')

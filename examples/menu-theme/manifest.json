@@ -6,6 +6,6 @@
     "api": 5,
     "games": ["minecraft-story-mode:s1"],
     "config": [
-        {"key": "accent", "type": "string", "label": "Accent color", "default": "#E0A040"}
+        {"key": "accent", "type": "color", "label": "Accent color", "default": "#E0A040"}
     ]
 }

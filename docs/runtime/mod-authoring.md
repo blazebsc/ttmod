@@ -67,7 +67,8 @@ read that answer; log `Skipped: <id>: disabled` lines only render it.
     {"key": "mode", "type": "enum", "label": "Mode", "options": ["cozy", "wild"]}
 ]
 ```
-  Types: `bool` `int` `float` `string` `enum`. Values live in
+  Types: `bool` `int` `float` `string` `enum` `color` (`color` = `#RRGGBB`
+  string; the menu row opens a 16-swatch palette instead of a text box). Values live in
   `config/<your-id>.json` (same shape); missing/invalid entries fall back
   to schema defaults. The native Mods screen (list → details → config rows
   with Back + Restart-required hint) edits these through the framework -

@@ -9,7 +9,8 @@
 
 namespace ttmod {
 
-// Schema entry. type is one of: bool int float string enum.
+// Schema entry. type is one of: bool int float string enum color.
+// "color" is a string restricted to "#RRGGBB" (editable via the native menu).
 struct ConfigOption {
     std::string key;
     std::string type;

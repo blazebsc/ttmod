@@ -147,7 +147,20 @@ struct P {
 };
 
 bool valid_type(const std::string& t) {
-    return t == "bool" || t == "int" || t == "float" || t == "string" || t == "enum";
+    return t == "bool" || t == "int" || t == "float" || t == "string" || t == "enum" ||
+           t == "color";
+}
+
+// "color" values are "#RRGGBB" (upper/lower hex). Engine tinting wants an int
+// elsewhere; the schema contract is the string form.
+bool valid_color(const std::string& s) {
+    if (s.size() != 7 || s[0] != '#') return false;
+    for (size_t i = 1; i < 7; ++i) {
+        char c = s[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
+            return false;
+    }
+    return true;
 }
 
 } // namespace
@@ -286,6 +299,10 @@ bool parse_config_schema(const std::string& json, std::vector<ConfigOption>& out
                 error = "enum needs options";
                 return false;
             }
+            if (o.type == "color" && have_default && !valid_color(def_s)) {
+                error = "color default must be #RRGGBB";
+                return false;
+            }
             if (have_default) {
                 if (def_kind == 1) o.def_bool = def_b;
                 if (def_kind == 2) {
@@ -400,6 +417,9 @@ bool config_validate(const ConfigOption& o, const ConfigValue& v) {
     }
     if (o.type == "string") {
         return v.type == ConfigValue::Type::STR && v.s.size() <= 256;
+    }
+    if (o.type == "color") {
+        return v.type == ConfigValue::Type::STR && valid_color(v.s);
     }
     if (o.type == "enum") {
         if (v.type != ConfigValue::Type::STR) return false;
@@ -614,7 +634,7 @@ SetValueResult apply_config_value(const std::vector<ConfigOption>& schema,
         double f = 0;
         if (!strict_num(valstr, f)) return r;
         v = ConfigValue::number(f);
-    } else if (opt->type == "string") {
+    } else if (opt->type == "string" || opt->type == "color") {
         // Empty string resets to default (documented UI contract).
         v = valstr.empty() ? config_default(*opt) : ConfigValue::text(valstr);
     } else if (opt->type == "enum") {

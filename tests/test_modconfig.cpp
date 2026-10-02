@@ -38,6 +38,15 @@ int main() {
     assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"config\":["
                                   "{\"key\":\"a\",\"type\":\"enum\",\"label\":\"A\"}]}")
                 .ok); // enum w/o options
+    // color type: #RRGGBB only, at schema and at value level
+    assert(ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"config\":["
+                                 "{\"key\":\"c\",\"type\":\"color\",\"label\":\"C\","
+                                 "\"default\":\"#E0A040\"}]}")
+               .ok);
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"config\":["
+                                  "{\"key\":\"c\",\"type\":\"color\",\"label\":\"C\","
+                                  "\"default\":\"orange\"}]}")
+                 .ok);
     // old manifests unaffected
     auto plain = ttmod::parse_manifest("{\"id\":\"p\",\"api\":1}");
     assert(plain.ok && plain.config.empty() && plain.name.empty());
@@ -62,6 +71,19 @@ int main() {
     // float + int tolerance
     auto ff = ttmod::parse_config_file("{\"level\":4.0}");
     assert(ff.values["level"].type == ttmod::ConfigValue::Type::FLOAT);
+
+    // color values: accepted only as #RRGGBB, rejected values fall back
+    auto cm = ttmod::parse_manifest("{\"id\":\"c\",\"api\":1,\"config\":["
+                                    "{\"key\":\"accent\",\"type\":\"color\",\"label\":\"A\","
+                                    "\"default\":\"#E0A040\"}]}");
+    assert(cm.ok && cm.config[0].type == "color");
+    auto cok = ttmod::config_effective(cm.config, ttmod::parse_config_file("{\"accent\":\"#00FF80\"}"));
+    assert(cok["accent"].s == "#00FF80");
+    auto cbad = ttmod::config_effective(cm.config, ttmod::parse_config_file("{\"accent\":\"lime\"}"));
+    assert(cbad["accent"].s == "#E0A040"); // bad file value -> default
+    assert(ttmod::apply_config_value(cm.config, "{\"accent\":\"#E0A040\"}", "accent", "#123456").ok);
+    assert(!ttmod::apply_config_value(cm.config, "{\"accent\":\"#E0A040\"}", "accent", "123456").ok);
+    assert(!ttmod::apply_config_value(cm.config, "{\"accent\":\"#E0A040\"}", "accent", "#FFF").ok);
 
     // serialization round-trip (deterministic)
     std::string s = ttmod::serialize_config(m.config, eff);
