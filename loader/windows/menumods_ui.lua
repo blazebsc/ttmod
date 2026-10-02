@@ -31,6 +31,29 @@ end
 -- are silent engine-side); the first candidate the engine accepts wins for
 -- the session. Only our Mods-menu labels are themed (via setlabel below);
 -- game screens are never touched.
+-- Visible row count for the active list, or nil. Read-only probe used to size
+-- screens: the engine renders a FIXED number of ListButton rows per menu, and
+-- rows past that are added but never rendered (blank boxes, no label). Menus
+-- stack rows, so this is the measured capacity of whatever is on screen now.
+function Menu_Mods_RowCount()
+    local n = 0
+    local m = nil
+    if _G.Menu_GetCurrent ~= nil then
+        m = Menu_GetCurrent()
+    elseif _G.currentMenu ~= nil then
+        m = _G.currentMenu
+    end
+    if m == nil then return nil end
+    for k, v in pairs(m) do
+        if k ~= 'Populate' and type(v) == 'table' then
+            local c = 0
+            for _ in pairs(v) do c = c + 1 end
+            if c > n then n = c end
+        end
+    end
+    return n
+end
+
 local theme_winner = nil
 local theme_probed = false
 -- Swatch preview cache: per-agent last paint, so re-rendering a row does not
@@ -241,24 +264,29 @@ end
 -- dark->bright per hue family, so the grid reads as a value scale). Chosen
 -- rather than computed: a computed grid needs RGB math in the game's Lua and
 -- gives worse-looking results than these.
--- ponytail: fixed 16-swatch grid; add a computed HSL wheel only if mods want
--- arbitrary hues.
+-- ponytail: fixed 16-swatch list. The engine renders a FIXED number of
+-- ListButton rows per menu; rows past that are added but render blank, so the
+-- palette is paginated by TT_COLOR_PAGE to stay inside the measured capacity.
 local TT_COLOR_SWATCHES = {
     '#FFFFFF', '#C0C0C0', '#808080', '#404040',
     '#FFE0A0', '#FFB000', '#FF8000', '#C04000',
     '#C0FFA0', '#00E000', '#008000', '#004000',
     '#A0C0FF', '#0080FF', '#0000C0', '#000040',
 }
+local TT_COLOR_PAGE = 6
 
 local function is_hex(s)
     return type(s) == 'string' and s:match('^#%x%x%x%x%x%x$') ~= nil
 end
 
--- Color row -> palette screen (4x4). Picking a swatch writes the value via
--- the framework setter (which validates #RRGGBB server-side and logs a
--- rejection if it ever disagrees) and returns to the details screen.
-function Menu_Mods_PickColor(id, key)
-    mlog('color: pick ' .. tostring(id) .. '.' .. tostring(key))
+-- Color row -> palette screen, one page of TT_COLOR_PAGE swatches at a time
+-- (the engine renders a fixed row count; see TT_COLOR_PAGE). Picking a swatch
+-- writes the value via the framework setter (which validates #RRGGBB
+-- server-side and logs a rejection if it ever disagrees) and returns to the
+-- details screen.
+function Menu_Mods_PickColor(id, key, page)
+    page = tonumber(page) or 1
+    mlog('color: pick ' .. tostring(id) .. '.' .. tostring(key) .. ' page=' .. tostring(page))
     ttmod_menu_refresh()
     if Menu_Create == nil or Menu_Add == nil or Menu_Push == nil then
         mlog('color: engine menu globals missing, aborting')
@@ -277,7 +305,11 @@ function Menu_Mods_PickColor(id, key)
     menu.Populate = function(self)
         local h = Menu_Add(Header, nil, 'header_settings')
         setlabel(h, tostring(key) .. ' color')
-        for i, hex in ipairs(TT_COLOR_SWATCHES) do
+        local first = (page - 1) * TT_COLOR_PAGE + 1
+        local last = first + TT_COLOR_PAGE - 1
+        if last > #TT_COLOR_SWATCHES then last = #TT_COLOR_SWATCHES end
+        for i = first, last do
+            local hex = TT_COLOR_SWATCHES[i]
             local mark = (hex == cur) and ' *' or ''
             local r = Menu_Add(ListButton, 'sw_' .. tostring(i), 'label_OK',
                 'Menu_Mods_SetColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '","' ..
@@ -286,12 +318,24 @@ function Menu_Mods_PickColor(id, key)
             -- the same clone the hex text went to.
             paint(setlabel(r, hex .. mark), hex)
         end
+        if page > 1 then
+            local p = Menu_Add(ListButton, 'prevpage', 'label_OK',
+                'Menu_Mods_PickColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '",' ..
+                tostring(page - 1) .. ')')
+            setlabel(p, '<< Previous')
+        end
+        if last < #TT_COLOR_SWATCHES then
+            local p = Menu_Add(ListButton, 'nextpage', 'label_OK',
+                'Menu_Mods_PickColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '",' ..
+                tostring(page + 1) .. ')')
+            setlabel(p, 'Next >>')
+        end
         local b = Menu_Add(ListButton, 'back', 'label_OK', 'Menu_Pop()')
         setlabel(b, 'Back')
         mlog('populate: color grid done')
     end
     Menu_Push(menu)
-    mlog('color: pushed grid')
+    mlog('color: pushed grid rows=' .. tostring(Menu_Mods_RowCount()))
 end
 
 function Menu_Mods_SetColor(id, key, hex)
@@ -354,7 +398,7 @@ function Menu_Mods_Adjust(id, key)
                 if mx ~= nil and v > mx then v = (mn ~= nil and mn or 0) end
                 ttmod_menu_set_value(tostring(id), tostring(key), tostring(v))
             elseif t == 'color' then
-                Menu_Mods_PickColor(id, key)
+                Menu_Mods_PickColor(id, key, 1)
                 return
             else
                 Menu_Mods_EditString(id, key)

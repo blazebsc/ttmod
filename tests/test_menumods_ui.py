@@ -105,21 +105,46 @@ Menu_Mods_Adjust('demo.config', 'greet')
 assert(nrec('textbox|Hi|Greet') == 1, 'native textbox opened with current+label')
 assert(setter_log[1] == 'set:demo.config.greet=Typed!', 'typed text saved')
 assert(nrec('input|false') == 1 and nrec('input|true') == 1, 'input disabled around dialog')
--- color row opens the palette grid (16 swatches + back), current marked
+-- color row opens palette page 1: 6 swatches + Next + Back. The engine renders
+-- a FIXED number of ListButton rows per menu and rows past that are added but
+-- render blank (in-game: 17 blank boxes), so the palette is PAGINATED and a
+-- page must stay small.
 setter_log = {}
 calls = {}
 Menu_Mods_Adjust('demo.config', 'accent')
-assert(nrec('add|sw_1|') == 1 and nrec('add|sw_16|') == 1, 'palette grid rows')
+assert(nrec('add|sw_1|') == 1 and nrec('add|sw_6|') == 1, 'page 1 swatches')
+assert(nrec('add|sw_7|') == 0 and nrec('add|sw_16|') == 0, 'page 1 stops at 6')
+assert(nrec('add|prevpage|') == 0, 'no Previous on first page')
+assert(nrec('add|nextpage|') == 1, 'Next on first page')
 assert(nrec('add|back|') == 1, 'palette back row')
 assert(#setter_log == 0, 'opening palette writes nothing')
+-- the current swatch (#00E000 = swatch 10) carries the ' *' mark, but only on
+-- the page that holds it. Runs BEFORE the pick below mutates the fixture.
+calls = {}
+Menu_Mods_PickColor('demo.config', 'accent', 2)
 local marked = false
-for _, c in ipairs(calls) do if c:find('#00E000 *', 1, true) then marked = true end end
-assert(marked, 'current swatch marked')
+for _, c in ipairs(calls) do
+  if c:find('setprop') and c:find('#00E000 *', 1, true) then marked = true end
+end
+assert(marked, 'current swatch marked on page 2')
+calls = {}
+Menu_Mods_PickColor('demo.config', 'accent', 1)
+for _, c in ipairs(calls) do
+  if c:find('setprop') and c:find('#00E000 *', 1, true) then error('marked off its page') end
+end
+-- last page: Previous, no Next, and it covers the tail of the palette
+calls = {}
+Menu_Mods_PickColor('demo.config', 'accent', 3)
+assert(nrec('add|sw_13|') == 1 and nrec('add|sw_16|') == 1, 'page 3 tail')
+assert(nrec('add|sw_17|') == 0, 'no row past the palette')
+assert(nrec('add|prevpage|') == 1 and nrec('add|nextpage|') == 0, 'Previous on last page')
 -- every swatch row painted with 'Color' exactly once (the only property the
 -- stub reads back: unknown keys are accepted-then-ignored, the silent-failure
 -- case the read-back guard handles; 'Tint Color' must NOT be attempted after
 -- 'Color' proved itself)
-for i = 1, 16 do
+calls = {}
+Menu_Mods_PickColor('demo.config', 'accent', 1)
+for i = 1, 6 do
   local row = '|sw_' .. i .. '|'
   local n, bad = 0, nil
   for _, c in ipairs(calls) do
