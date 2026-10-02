@@ -1,0 +1,7 @@
+{
+    "id": "mod.count",
+    "name": "Mod Count",
+    "version": "1.0.0",
+    "api": 4,
+    "games": ["minecraft-story-mode:s1"]
+}

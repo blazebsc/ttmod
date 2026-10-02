@@ -1,0 +1,7 @@
+{
+    "id": "session.clock",
+    "name": "Session Clock",
+    "version": "1.0.0",
+    "api": 3,
+    "games": ["minecraft-story-mode:s1"]
+}
