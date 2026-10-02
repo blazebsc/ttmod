@@ -2,7 +2,7 @@
 
 ## Discovery
 One shared `scan_mods` (plugins/ + mods/) feeds both loaders: same registry,
-id-sorted (deterministic — proven by alphabetical discovery logs), single
+id-sorted (deterministic - proven by alphabetical discovery logs), single
 manifest validation point (api 1..HOST, game match, enabled).
 
 ## Declarations (manifest, all optional)

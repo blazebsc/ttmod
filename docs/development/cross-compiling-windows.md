@@ -10,7 +10,7 @@ Nothing installed system-wide. All from nix (`nix-shell`):
 
 If nix is unavailable: Arch/CachyOS `mingw-w64-gcc`, `mingw-w64-crt`,
 `mingw-w64-headers`, `mingw-w64-binutils` provide the same
-`i686-w64-mingw32-{gcc,g++}` triplet (needs root — not used here).
+`i686-w64-mingw32-{gcc,g++}` triplet (needs root - not used here).
 
 ## Compiler triplet
 
@@ -26,7 +26,7 @@ nix-shell nix/mingw-shell.nix --run 'i686-w64-mingw32-g++ --version'
 # Linux native (default, runtime OFF)
 cmake -S . -B build && cmake --build build && ctest --test-dir build
 
-# Windows x86 cross (separate dir — never mix object files)
+# Windows x86 cross (separate dir - never mix object files)
 nix-shell nix/mingw-shell.nix --run \
   'cmake -S . -B build-win32 -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-i686.cmake \
    -DTTMOD_BUILD_WIN_RUNTIME=ON && cmake --build build-win32'
@@ -43,8 +43,8 @@ nix-shell command if absent. Runtime DLLs link `-static-libgcc
 
 ## Build output
 
-- `build-win32/dinput8.dll` — PE32/i386 proxy, ~26 KB
-- `build-win32/ttmod_framework.dll` — PE32/i386 framework, ~360 KB
+- `build-win32/dinput8.dll` - PE32/i386 proxy, ~26 KB
+- `build-win32/ttmod_framework.dll` - PE32/i386 framework, ~360 KB
 - (Stale `lib*.dll` names from before the PREFIX fix are deleted, not shipped.)
 
 ## Wine test procedure

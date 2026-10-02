@@ -11,7 +11,7 @@ click-callback errors.
 ## Known (all from real bytecode via tools/lua52_dis.py)
 - `Menu_Add(menu, widget, ...)` = proto 39 (Menu.lua:745-748): if upvalue0 set,
   return upvalue0(); else tail-forward to `Menu_Insert` (proto 38, 723-741).
-  Upvalue identities Unknown (likely override/test hook — see Unknown).
+  Upvalue identities Unknown (likely override/test hook - see Unknown).
 - `Menu_Insert` → `Menu_Create` + `menu:AddWidget(...)` (+ AgentHide calls).
 - Call shape (proven, repeated verbatim): `Menu_Add(R5, R6, R7, R8)` where
   R5=_ENV['ListButton'] (widget prototype), then id/label/callback strings,
@@ -28,11 +28,11 @@ click-callback errors.
   chores Select/Deselect/Press, tooltip). No custom input needed.
 - Button table: play/store/accountlink/savesFiles/achievements/stats/
   settings/help/exit with label keys + `Xxx()` callback strings (from consts).
-- Scene `ui_menuMain.scene` holds camera/background/title only — no buttons.
+- Scene `ui_menuMain.scene` holds camera/background/title only - no buttons.
 
 ## Observed
 - `ui_menu.dlog` (238 KB, binary Meta) + tiny `chapters_english.landb`
-  (140 B, parses to 0 entries — stub, not the string table).
+  (140 B, parses to 0 entries - stub, not the string table).
 - ToolKit `LanguageDb`/`LanguageResLocal.Text` types exist for landb work.
 - Disassembler now prints RK-resolved constants (repo tool upgrade, tested).
 
@@ -57,9 +57,9 @@ write feasibility (types exist, untested). See §10 gate.
 
 ## Prototype: Mods button via mirrored Menu_Add (IMPLEMENTED, VM-proven)
 
-### Edit (tools/apply_mods_button.py — committed, pure transformation)
+### Edit (tools/apply_mods_button.py - committed, pure transformation)
 
-### Edit (tools/apply_mods_button.py — committed, pure transformation)
+### Edit (tools/apply_mods_button.py - committed, pure transformation)
 - Target: main.protos[16].protos[1] (Menu_Main line 397, main button list).
 - Append const `'mods'` (label/callback reuse existing consts).
 - Insert before final RETURN (pos 330), scratch regs R2-R6 (dead there):
@@ -84,23 +84,23 @@ write feasibility (types exist, untested). See §10 gate.
 - Menu_Add semantics: ESTABLISHED. Label semantics: ESTABLISHED (dlog path).
 - Archive rebuild: ESTABLISHED (456/456 byte-identical round-trip with a
   documented 1-line ToolKit writer fix: name-stream BYTE length, not page
-  count — external tool, not vendored).
+  count - external tool, not vendored).
 - Menu_data opens via CreateFileW 2x/session: ESTABLISHED (long session).
 - landb exact entry: NOT YET (fallback 'NIL VALUE' acceptable for prototype
   per spec §8 temporary-reuse clause).
 - VM EXECUTION PROOF (stock Lua 5.2.4): converted chunk + stub _ENV harness
   (`tools/build_harness.py`, `tools/harness_runner.lua`) runs the REAL
   modified function cleanly (`pcall ok=true`): 13 Menu_Add calls including
-  `Menu_Add(table, "mods", "label_help", "Menu_Options()")` — exact expected
+  `Menu_Add(table, "mods", "label_help", "Menu_Options()")` - exact expected
   args. Requires Telltale-isms shimmed (`table.getn`).
 - RK ENCODING BUG caught by the harness (would have shipped broken):
   LOADK Bx is a DIRECT const index; B/C 9-bit operands set 0x100 for consts.
   First prototype version passed 324/322 (nil labels); fixed + re-proven.
 - Temporary choices (documented): label `label_help` (renders Help text),
-  callback string `Menu_Options()` (opens Settings — safe, Back-able proof).
+  callback string `Menu_Options()` (opens Settings - safe, Back-able proof).
 - Override fires 2x/run for Menu_data; game opens rebuilt archive, exit 0.
 - VISUAL proof pending: needs menu render (long session; background loop
-  running; screenshots broken in this env — xdotool navigation scripted for
+  running; screenshots broken in this env - xdotool navigation scripted for
   when a long session lands).
 -> PROTOTYPE MAY PROCEED (§13): mirrored Menu_Add block + global callback +
    temporary label fallback; long-session proof required.
@@ -111,7 +111,7 @@ validated byte-exact against stock `luac 5.2.4`). No game files modified.
 
 ## Known
 - Main menu buttons are built IN LUA (scene `ui_menuMain.scene` holds only
-  camera/background/title agents — no buttons).
+  camera/background/title agents - no buttons).
 - Button construction idiom (repeated verbatim per button):
   `Menu_Add(Widget, 'ListButton', '<id>', '<labelkey>', '<Callback()>')`
   i.e. bytecode: `GETTABUP Menu_Add; GETTABUP <widget>; LOADK id, label, cb;
@@ -133,7 +133,7 @@ validated byte-exact against stock `luac 5.2.4`). No game files modified.
   conditionals), 538-652 (account/cloud/play flow).
 
 ## Earlier research notes (partially superseded by Prototype above; kept for
-evidence — button table and function map remain accurate)
+evidence - button table and function map remain accurate)
 
 ## Button table reference (still accurate)
 
@@ -142,7 +142,7 @@ evidence — button table and function map remain accurate)
 - Click execution thread/context; missing-callback live behavior.
 
 ## Evidence (original research)
-`/tmp` disassembly (NOT in repo — game-derived): full instruction listing
+`/tmp` disassembly (NOT in repo - game-derived): full instruction listing
 with resolved jump targets; `luac -l` cross-check on stock fixtures.
 
 ## Confidence (original research)
@@ -152,4 +152,4 @@ implementation above; archive rebuild PROVEN; CreateFileW route PROVEN.)
 ## Next test (originally)
 Disassemble `Menu.lua:Menu_Add` → confirm label/callback handling → pick
 insertion function → prototype edit on a COPY → round-trip + long-session run.
-(DONE except long-session visual proof — background loop running.)
+(DONE except long-session visual proof - background loop running.)

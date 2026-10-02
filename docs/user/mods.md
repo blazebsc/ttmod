@@ -35,10 +35,10 @@ Delete the `.ttmod` (or folder) from `mods/`. Next launch it's gone; stale
 cache under `ttmod/cache/` is cleaned automatically.
 
 ## If a mod breaks the game
-1. Read `logs/ttmod.log` — search `Skipped:`, `rejected`, `WARNING`.
+1. Read `logs/ttmod.log` - search `Skipped:`, `rejected`, `WARNING`.
 2. Disable the suspect mod in `config/mods.json`, or delete it.
 3. Still broken? Safe mode: set env `TTMOD_SAFE_MODE=1`, or create an empty
-   file `config/safe-mode`, then launch — all third-party mods stay inert.
+   file `config/safe-mode`, then launch - all third-party mods stay inert.
 4. Delete `config/safe-mode` (or unset the env var) to leave safe mode.
 
 ## Native-code warning

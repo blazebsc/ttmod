@@ -3,10 +3,10 @@
 ## Versioning
 - Plugin ABI: integer versions, append-only fields. Host v5 loads manifests
   api 1–5; v1–v4 plugins run unmodified (proven in Wine side-by-side).
-  - v5 appended `queue_ui_chunk` (Lua execution; EXPERIMENTAL — contract in
+  - v5 appended `queue_ui_chunk` (Lua execution; EXPERIMENTAL - contract in
     `docs/runtime/plugins.md`).
 - Manifest schema: additive optional fields only. Unknown fields are SKIPPED
-  (parsers), never errors — old manifests keep working.
+  (parsers), never errors - old manifests keep working.
 - Package format: `package_format` int, default 1; >1 rejected (can't fake
   understanding the future).
 - Framework version (`ttmod::kVersion`, CMake project version): informational.

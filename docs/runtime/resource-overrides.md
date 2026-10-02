@@ -9,7 +9,7 @@ Game CreateFileW → IAT hook → normalize → Resolver (index) → hit?
 Resolver (`core/resolver.*`, portable, unit-tested) is separate from the
 Windows hook (`loader/windows/hooks.cpp` + `mods.cpp`). Hot path = one map
 lookup; index built once at init; no IO per request. Only the filename may
-change — access/share/security/disposition/flags/template pass through.
+change - access/share/security/disposition/flags/template pass through.
 
 ## Path normalization (`core/pathnorm.*`, unit-tested)
 `\\?\`/`\\?\UNC\`/`\??\` stripped → `\`→`/` → collapse seps (UNC `//` kept) →
@@ -21,7 +21,7 @@ Internal keys use `/`; converted back to `\` only for the real API call.
 ## Scope policy
 Only requests under the game root (exe directory) are eligible. Anything else
 (`outside-root`) passes through untouched. DLLs under the root are technically
-eligible — overriding them equals native-code trust (documented, not blocked).
+eligible - overriding them equals native-code trust (documented, not blocked).
 
 ## Mod layout (unified manifest)
 ```text

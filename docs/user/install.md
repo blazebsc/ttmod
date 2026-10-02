@@ -2,9 +2,9 @@
 
 ## 1. Requirements
 - A legitimate Minecraft: Story Mode Season 1 PC install (Steam-era build).
-  Only the builds in `docs/games/compatibility.md` are tested — other builds
+  Only the builds in `docs/games/compatibility.md` are tested - other builds
   safely idle with a log message instead of loading mods.
-- Windows (Wine 8+ works on Linux; native Windows untested by this team yet —
+- Windows (Wine 8+ works on Linux; native Windows untested by this team yet -
   please report results).
 
 ## 2. Install the framework (once)

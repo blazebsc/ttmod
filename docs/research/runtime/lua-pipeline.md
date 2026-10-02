@@ -1,4 +1,4 @@
-# docs/research/runtime/lua-pipeline.md — MCSM1 script pipeline (M6)
+# docs/research/runtime/lua-pipeline.md - MCSM1 script pipeline (M6)
 
 ## Status
 Pipeline mapped through boot; script modification proven at the encrypted-byte
@@ -17,7 +17,7 @@ level via M5; Lua VM internals (states, bindings) remain Unknown.
 - No non-resdesc loose scripts exist: gameplay scripts live INSIDE ttarch2
   (M5 limitation confirmed: archived content bypasses CreateFileW).
 - Engine canonicalizes opened files (observed: mod replacement opened, then
-  re-opened via its on-disk canonical path — likely GetFinalPathName flow).
+  re-opened via its on-disk canonical path - likely GetFinalPathName flow).
   Overrides still hold: the original is never opened.
 - Saves/prefs are outside game root by design; resolver scope already excludes
   them (validated by real traffic).
@@ -43,7 +43,7 @@ Lua 5.2.3 VM (in-exe) → execute → native bindings (Unknown)
 ## Hypothesis
 - Resdesc lua format = version header (`50` = resource version?) + archive
   content map; TTG-Tools documents `.lua`/`.lenc` decryption externally (GPL,
-  reference-only — not reimplemented).
+  reference-only - not reimplemented).
 - `LoadResource` RVA 0x1139F0 consumes these paths (fired with identical
   resdesc list when detoured once); detour removed (Wine hang), signature kept.
 
@@ -52,7 +52,7 @@ Lua 5.2.3 VM (in-exe) → execute → native bindings (Unknown)
 - Whether archived scripts EVER touch CreateFileW (none seen in boot window).
 - resdesc internal format beyond "encrypted blob".
 - Script caching behavior (no cache files observed; §18 open: change disappears
-  with mod removal per matrix reruns — no stale state seen).
+  with mod removal per matrix reruns - no stale state seen).
 
 ## Evidence
 ttmod.log maps (`CreateFileW#1..400`), module survey, late-hook success lines,
@@ -63,10 +63,10 @@ High: version/location/order/substitution-tolerance. Low: VM internals.
 
 ## Next test (M6+/M7)
 Post-unpack MinHook timing window for observational Lua hooks
-(`onScriptLoaded` from resdesc names needs no polling — names already flow).
+(`onScriptLoaded` from resdesc names needs no polling - names already flow).
 
 ## telltale_hook offset verification (2026-09-17, read-only, exe untouched)
-External reference HW12Dev/telltale_hook (no license — ideas/offsets only,
+External reference HW12Dev/telltale_hook (no license - ideas/offsets only,
 no code copied) publishes MCSM1 absolute RVAs. Verified against our exe
 (md5 171ff4fe…, size 0xb9d9c0, imagebase 0x400000):
 - lua_newstate @0x611C80 -> file bytes 8A 38 F7 FC = EXACT match of our
@@ -83,7 +83,7 @@ ScriptManager__LoadResource (per-script inject) + luaL_dostring/pcallk.
 
 ## Bridge PROVEN in-game (2026-09-17, wine-11.17, :99, fw-only + prototype)
 Framework DLL with lua_bridge (late +2.5s MinHook lua_newstate, live-prologue
-anchor 55 8B EC 83 — packed file bytes 8A 38 F7 FC are replaced by the real
+anchor 55 8B EC 83 - packed file bytes 8A 38 F7 FC are replaced by the real
 prologue once the unpacker reaches .text, hence the retry at 2.5/5/8s):
   [INFO] lua: hook installed (late, anchor-verified)
   [INFO] lua: lua_newstate observed, live state captured
@@ -117,7 +117,7 @@ text), callback stays 'Menu_Mods()'. VM: Menu_Add(table,"mods",
 exit 0, 16/16 green. Hunter resumed on :99 with v3 bits (cap 140).
 Notable: attempt-0074 lived 309s (timeout) with a black 2560x1600 window
 and 12 probes, but never created the Lua VM (no newstate observed) and
-never opened menu streams — long-lived pre-menu, NOT a menu session.
+never opened menu streams - long-lived pre-menu, NOT a menu session.
 
 ## Pre-Lua boot diagnosis (2026-09-17, hunter paused at 98 attempts)
 - Added loader/windows/stage.hpp: additive "[STAGE ms]" timeline lines
@@ -128,13 +128,13 @@ never opened menu streams — long-lived pre-menu, NOT a menu session.
   lua_newstate NEVER fired. Short runs PASS the Lua gate in ~3s; the long
   run stalled BEFORE ScriptManager/Lua init with the render window up.
   Its wine tail shows later-boot COM/service calls (wbemprox, avrt audio,
-  gameux VerifyAccess) then silence — blocked/waiting, not crashed.
+  gameux VerifyAccess) then silence - blocked/waiting, not crashed.
 - Historical 18-min run: raw log NOT recovered (only doc counts survive:
   Menu streams 2x + saves). Class-C evidence is second-hand.
 - Divergence: normal runs clear the Lua gate at ~2.7s; 0074 never did in
   309s. Candidate: engine loader thread blocked pre-ScriptManager (asset/
   service wait); render thread independent (black window up). Thread/CPU
-  state unrecoverable post-hoc — needs live /proc sampling next time.
+  state unrecoverable post-hoc - needs live /proc sampling next time.
 
 ## Stuck-diagnosis correction (2026-09-17, external sampling only)
 - CORRECTION: all prior "Menu_ms/txmesh opens = 0" claims were a LOGGING-CAP
@@ -148,7 +148,7 @@ never opened menu streams — long-lived pre-menu, NOT a menu session.
   immediately before clean exit 0. STRONGLY SUGGESTED (not proven):
   presentation init fails under Xvfb/Wine GL → game quits deliberately.
 - Failure mode B (rare, attempt-0074): 309s black window, pre-Lua stall,
-  ZERO swapchain calls — never reached presentation init at all. Separate
+  ZERO swapchain calls - never reached presentation init at all. Separate
   loader-wait issue, cause unknown (thread state unrecoverable post-hoc).
 - Targeted next experiment (hypothesis-driven, not yet run): probe Xvfb
   GLX/visual capabilities vs wined3d requirements; if software GL lacks
@@ -168,12 +168,12 @@ never opened menu streams — long-lived pre-menu, NOT a menu session.
 - 0074 re-bound: reached d3d9 device_init ("Ignoring display mode",
   "No card selector for vendor 0000") + format queries, but NEVER
   swapchain_init and never Lua. Stall sits between device_init and
-  swapchain creation — with the window up. Cause vs symptom still open.
+  swapchain creation - with the window up. Cause vs symptom still open.
 - "Still holding back buffer 0" timing: during post-present
   resize/teardown, AFTER frames presented (run 1). Fatal vs incidental
-  unresolved — no screenshot of presented frames captured yet.
+  unresolved - no screenshot of presented frames captured yet.
 
-## WM experiment (:100 + openbox 3.6.1) — focus hypothesis WEAKENED
+## WM experiment (:100 + openbox 3.6.1) - focus hypothesis WEAKENED
 Single controlled run under a real WM: init 38ms, Lua 2948ms, Menu streams
 once each, bridge ok, 0 presents, SAME swapchain resize error, exit 0,
 ~10s lifetime. Indistinguishable from :99-no-WM across every signal.
@@ -192,23 +192,23 @@ Foreground/WM negotiation is NOT the quit driver. Cleanup verified
   (swapchain resize failure 1ms earlier) is NOT separated by this data.
 - winedbg path TAINTED this question separately: under the debugger the
   game page-faults at game+0xBB4189 (unpacked region) instead of exiting
-  cleanly — debugger presence changes behavior; that crash is NOT the
+  cleanly - debugger presence changes behavior; that crash is NOT the
   standalone exit path. ptrace is blocked in this env (EPERM).
 - Proposed single next experiment (not run): WINEDLLOVERRIDES=mscoree=n
-  to preload Wine's stub, making the check succeed — predicts either
+  to preload Wine's stub, making the check succeed - predicts either
   continued boot or a new CLR-init failure. Reversible, env-only.
 
 ## mscoree gate: strong negative (2026-09-17, no override tested)
 - Static: 17 PE imports (kernel/user/gdi/d3d/fmod/comctl/shell/ole...),
   delay-loads ONLY steam_api.dll + Galaxy.dll. NO mscoree anywhere.
-- Runtime (+loaddll full trace): ZERO mscoree mentions — never requested,
+- Runtime (+loaddll full trace): ZERO mscoree mentions - never requested,
   never loaded, never failed. Case A: GetModuleHandleW is NULL because
   nothing loads it; WINEDLLOVERRIDES cannot help (it only selects among
   loads that something requests). Override hypothesis INVALID, not tested.
 - Context: this copy is cracked (3DMGAME/NoDVD/CODEX/ALI213/EmptySteamDepot,
   FitGirl tree nearby); exe timestamp 2016-05-20 plausible. Whether the
   mscoree check is genuine engine code or crack-adjacent cannot be told
-  without a clean reference binary — stated, not resolved.
+  without a clean reference binary - stated, not resolved.
 - How legit Windows could have it loaded: UNKNOWN from our evidence
   (Steam/Galaxy injectors don't document mscoree; no import suggests it).
   Next experiment (proposed, not run): force Wine's builtin mscoree loaded
@@ -222,7 +222,7 @@ Foreground/WM negotiation is NOT the quit driver. Cleanup verified
 - +relay comparison: WITH mscoree resident the game takes GetProcAddress
   (mscoree,"CorExitProcess") and calls it; mscoree then calls ExitProcess.
   WITHOUT it, the game calls ExitProcess directly (same function +0x32).
-  The game uses CorExitProcess as its CLR-aware shutdown routine — the
+  The game uses CorExitProcess as its CLR-aware shutdown routine - the
   quit DECISION is upstream either way. mscoree presence changes the exit
   API, never the outcome. Lead closed as a cause.
 - Diagnostic code REMOVED from framework.cpp (not merely gated); rebuilt,
@@ -245,12 +245,12 @@ Foreground/WM negotiation is NOT the quit driver. Cleanup verified
 - mscoree/CorExitProcess CONFIRMED not the trigger (shutdown hygiene).
 
 ## Lua-side probe: boundary result (2026-09-17, temp sink, FULLY REMOVED)
-- Static: full quit path mapped from 70 decrypted menu scripts —
+- Static: full quit path mapped from 70 decrypted menu scripts -
   Menu_Main_Exit (Menu_Main.lua:733, proto 21) = Licensed? Upsell :
   UI_Confirm(quit popup -> 'EngineQuit()'); Menu_Upsell_Exit falls back
   to EngineQuit() with no menu. Only ONE EngineQuit caller in menu Lua.
 - Live inventory (temp C sink + nil-safe presence chunk, 5 runs): sink
-  proven working ('sink-ok'), but fresh states are BARE sandboxes —
+  proven working ('sink-ok'), but fresh states are BARE sandboxes -
   tostring/pcall/pairs/string/os/table/rawget/EngineQuit/Menu_Main ALL
   nil at newstate time (2 states observed, both bare). Base libs attach
   later; bridge executes at birth+0 and can never see menu-time state.
@@ -260,4 +260,4 @@ Foreground/WM negotiation is NOT the quit driver. Cleanup verified
   bridge-reachable Lua. Temp code deleted (0 traces), 16/16 green.
 - Next candidate (proposed, not built): late-install LoadResource detour
   (telltale_hook model) fires per script-load on the loader thread with
-  initialized states — the only known late-Lua seam. Needs freeze review.
+  initialized states - the only known late-Lua seam. Needs freeze review.

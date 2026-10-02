@@ -1,10 +1,10 @@
-# ttmod — Telltale Mod Framework (Minecraft: Story Mode first)
+# ttmod - Telltale Mod Framework (Minecraft: Story Mode first)
 
 ## Normal use (no CLI, no GUI)
 
 1. Install TTMod Framework once (copy `dinput8.dll` + `ttmod_framework.dll`
    beside `MinecraftStoryMode.exe`).
-2. Launch MCSM once — the framework creates `mods/`, `config/`, `logs/`.
+2. Launch MCSM once - the framework creates `mods/`, `config/`, `logs/`.
 3. Download a mod (`.ttmod` file).
 4. Drag it into `mods/`:
    ```text
@@ -22,7 +22,7 @@
    (`{"MyMod": {"enabled": false}}`) without deleting anything.
 
 You may also place an unpacked mod directory containing `manifest.json`
-directly into `mods/` for development/testing — same system, no repackaging.
+directly into `mods/` for development/testing - same system, no repackaging.
 
 Mod format, discovery, state, and security: `docs/runtime/mod-packages.md`,
 `docs/runtime/mod-discovery.md`.

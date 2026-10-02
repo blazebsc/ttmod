@@ -44,17 +44,17 @@
 
 - DLL search: app-dir `dinput8.dll` wins over Wine builtin with no
   `WINEDLLOVERRIDES` needed. Proxy forwards to real `dinput8` via
-  `GetSystemDirectoryA` (resolves to `syswow64` under WoW64) — game input
+  `GetSystemDirectoryA` (resolves to `syswow64` under WoW64) - game input
   path intact (startup identical to baseline).
 - Paths: `GetModuleFileNameA` returns `H:\...` Unix-mapped path; our logger
   and `parse_pe` handle it (detection succeeded on the Wine path).
 - Image base under Wine: `0x00400000` == link-time ImageBase
-  (`SizeOfImage 0xBF6000` matches objdump) — no ASLR slide observed here,
+  (`SizeOfImage 0xBF6000` matches objdump) - no ASLR slide observed here,
   but the framework reads headers at runtime and never assumes it.
 - Threads: `CreateThread` from `DllMain` (after `DisableThreadLibraryCalls`)
   works under Wine; init runs off the loader lock.
 - No Wine-specific hacks added; same binaries should work on native Windows
-  (not yet tested — needs a Windows x86 machine for final confirmation).
+  (not yet tested - needs a Windows x86 machine for final confirmation).
 - Unexplored: 4 s `exit=0` is baseline behavior in this headless-ish
   environment (DISPLAY=:0 present); not investigated since identical
   with/without framework.

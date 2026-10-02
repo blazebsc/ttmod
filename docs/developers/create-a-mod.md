@@ -1,4 +1,4 @@
-# docs/developers/create-a-mod.md — see runtime/mod-authoring.md
+# docs/developers/create-a-mod.md - see runtime/mod-authoring.md
 
 The mod-authoring guide lives at:
 

@@ -1,4 +1,4 @@
-# TTMod Mod Authoring Guide (M18 — only implemented features)
+# TTMod Mod Authoring Guide (M18 - only implemented features)
 
 ## 1. Resource-only mod (simplest)
 ```text
@@ -53,7 +53,7 @@ Ship `"enabled": true` (default). Users override per-mod in
 `config/mods.json` without touching your package. Test both states.
 
 ## 7. Mod menu + per-mod config
-- The menu backend lists every installed mod via the host (id/version/enabled). No registration needed — ship a valid mod and it appears.
+- The menu backend lists every installed mod via the host (id/version/enabled). No registration needed - ship a valid mod and it appears.
 - Display + config convention: optional `"name"`, `"description"`, and `"config"` schema in your manifest:
 ```json
 "config": [
@@ -66,10 +66,10 @@ Ship `"enabled": true` (default). Users override per-mod in
   Types: `bool` `int` `float` `string` `enum`. Values live in
   `config/<your-id>.json` (same shape); missing/invalid entries fall back
   to schema defaults. The native Mods screen (list → details → config rows
-  with Back + Restart-required hint) edits these through the framework —
+  with Back + Restart-required hint) edits these through the framework -
   mods never touch files. Tapping a string row opens the engine's own
   modal text box (the save-rename idiom); cancel changes nothing.
-- Enable/disable stays in framework-owned `config/mods.json` — never write it yourself.
+- Enable/disable stays in framework-owned `config/mods.json` - never write it yourself.
 - Install/remove/enable today = filesystem (`mods/` + `config/mods.json`);
   the in-game screen for it is future work (see `in-game-mod-menu.md`).
 

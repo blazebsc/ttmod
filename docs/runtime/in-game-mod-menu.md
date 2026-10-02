@@ -1,8 +1,8 @@
-# In-game Mods menu — WORKING (native UI strategy)
+# In-game Mods menu - WORKING (native UI strategy)
 
 ## Status (2026-10-01)
 FULLY WORKING IN-GAME, screenshot-verified on the user's real install:
-main menu has a Mods row (currently texted "Help" — see label limitation);
+main menu has a Mods row (currently texted "Help" - see label limitation);
 clicking it opens a native list of all installed mods (name, version,
 [ON]/[OFF]); each mod opens a details screen (version, Enabled toggle,
 per-type config rows incl. native text edit box, restart hint, Back);
@@ -10,34 +10,34 @@ toggles/settings persist to `config/mods.json` + `config/<id>.json` and
 apply on restart. 19/19 native tests green; win32 DLLs staged.
 
 ## Architecture (what actually ships)
-- `loader/windows/lua_bridge.cpp` — late (2.5 s, anchor-verified) MinHook
+- `loader/windows/lua_bridge.cpp` - late (2.5 s, anchor-verified) MinHook
   detours on game `lua_newstate` + `ScriptManager::LoadResource`; installs
   the Menu_Add wrapper chunk when `Menu.lua` loads and registers the menu
   bridge on EVERY captured Lua state.
-- `core/include/ttmod/lua_bridge.hpp::kMenuAddWrapChunk` — wraps `Menu_Add`,
+- `core/include/ttmod/lua_bridge.hpp::kMenuAddWrapChunk` - wraps `Menu_Add`,
   census-logs main-menu rows via AppendLog, re-arms on the 'play' row
   (always first → revisit re-append), and appends ONE Mods row when the
   'exit' row passes: `Menu_Add(ListButton,'mods','label_help',
   'if Menu_Mods then Menu_Mods() end')`, then overwrites the label to
   "Mods" via the game's own pattern (`Clone_Find(widget.agent,'label')` +
   `AgentSetProperty(lab,'Text String','Mods')`). EVERY engine call in the
-  append is pcall'd — the unguarded widget-table Clone_Find KILLED THE
+  append is pcall'd - the unguarded widget-table Clone_Find KILLED THE
   WHOLE MAIN MENU live (bug history below).
-- `loader/windows/menu_bridge.{hpp,cpp}` — 4 same-thread C functions:
+- `loader/windows/menu_bridge.{hpp,cpp}` - 4 same-thread C functions:
   `ttmod_menu_refresh()` (fresh registry snapshot → `ttmod_menu` literal),
   `ttmod_menu_set_enabled(id,"1"/"0")` → `config/mods.json`,
   `ttmod_menu_set_value(id,key,v)` → validate + `config/<id>.json`,
   `ttmod_menu_log(s)` → `menumods-lua:` lines in ttmod.log.
-- `loader/windows/menumods_ui.lua` (embedded as menumods_ui.h) — the screens:
+- `loader/windows/menumods_ui.lua` (embedded as menumods_ui.h) - the screens:
   list → details → toggle/config-edit → back. Defined on every state
   (whichever state the menu runs on gets them).
 
-## Verified game-UI idioms (from disassembled game bytecode — do not rediscover)
+## Verified game-UI idioms (from disassembled game bytecode - do not rediscover)
 Source: `MCSM_pc_Menu_data.ttarch2` → Menu_Main.lua, Menu_Options.lua,
 UI_ListButton.lua (decrypt+disasm pipeline below).
 - Sub-menu open (Menu_Options.lua fn at line 109): 
-  `local menu = Menu_Create(ListMenu, 'ui_menu_options')` — 2 args, the
-  string is the MENU NAME not a scene — then `menu.align = 'left'`
+  `local menu = Menu_Create(ListMenu, 'ui_menu_options')` - 2 args, the
+  string is the MENU NAME not a scene - then `menu.align = 'left'`
   ('center' only when `AgentExists('ui_menuPause.scene')`),
   `menu.background = {}`, `menu.Populate = function(self) <rows> end`,
   `Menu_Push(menu)`. ROWS MUST BE ADDED INSIDE Populate: `Menu_Add`
@@ -49,7 +49,7 @@ UI_ListButton.lua (decrypt+disasm pipeline below).
   `widget = Clone_Find(self.agent, 'ui_listButton_button')` and, when a
   label key is passed, `Clone_Find(widget.agent, 'label')` →
   `AgentSetProperty(lab, 'Text String', text)`. Menu_Add returns the widget
-  TABLE — you MUST pass `.agent` to Clone_Find; passing the table makes
+  TABLE - you MUST pass `.agent` to Clone_Find; passing the table makes
   Clone_Find THROW (kills the screen silently inside the click DoString).
   All label writes are pcall-probed in menumods_ui.lua.
 - Click path: button property 'Button - Command' → `DoString(cb)` on
@@ -70,7 +70,7 @@ UI_ListButton.lua (decrypt+disasm pipeline below).
    `ttmod_appended = nil` on the 'play' row.
 5. Blank screen: rows added pre-push (see idiom above). Fix: Populate.
 
-## Remaining (cosmetic / future — do not claim done)
+## Remaining (cosmetic / future - do not claim done)
 - Nothing blocking: button + screen labels both read "Mods" (header via the
   'ui_header_header' clone found in disassembled UI_Header.lua). The dlog
   `label_mods` route is no longer needed and stays unexplored.
@@ -105,9 +105,9 @@ queue semantics: `tests/test_uiqueue.cpp` (capacity/drop/drain).
 
 ## Historical (kept for evidence)
 - Phase 1 (2026-09-17, wine-11.17): vanilla/framework/prototype all exited
-  pre-menu in this headless env; prototype preserved; NOT a framework bug —
+  pre-menu in this headless env; prototype preserved; NOT a framework bug -
   real interactive sessions later proved everything.
-- Hunter: 28 attempts / all early exits; env exits pre-menu ~99% headless —
+- Hunter: 28 attempts / all early exits; env exits pre-menu ~99% headless -
   visual work needs the USER's interactive session, doctor's orders.
 
 ## Original research notes (superseded where marked, kept for evidence)

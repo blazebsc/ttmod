@@ -1,9 +1,9 @@
-# docs/research/runtime/load-resource.md — ScriptManager::LoadResource (M2, VERIFIED)
+# docs/research/runtime/load-resource.md - ScriptManager::LoadResource (M2, VERIFIED)
 
 ## Status
 **Resolved, validated, and fired once (m2e run, 32 resdesc paths); detour
 code path since REMOVED.** MinHook detours on unpacked game code hang Wine
-reproducibly (thread-freeze racing the unpacker — 2 hangs). Runtime file-IO
+reproducibly (thread-freeze racing the unpacker - 2 hangs). Runtime file-IO
 and content control now go through a packer-proof IAT hook on
 `CreateFileW` (M2-completing hook, M4 rewrite, M5 path). The signature below
 is preserved for a post-unpack M6 attempt. No game code is patched.
@@ -13,7 +13,7 @@ is preserved for a post-unpack M6 attempt. No game code is patched.
 - cdecl `int (lua_State*, const char*)`: two stack params, hook reads a valid
   script path on every hit, original returns normally, game continues (exit=0,
   identical to baseline).
-- Hook fires 32/32 capped hits at boot with `_resdesc_50_<Archive>.lua` paths —
+- Hook fires 32/32 capped hits at boot with `_resdesc_50_<Archive>.lua` paths -
   this function loads per-archive resource descriptors. `50` is presumably the
   resource/priority version for this engine build (M5/M6 lead).
 
@@ -46,7 +46,7 @@ RVA → signature unique in .text → MinHook create+enable ok.
 `hooks: installed ScriptManager::LoadResource @ RVA 0x1139F0 (sig unique)`,
 then `[LoadResource#N] …\archives\_resdesc_50_*.lua`. Game exit=0, same as
 unhooked baseline. Companion CreateFileA detour (import-verified, no RVA) also
-fires (`openssl.cnf` — game barely uses the A-variant; W-variant noted for M5).
+fires (`openssl.cnf` - game barely uses the A-variant; W-variant noted for M5).
 
 ## Wine observations
 No Wine-specific hook issues. `CreateThread` from the watch path works;
@@ -56,7 +56,7 @@ MinHook trampoline executes; TLS reentrancy guard quiet (no recursion seen).
 - Full function body semantics beyond "loads resdesc lua" (M6).
 - Whether the RVA holds for other MCSM1 builds (M9 will re-validate per build).
 - `lua_newstate` anchor from the same table still unverified (bytes `8A 38 F7 FC`
-  at init — likely packed; needs unpack-aware check, not yet done).
+  at init - likely packed; needs unpack-aware check, not yet done).
 
 ## Confidence
 High for this build. Nothing here is assumed to transfer to other builds.

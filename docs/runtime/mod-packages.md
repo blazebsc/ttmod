@@ -47,7 +47,7 @@ Logs live in `logs/ttmod.log` (plus `ttmod.exit.log` with a state summary).
 ## Native code policy
 Manifest-declared plugins only (never stray DLLs); PE arch verified;
 `WARNING … can execute arbitrary code` logged on every native load.
-Packages are NOT sandboxed — stated in logs, CLI info, and here.
+Packages are NOT sandboxed - stated in logs, CLI info, and here.
 
 ## Proven (§33 + matrix case 9)
 drop-in .ttmod → cached → override consumed → disable → silent →

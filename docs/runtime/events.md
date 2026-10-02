@@ -6,14 +6,14 @@ on the caller thread; callbacks must be non-blocking and reentrant-safe.
 `dispatch` iterates a snapshot view; mutating the bus from a callback is
 forbidden (documented).
 
-## Events (precise names — file request + open ATTEMPT, not execution)
+## Events (precise names - file request + open ATTEMPT, not execution)
 - `onFileOpen` (1): any CreateFileW through the hook.
 - `onResdescOpen` (2): basename `_resdesc_*.lua` / `_rescdesc_*.lua`.
 - `onArchiveOpen` (3): basename `*.ttarch2`.
 - Classification is a pure function of the normalized path (tested).
 
 Event data: requested, normalized, resolved, winner, category, overridden,
-succeeded (real handle valid — factual, proven by a failed `openssl.cnf`
+succeeded (real handle valid - factual, proven by a failed `openssl.cnf`
 open with `ok=0`), caller thread id. Strings valid during callback only.
 
 ## Ordering (guaranteed by hook structure)
@@ -34,7 +34,7 @@ Loader accepts manifest api 1..2. `subscribe` returns token or -1.
 ## Lifetime rule (learned the hard way)
 The `ttmod_host` passed to `ttmod_plugin_init` MUST be static/global: plugins
 retain it for async callbacks. A stack instance dangles after `plugins_init`
-returns — this silently broke all callbacks until fixed (init-time logging
+returns - this silently broke all callbacks until fixed (init-time logging
 worked by luck of intact stack).
 
 ## Demo (`examples/event-log`, api v2)

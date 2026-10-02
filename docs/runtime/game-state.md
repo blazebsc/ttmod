@@ -17,7 +17,7 @@ the tracker is fed synchronously by the file-event path.
 
 ## Explicitly Unknown (not exposed)
 Current scene/characters/dialogue/choices/variables/flags/inventory/camera,
-save-file CONTENTS (prefs.prop/estore are binary PROP — parsing is M12
+save-file CONTENTS (prefs.prop/estore are binary PROP - parsing is M12
 offline-tooling work), script VM internals. The API will grow only with
 evidence; it will not guess.
 

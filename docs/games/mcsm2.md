@@ -1,9 +1,9 @@
-# docs/games/mcsm2.md — mostly Unknown (honest)
+# docs/games/mcsm2.md - mostly Unknown (honest)
 
-- What we have: `Minecraft - Story Mode - Season Two [FitGirl Repack].zip` (3.4 GB, 14 entries, FitGirl `fg-*.bin` + `setup.exe`). NOT installed — no exe to inspect. Do NOT claim arch/build.
+- What we have: `Minecraft - Story Mode - Season Two [FitGirl Repack].zip` (3.4 GB, 14 entries, FitGirl `fg-*.bin` + `setup.exe`). NOT installed - no exe to inspect. Do NOT claim arch/build.
 - External evidence: Season 2 PC requires **Windows 7 SP1 64-bit**, 3 GB RAM, 15 GB disk (Steam page via wiki). Released 2017-07-11, Telltale Tool, Lua. Strongly suggests **x64** PC build, but status = hypothesis until exe is installed and `parse_pe` is run.
-- TTG-Tools and Texture Tool both list MCSM2 support — resource pipeline likely shared, versions may differ.
-- telltale_hook has NO MCSM2 flag — hooking approach for MCSM2 is unproven.
+- TTG-Tools and Texture Tool both list MCSM2 support - resource pipeline likely shared, versions may differ.
+- telltale_hook has NO MCSM2 flag - hooking approach for MCSM2 is unproven.
 
 ```
 MCSM2 profile: defined, not implemented, arch TBD (likely x64), feature support TBD.
@@ -13,7 +13,7 @@ MCSM2 profile: defined, not implemented, arch TBD (likely x64), feature support 
 - FitGirl `fg-*.bin` are installer-internal (not listable/extractable with
   7z); the exe is only obtainable by running the interactive installer.
   Unattended install under Wine was not attempted (interactive GUI, 3.4 GB,
-  uncertain outcome) — deferred until needed, NOT faked.
+  uncertain outcome) - deferred until needed, NOT faked.
 - Architecture already routes correctly by construction: any x64 PE detects
   as `unknown-x64` / `defined-not-implemented` (unit-tested), so an MCSM2 exe
   will be safely identified-but-idle on first contact.

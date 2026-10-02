@@ -32,14 +32,14 @@ plugins: hello.mcsm initialized (rc=0)
 Dependencies, versions constraints, conflicts, load order, safe unload.
 
 ## ABI v2–v4 (later milestones, all additive)
-- v2: `subscribe(event_id, cb, ctx)` / `unsubscribe(token)` — file/resdesc/
+- v2: `subscribe(event_id, cb, ctx)` / `unsubscribe(token)` - file/resdesc/
   archive open events, dispatched synchronously on the game thread.
-- v3: `get_state(ttmod_state*)` — lifecycle snapshot (episodes seen,
+- v3: `get_state(ttmod_state*)` - lifecycle snapshot (episodes seen,
   counters, save dir).
-- v4: `get_mod_count()` / `get_mod_info(i, out*)` — installed-mod listing
+- v4: `get_mod_count()` / `get_mod_info(i, out*)` - installed-mod listing
   (what the in-game Mods screen shows).
 
-## ABI v5 — Lua execution (`queue_ui_chunk`, 2026-10-02)
+## ABI v5 - Lua execution (`queue_ui_chunk`, 2026-10-02)
 The superpower for "all kinds of mods": run your own Lua inside the game.
 
 ```c
@@ -50,19 +50,19 @@ if (host->api_version >= 5 && host->queue_ui_chunk) {
 ```
 
 Contract (read before using):
-- Chunks run on the GAME's script thread — at the next script-resource
+- Chunks run on the GAME's script thread - at the next script-resource
   load, on that Lua state, via the bridge's balanced-stack path. The
   loader never touches Lua from its own threads; plugins never should
   either. This call only QUEUES (thread-safe, non-blocking).
 - No return channel: results/errors are invisible to the plugin. Debug via
-  `ttmod_menu_log(s)` — registered on every captured state, lands in
+  `ttmod_menu_log(s)` - registered on every captured state, lands in
   ttmod.log as `menumods-lua: <s>`.
 - Fixed queue (16): flooding drops chunks (-1 returned, logged).
 - Engine menu idioms that are PROVEN safe live in
   `docs/runtime/in-game-mod-menu.md` (Menu_Create/Populate/Menu_Push,
-  Clone_Find on widget.agent). Click-callback DoStrings swallow errors —
+  Clone_Find on widget.agent). Click-callback DoStrings swallow errors -
   wrap risky engine calls in pcall and log.
-- Game state reached: whichever state is loading a script at drain time —
+- Game state reached: whichever state is loading a script at drain time -
   menu states during menu, gameplay states during play. Chunks run once.
 
 Demo: `examples/event-log/plugin.cpp` queues a chunk at init; the

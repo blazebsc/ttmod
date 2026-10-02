@@ -20,7 +20,7 @@ title-mcsm: title changed: 'Telltale Games' -> '[TTMod] Telltale Games'
 ```
 Cosmetic only. Polls `FindWindowA` (a `WH_CBT` variant was tried and
 REVERTED: threadId=0 hooks are desktop-wide in Wine and correlated with
-hangs/early exits — see below).
+hangs/early exits - see below).
 
 ## Incidental discoveries (M5 leads)
 - Engine opens resdesc loose files via `CreateFileW` with `\\?\` prefix:
@@ -28,7 +28,7 @@ hangs/early exits — see below).
   JesseMale*/Chores*), plus `_rescdesc_50_version_101/102.lua` (note the
   engine's own `rescdesc` typo).
 - Boot opens ~45+ resdesc files in deterministic order; game barely uses
-  the A-variant (`openssl.cnf` once — Steam/WININET, not the engine).
+  the A-variant (`openssl.cnf` once - Steam/WININET, not the engine).
 
 ## Wine anomalies (Unknown, recorded for M7)
 - In-process `EnumWindows` never enumerates the game window although X11
@@ -37,5 +37,5 @@ hangs/early exits — see below).
 - `WH_CBT` threadId=0 hook installed but never delivered callbacks; runs
   with it correlated with instability. Avoid global hooks under Wine.
 - Game exits 0 after ~4s in this environment with and without the framework
-  (identical wine-log depth) — menu lifetime is an environment property,
+  (identical wine-log depth) - menu lifetime is an environment property,
   not a framework effect.

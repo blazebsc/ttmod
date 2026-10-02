@@ -1,4 +1,4 @@
-# docs/research/telltale_hook.md — reference analysis (no code copied)
+# docs/research/telltale_hook.md - reference analysis (no code copied)
 
 Source: https://github.com/HW12Dev/telltale_hook @ main (2 commits), cloned 2026-09-16 to /tmp only.
 License: **no LICENSE file → treat as all-rights-reserved. Reference only.**
@@ -17,7 +17,7 @@ License: **no LICENSE file → treat as all-rights-reserved. Reference only.**
   `lua_newstate` + `ScriptManager::LoadResource`, registers `tthookprint`, replaces
   global `print`, then **infinite `while(true)` F1/F2 poll that never exits** (leaked thread).
 - `logging.cpp`: `log()/logln()` append to `log.txt` + stdout; no levels, no rotation, no thread sync.
-- `config.hpp` declares JSON config but `config.cpp` is a 3-line stub — no config system exists.
+- `config.hpp` declares JSON config but `config.cpp` is a 3-line stub - no config system exists.
 
 ## Hook model
 - MinHook (submodule) inline hooks; `HOOK_FUNCTION` macro logs create/enable per function.
@@ -27,11 +27,11 @@ License: **no LICENSE file → treat as all-rights-reserved. Reference only.**
   loadstring 0x60EBF0, pushboolean 0x60C8F0, gettop 0x60B860,
   ScriptManager__LoadResource 0x1139F0, CRC32 0x24A670, CRC64_CI 0x24A620,
   TTArchive2__Activate 0x6003D0.
-- `telltale_types.hpp` warns its own `TTArchive2` struct **"is incorrect for MCSMS1"** — do not reuse blindly.
+- `telltale_types.hpp` warns its own `TTArchive2` struct **"is incorrect for MCSMS1"** - do not reuse blindly.
 
 ## Build / compat
 - CMake, C++20, `set(TELLTALE_GAME SMSTW_REMASTERED)` compile-time default; VS2022 x86
-  (amd64 for 64-bit games). Game identity is **compile-time**, not detected — our
+  (amd64 for 64-bit games). Game identity is **compile-time**, not detected - our
   profile system must replace this. ImGui backend present but commented out.
 
 ## What we adopt (concepts only)
