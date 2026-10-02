@@ -1,6 +1,6 @@
 # docs/third-party.md
 
-Licensing matrix. Status as of 2026-09-16. No external code copied yet.
+Licensing matrix. Status as of 2026-10-02. MinHook, miniz, and Dear ImGui are vendored (licenses kept); everything else is reference-only.
 
 | Project | URL | License | Use |
 |---|---|---|---|
@@ -14,5 +14,6 @@ Licensing matrix. Status as of 2026-09-16. No external code copied yet.
 | StoryForge (B0zin0) | https://github.com/B0zin0/StoryForge | No explicit license found (assume all-rights-reserved). | UX reference only: launcher/mod-manager, per-season exe paths, GameBanana mods. Not runtime. |
 | MinHook (Tsuda Kageyu) | https://github.com/TsudaKageyu/minhook | BSD-2-Clause (LICENSE.txt kept) | **Vendored** under `third_party/minhook` (full src + include). Used for M2 detours. Attribution retained; binary redistribution reproduces copyright via docs. |
 | miniz (Rich Geldreich et al.) | https://github.com/richgel999/miniz | MIT (LICENSE kept) | **Vendored** under `third_party/miniz` (src + include + static `miniz_export.h`). ZIP read/write for `.ttmod` (core package + CLI + runtime cache). |
+| Dear ImGui (Omar Cornut) | https://github.com/ocornut/imgui | MIT (LICENSE kept) | **Vendored** under `third_party/imgui` (src + include). Compiled into the win32 runtime. |
 
 Rules: prefer MIT reuse with attribution → clean-room reimplementation → external process → GPL integration only if whole-work license permits. Uncertain = document, don't copy.

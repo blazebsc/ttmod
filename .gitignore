@@ -1,5 +1,6 @@
-build/
-build-win32/
-release/
+/build/
+/build-win32/
+/release/
 test-results/
 luac.out
+__pycache__/

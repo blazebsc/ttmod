@@ -1,7 +1,7 @@
 # docs/research/runtime.md
 
 ## Status
-- Known: MCSM1 is x86 PE32; proxy-DLL injection is plausible (telltale_hook ships `dinput8.dll`+`telltale_hook.dll` next to exe, incl. `MINECRAFTSTORYMODE` build). No hook written yet.
+- Known: MCSM1 is x86 PE32; proxy-DLL injection is plausible (telltale_hook ships `dinput8.dll`+`telltale_hook.dll` next to exe, incl. `MINECRAFTSTORYMODE` build). (M1-era note: hooks have since shipped - CreateFileW IAT + late MinHook detours on `lua_newstate` / `ScriptManager::LoadResource`, vendored MinHook.)
 - Observed: Lua 5.2.3 strings + `\x1bLEo` encrypted scripts; FMOD + VERSION imports; no `luaL_*` exports in strings (statically linked / renamed - needs disassembly).
 - Hypothesis: fastest M2 probe = proxy DLL that logs load + tries Lua exec (telltale_hook path), else hook a low-risk import (Version API) first.
 - Unknown: real function addresses/signatures, calling conventions, thread layout, resource-lookup path (VFS vs archive priority vs resdesc).

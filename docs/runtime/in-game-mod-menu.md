@@ -7,7 +7,7 @@ clicking it opens a native list of all installed mods (name, version,
 [ON]/[OFF]); each mod opens a details screen (version, Enabled toggle,
 per-type config rows incl. native text edit box, restart hint, Back);
 toggles/settings persist to `config/mods.json` + `config/<id>.json` and
-apply on restart. 19/19 native tests green; win32 DLLs staged.
+apply on restart. 20/20 tests green (15 native + 5 Python); win32 DLLs staged.
 
 ## Architecture (what actually ships)
 - `loader/windows/lua_bridge.cpp` - late (2.5 s, anchor-verified) MinHook

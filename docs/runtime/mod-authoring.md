@@ -71,9 +71,9 @@ Ship `"enabled": true` (default). Users override per-mod in
   modal text box (the save-rename idiom); cancel changes nothing.
 - Enable/disable stays in framework-owned `config/mods.json` - never write it yourself.
 - Install/remove/enable today = filesystem (`mods/` + `config/mods.json`);
-  the in-game screen for it is future work (see `in-game-mod-menu.md`).
+  the in-game Mods screen also edits enable/config (see `in-game-mod-menu.md`).
 
 ## 8. What NOT to rely on
 Scene/character/dialogue APIs (don't exist), archived-script overrides
-(engine reads those past CreateFileW), Lua execution APIs (research only),
-MCSM2 (detection only). See tier policy in `api-policy.md`.
+(engine reads those past CreateFileW), general Lua-value APIs (only ABI v5
+`queue_ui_chunk` for UI chunks exists), MCSM2 (detection only). See tier policy in `api-policy.md`.

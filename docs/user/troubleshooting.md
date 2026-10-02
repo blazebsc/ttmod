@@ -8,8 +8,8 @@ one-line session summary). Start there.
 | Game doesn't start at all (no window, instant exit) | First check `logs/` exists: if no log, the framework never loaded → DLLs misplaced (see Install). If a log ends mid-bootstrap, note the last line and report it. Try safe mode to rule out mods |
 | No `mods/` after launch | Framework DLLs not beside the exe, or wrong `dinput8.dll` won DLL search → verify the two files sit next to `MinecraftStoryMode.exe`; check a `logs/` dir appeared |
 | `Skipped: X: invalid manifest …` | Open the mod's `manifest.json`, fix the named field |
-| `rejected (api …)` | Mod needs a newer TTMod (`Detected: TTMod API …` is in the log header - update framework) |
-| `rejected (game not supported)` | Mod targets another game/season; nothing to fix on MCSM1 |
+| `Skipped: X: unsupported API …` | Mod needs a newer TTMod (log header shows `TTMod framework v…` - update framework) |
+| `Skipped: X: game not supported` | Mod targets another game/season; nothing to fix on MCSM1 |
 | `missing dependency …` | Install the named mod into `mods/` too |
 | `conflicts with present mod` | Keep the winner (higher priority, logged) or remove one |
 | `rejected (arch … != x86)` | 64-bit plugin on 32-bit MCSM1; needs an x86 build of the mod |

@@ -42,7 +42,7 @@ plugins, no events. Kept simple on purpose; GUI-ready later.
 ```text
 mods/ config/ logs/ ttmod/cache/
 ```
-Logs live in `logs/ttmod.log` (plus `ttmod.exit.log` with a state summary).
+Logs live in `logs/ttmod.log` (plus `logs/ttmod.exit.log` with a state summary).
 
 ## Native code policy
 Manifest-declared plugins only (never stray DLLs); PE arch verified;

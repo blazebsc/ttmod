@@ -21,7 +21,7 @@
 
 ## Rules
 - Never break a working mod without a major reason; then bump API, keep the
-  old path loading (M10 range check is the gate).
+  old path loading (the `1..TTMOD_PLUGIN_API_VERSION` range check in discovery is the gate).
 - Never silently change semantics; log behavior-affecting decisions.
 - Docs mark every surface with its tier (this file is the index).
 - Hook surface grows demand-driven only: a hook is a contract + a patch

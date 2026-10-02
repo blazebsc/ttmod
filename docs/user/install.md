@@ -24,7 +24,7 @@ internal `ttmod/` directory, writes `logs/ttmod.log`, and the game starts as
 usual. Check the first lines of the log:
 
 ```text
-TTMod framework v0.11.0 starting
+TTMod framework v0.12.0 starting
 Profile: mcsm1_pc_x86 status=supported
 [TTMod] Valid mods: 0 ...
 ```

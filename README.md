@@ -4,7 +4,7 @@
 
 1. Install TTMod Framework once (copy `dinput8.dll` + `ttmod_framework.dll`
    beside `MinecraftStoryMode.exe`).
-2. Launch MCSM once - the framework creates `mods/`, `config/`, `logs/`.
+2. Launch MCSM once - the framework creates `mods/`, `config/`, `logs/`, `ttmod/`.
 3. Download a mod (`.ttmod` file).
 4. Drag it into `mods/`:
    ```text

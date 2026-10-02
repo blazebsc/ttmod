@@ -29,7 +29,7 @@ event path (the title-mcsm poll is a demo-plugin choice, not architecture).
 ## Plugin ABI v2 (additive, v1-compatible)
 Host appends `subscribe/unsubscribe`; v1 plugins (first 5 fields) verified
 working unchanged (`hello.mcsm initialized (rc=0)` next to v2 subscribers).
-Loader accepts manifest api 1..2. `subscribe` returns token or -1.
+Loader accepts manifest api 1..5 (anything in `1..TTMOD_PLUGIN_API_VERSION`). `subscribe` returns token or -1.
 
 ## Lifetime rule (learned the hard way)
 The `ttmod_host` passed to `ttmod_plugin_init` MUST be static/global: plugins

@@ -8,6 +8,12 @@ and content control now go through a packer-proof IAT hook on
 `CreateFileW` (M2-completing hook, M4 rewrite, M5 path). The signature below
 is preserved for a post-unpack M6 attempt. No game code is patched.
 
+Update (M6+): the M6 attempt succeeded - late (2.5 s, anchor-verified)
+MinHook detours on game `lua_newstate` + `ScriptManager::LoadResource` are
+installed by `loader/windows/lua_bridge.cpp` and drive the shipped in-game
+Mods menu (see `docs/runtime/in-game-mod-menu.md`). The IAT hook above
+remains the file-IO path; the detours below are the Lua path.
+
 ## Known
 - imgRVA `0x1139F0` in the mcsm1_pc_x86 build (SHA256 `88443673…27817f7`).
 - cdecl `int (lua_State*, const char*)`: two stack params, hook reads a valid

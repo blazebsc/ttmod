@@ -19,8 +19,11 @@
 
 ## Mod-facing surface today
 - Resource-only script replacement via M5 (`files: {"archives/x.lua": ...}`).
-- No `register_script` / `run_script` / Lua-value API yet (M6 criteria do not
-  require them; VM internals still Unknown).
+- ABI v5 `queue_ui_chunk`: plugins queue a Lua source chunk that runs on the
+  game's script thread at the next script-resource load (results/errors are
+  invisible to the plugin; queue holds 16). Chunks can call
+  `ttmod_menu_log(...)` to trace into `ttmod.log`. No general
+  `register_script` / Lua-value API beyond this.
 
 ## Thread context (observed)
 - Framework init: dedicated init thread at process attach.
@@ -33,7 +36,8 @@
 - No caching behavior characterized (no cache files observed).
 - Script security model Unknown - treat mod scripts as fully trusted code.
 
-## Next (M7+)
-`onScriptLoaded`-style events derived from resdesc/archive open names
-(event-driven, no polling); post-unpack observational detours using the
-late-install timing result.
+## Next
+General `onScriptLoaded`-style events beyond resdesc/archive opens, and
+richer Lua-value APIs on top of the v5 chunk queue. M7 file/resdesc/archive
+open events already ship (`events.cpp`, ABI v2); the late-install detour
+timing result below is what the shipped bridge uses.
