@@ -30,13 +30,18 @@ function AgentSetProperty(a, k, v) rec('setprop', tostring(a and a.of), k, tostr
   local key = (tostring(a and a.of) or '?') .. '/' .. (a and a.clone or '') .. '/' .. k
   -- Only 'Text Color' exists on a label (in-game probe 2026-10-03); every other
   -- name is accepted-then-ignored, the silent-failure case read-back catches.
-  if k == 'Text Color' then _props[key] = v; _color[key] = v end
+  if k == 'Text Color' or k == 'Text Color Highlight' or k == 'Text Color Pressed' then
+    _props[key] = v
+    _color[key] = v
+  end
   _wrote[key] = v end
 -- Agent identity = widget id .. '/' .. clone name, so the getter sees the same
 -- key the setter wrote.
 local function AgentGetPropertyImpl(a, k)
   if k == nil then return nil end
-  if k ~= 'Text Color' then return nil end
+  if k ~= 'Text Color' and k ~= 'Text Color Highlight' and k ~= 'Text Color Pressed' then
+    return nil
+  end
   return _props[(tostring(a and a.of) or '?') .. '/' .. (a and a.clone or '') .. '/' .. k]
 end
 _wrote = {}
@@ -151,11 +156,14 @@ assert(nrec('add|prevpage|') == 1 and nrec('add|nextpage|') == 0, 'Previous on l
 -- mid-menu in-game 2026-10-02. So with no probe run, NO colour property is ever
 -- set (only the text). Run the probe, which arms the winner, then painting works.
 local function color_props(list)
-  local n = 0
+  local n, states = 0, 0
   for _, c in ipairs(list) do
     if c:sub(1, 7) == 'setprop' and c:find('|Text Color|', 1, true) then n = n + 1 end
+    if c:sub(1, 7) == 'setprop' and
+       (c:find('|Text Color Highlight|', 1, true) or c:find('|Text Color Pressed|', 1, true))
+    then states = states + 1 end
   end
-  return n
+  return n, states
 end
 calls = {}
 Menu_Mods_PickColor('demo.config', 'accent', 1)
@@ -170,28 +178,38 @@ assert(probed >= 3, 'probe dumped candidate properties, got ' .. probed)
 local won = false
 for _, c in ipairs(calls) do if c:find('probe-winner: Text Color', 1, true) then won = true end end
 assert(won, 'probe found Text Color')
+-- the engine repaints a row with a per-state colour on hover/press, so the
+-- state variants must be discovered and painted too (2026-10-03: hovering an
+-- accent row snapped it back to white)
+local gotstates = 0
+for _, c in ipairs(calls) do
+  if c:find('probe-state: Text Color', 1, true) then gotstates = gotstates + 1 end
+end
+assert(gotstates >= 2, 'probe found the hover/press state variants, got ' .. gotstates)
 TTMOD_PROBE_PROPS = nil
--- winner armed: swatches now paint, and ONLY with the proven property
+-- winner armed: swatches now paint base + state variants, ONLY proven props
 calls = {}
 Menu_Mods_PickColor('demo.config', 'accent', 1)
-assert(color_props(calls) == 6, 'six swatches painted after the probe')
+local painted_base, painted_states = color_props(calls)
+assert(painted_base == 6, 'six swatches painted after the probe, got ' .. painted_base)
+assert(painted_states >= 12, 'state variants painted too, got ' .. painted_states)
 for _, c in ipairs(calls) do
   if c:sub(1, 7) == 'setprop' and not c:find('Text String', 1, true) then
-    assert(c:find('|Text Color|', 1, true), 'only the proven property painted: ' .. c)
+    assert(c:find('|Text Color', 1, true), 'only proven properties painted: ' .. c)
   end
 end
 -- The engine stores this property as NAMED fields {r,g,b,a} (in-game probe
 -- 2026-10-03: 'type=table {a=0 b=0 g=0 r=0}'). A positional array is silently
 -- ignored, so pin the named shape: swatch 1 is #FFFFFF.
-local painted = 0
+local named = 0
 for _, v in pairs(_color) do
   if type(v) == 'table' then
     assert(v.r ~= nil and v.g ~= nil and v.b ~= nil and v.a ~= nil,
       'colour written with NAMED r/g/b/a fields, got ' .. type(v))
-    painted = painted + 1
+    named = named + 1
   end
 end
-assert(painted == 6, 'all six swatch colours written as named fields, got ' .. painted)
+assert(named >= 6, 'swatch colours written as named fields, got ' .. named)
 -- picking a swatch writes it and returns to details
 setter_log = {}
 calls = {}

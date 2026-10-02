@@ -64,7 +64,16 @@ end
 -- in Telltale UI scripts and engine widget property tables.
 -- Enabled by the bare global TTMOD_PROBE_PROPS = 1 (the C++ side sets it when
 -- TTMOD_PROBE=1 or config/probe-props exists).
+-- Declaration order matters here: probe_props() references these, so they must
+-- EXIST before it runs. A forward reference to a later `local` is a nil global
+-- at call time, which killed the game mid-menu (2026-10-02, theme_int).
 local TT_PROBE_DONE = false
+local theme_winner = nil
+-- State variants of the winner that the engine actually exposes, discovered by
+-- probe_props. The engine repaints a row with a per-state colour on hover/
+-- press, which is why an accent applied only to the base property reverts to
+-- white the moment the cursor touches a row.
+local theme_state_props = {}
 local TT_PROP_CANDIDATES = {
     'Color', 'Tint Color', 'Font Color', 'Text Color', 'Diffuse', 'Colour',
     'Color Tint', 'Tint', 'TextColour', 'TextColor', 'FontColour', 'FontColor',
@@ -72,8 +81,14 @@ local TT_PROP_CANDIDATES = {
     'ColorModulate', 'Modulate Color', 'Emissive Color', 'Text Diffuse',
     'Color State Normal', 'ColorNormal', 'Text Color Normal', 'Font Color Normal',
     'Color Highlight', 'Color Pressed', 'Color Disabled', 'Color Disabled Text',
+    -- State variants of the PROVEN name. Hovering a row resets it to white, so
+    -- the hover/pressed/selected variants need the accent too (verified in-game
+    -- 2026-10-03: 'Text Color' holds but hover overwrites it).
+    'Text Color Highlight', 'Text Color Hover', 'Text Color Pressed',
+    'Text Color Selected', 'Text Color Focus', 'Text Color Active',
+    'Text Color State Normal', 'Text Color Normal', 'Text Color Disabled',
+    'Text Color Highlighted', 'Text ColorPressed', 'TextColorHighlight',
 }
-local theme_winner = nil
 local function probe_props(agent)
     -- Log FIRST and never tostring() the agent: engine agents are userdata whose
     -- __tostring can fault, and a fault here kills the game mid-menu. Identity is
@@ -127,19 +142,20 @@ local function probe_props(agent)
         end
         mlog('probe: ' .. prop .. ' set=' .. tostring(ok) .. ' reads=' .. tostring(readable) ..
              (is_ours and ' *** MATCH ***' or '') .. detail)
-        if is_ours then
-            theme_winner = prop   -- arms paint() for the rest of the session
-            mlog('probe-winner: ' .. prop)
-            return
-        end
-        -- A property that READS BACK exists, even if our string value didn't
-        -- stick (it wanted a table). Adopt it as the winner and stop guessing:
-        -- paint() then tries every format including {r,g,b}. Continuing to probe
-        -- past a readable property is pointless - it is the only one that exists.
+        -- Any property that reads back EXISTS. The first one is the winner; the
+        -- rest are its per-state variants, which the engine repaints with on
+        -- hover/press (accent applied only to the base property reverts to
+        -- stock the moment the cursor touches a row). Never early-return: the
+        -- variants only turn up AFTER the winner in the list.
         if readable then
-            theme_winner = prop
-            mlog('probe-winner: ' .. prop .. ' (exists, value format differs)')
-            return
+            if theme_winner == nil then
+                theme_winner = prop   -- arms paint() for the rest of the session
+                mlog('probe-winner: ' .. prop ..
+                     (is_ours and '' or ' (exists, value format differs)'))
+            elseif prop ~= theme_winner then
+                theme_state_props[#theme_state_props + 1] = prop
+                mlog('probe-state: ' .. prop)
+            end
         end
     end
     -- Nothing matched by value. Report which properties read back at all: the
@@ -152,7 +168,13 @@ local function probe_props(agent)
         end
     end
     mlog('probe: readable = ' .. table.concat(readable, ', '))
-    mlog('probe: end (no match)')
+    if theme_winner ~= nil and #theme_state_props > 0 then
+        mlog('probe-winner: ' .. theme_winner .. ' + states: ' ..
+             table.concat(theme_state_props, ' '))
+    elseif theme_winner ~= nil then
+        mlog('probe-winner: ' .. theme_winner .. ' (no state variants)')
+    end
+    mlog('probe: end')
 end
 
 local theme_probed = false
@@ -166,16 +188,9 @@ local function theme_int(s)
     if r == nil then return nil end
     return 255 * 16777216 + tonumber(r, 16) * 65536 + tonumber(g, 16) * 256 + tonumber(b, 16)
 end
--- Paint `agent` with a specific hex, but ONLY with a property already proven by
--- probe_props. Until one exists this is a deliberate no-op: spraying unknown
--- property names at every label during a screen build is what killed the game
--- mid-menu on 2026-10-02. Discovery happens once, inside probe_props.
--- Value formats tried, cheapest first. Probing showed the label's real colour
--- property reads back as a TABLE, so {r,g,b} is included; the string and int
--- forms are kept because a different property/locale may want those.
-local function paint(agent, hex)
-    if agent == nil or pcall == nil or AgentSetProperty == nil then return false end
-    if theme_winner == nil then return false end
+-- Write one colour to one property, trying the value shapes the engine may
+-- want. Returns true on the first shape it accepts.
+local function set_color(agent, prop, hex)
     local r, g, b = hex:match('^#(%x%x)(%x%x)(%x%x)$')
     if r == nil then return false end
     local num = theme_int(hex)
@@ -183,14 +198,26 @@ local function paint(agent, hex)
     -- Named fields FIRST: the in-game probe showed the engine stores this
     -- property as {r=..,g=..,b=..,a=..}, so a positional array is silently
     -- ignored (which is why every earlier attempt looked like a failure).
-    if pcall(AgentSetProperty, agent, theme_winner,
-             { r = ri, g = gi, b = bi, a = 255 }) then return true end
-    -- Fallbacks for other builds/properties that want a different shape.
-    if pcall(AgentSetProperty, agent, theme_winner, hex) then return true end
-    if pcall(AgentSetProperty, agent, theme_winner, { ri, gi, bi, 255 }) then return true end
-    if pcall(AgentSetProperty, agent, theme_winner, { ri, gi, bi }) then return true end
-    if num ~= nil and pcall(AgentSetProperty, agent, theme_winner, num) then return true end
+    if pcall(AgentSetProperty, agent, prop, { r = ri, g = gi, b = bi, a = 255 }) then return true end
+    if pcall(AgentSetProperty, agent, prop, hex) then return true end
+    if pcall(AgentSetProperty, agent, prop, { ri, gi, bi, 255 }) then return true end
+    if pcall(AgentSetProperty, agent, prop, { ri, gi, bi }) then return true end
+    if num ~= nil and pcall(AgentSetProperty, agent, prop, num) then return true end
     return false
+end
+-- Paint `agent` with a specific hex, but ONLY with properties already proven by
+-- probe_props. Until one exists this is a deliberate no-op: spraying unknown
+-- property names at every label during a screen build is what killed the game
+-- mid-menu on 2026-10-02. Discovery happens once, inside probe_props.
+local function paint(agent, hex)
+    if agent == nil or pcall == nil or AgentSetProperty == nil then return false end
+    if theme_winner == nil then return false end
+    if not set_color(agent, theme_winner, hex) then return false end
+    -- State variants too, so hover/press does not snap back to stock colour.
+    for _, p in ipairs(theme_state_props) do
+        if p ~= theme_winner then set_color(agent, p, hex) end
+    end
+    return true
 end
 local function apply_theme(agent)
     -- Bare global, NOT _G.TTMOD_ACCENT: _G is NIL in the game's Lua runtime

@@ -130,6 +130,21 @@ probe-winner: Text Color (exists, value format differs)
 - `paint()` stays a no-op until the probe has run once per session: the
   property is discovered, never guessed, on the first label clone built.
 
+## Hover resets the colour (per-state properties)
+An accent applied only to the base `Text Color` works on a static screen but
+snaps back to stock the moment the cursor touches a row: the engine repaints
+each state (normal / highlighted / pressed) from its own property. The probe
+therefore does NOT stop at the first readable property - it keeps scanning and
+collects every readable sibling as a state variant (`probe-state: <name>`),
+which `paint()` then writes alongside the winner.
+
+**Declaration order in menumods_ui.lua is load-bearing.** `probe_props()`
+references `theme_winner` / `theme_state_props` / `theme_int`, so all must be
+declared ABOVE it. A reference to a later `local` is a nil global at call time,
+and in a click callback that kills the process instead of raising an error
+(cost a crash on 2026-10-02). `tests/test_menumods_ui.py` runs the real file
+and catches this class.
+
 ## Colour-property probe (diagnostic)
 `TTMOD_PROBE=1` env (any value but `0`) or an empty `config/probe-props` file
 turns on one-shot property enumeration: the first label clone the menu builds
