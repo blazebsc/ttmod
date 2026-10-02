@@ -73,42 +73,61 @@ local TT_PROP_CANDIDATES = {
     'Color State Normal', 'ColorNormal', 'Text Color Normal', 'Font Color Normal',
     'Color Highlight', 'Color Pressed', 'Color Disabled', 'Color Disabled Text',
 }
+local theme_winner = nil
 local function probe_props(agent)
-    if agent == nil or AgentGetProperty == nil or AgentSetProperty == nil then
-        mlog('probe: AgentGetProperty/SetProperty unavailable, cannot probe')
+    -- Log FIRST and never tostring() the agent: engine agents are userdata whose
+    -- __tostring can fault, and a fault here kills the game mid-menu. Identity is
+    -- never needed - only which property names read back.
+    mlog('probe: begin')
+    if agent == nil then
+        mlog('probe: no agent')
         return
     end
-    local int = theme_int('#FF00FF')
-    mlog('probe: begin on ' .. tostring(agent))
+    mlog('probe: getprop=' .. type(AgentGetProperty) .. ' setprop=' .. type(AgentSetProperty))
     for _, prop in ipairs(TT_PROP_CANDIDATES) do
         local ok = pcall(AgentSetProperty, agent, prop, '#FF00FF')
-        local back = nil
-        if ok then local ok2, v = pcall(AgentGetProperty, agent, prop); if ok2 then back = v end end
+        local back, is_ours = nil, false
+        if ok and AgentGetProperty ~= nil then
+            local ok2, v = pcall(AgentGetProperty, agent, prop)
+            if ok2 then
+                back = v
+                -- Compare by TYPE-safe identity: only strings and numbers can
+                -- be compared without risking a metamethod fault.
+                if type(v) == 'string' then is_ours = (v == '#FF00FF')
+                elseif type(v) == 'number' then is_ours = (v == 4294902015) end
+            end
+        end
         local readable = back ~= nil
-        local is_ours = readable and (tostring(back) == '#FF00FF' or tostring(back) == tostring(int))
-        -- readable-but-not-ours means the property EXISTS but we wrote the wrong
-        -- value type; log the type so the next attempt uses the right form.
+        -- readable-but-not-ours => property EXISTS, wrong value form. type() and
+        -- a length-bounded string are safe on any value.
         local detail = ''
-        if readable then detail = ' type=' .. type(back) .. ' val=' .. tostring(back) end
+        if readable then
+            local tv = type(back)
+            detail = ' type=' .. tv
+            if tv == 'string' then detail = detail .. ' val=' .. string.sub(back, 1, 32) end
+            if tv == 'number' then detail = detail .. ' val=' .. tostring(back) end
+        end
         mlog('probe: ' .. prop .. ' set=' .. tostring(ok) .. ' reads=' .. tostring(readable) ..
              (is_ours and ' *** MATCH ***' or '') .. detail)
         if is_ours then
+            theme_winner = prop   -- arms paint() for the rest of the session
             mlog('probe-winner: ' .. prop)
             return
         end
     end
-    -- Nothing matched by value. Report which properties are readable at all:
-    -- the real name is in that set even if the value format is unknown.
+    -- Nothing matched by value. Report which properties read back at all: the
+    -- real name is in that set even if the value format stays unknown.
     local readable = {}
-    for _, prop in ipairs(TT_PROP_CANDIDATES) do
-        local ok, v = pcall(AgentGetProperty, agent, prop)
-        if ok and v ~= nil then readable[#readable + 1] = prop end
+    if AgentGetProperty ~= nil then
+        for _, prop in ipairs(TT_PROP_CANDIDATES) do
+            local ok, v = pcall(AgentGetProperty, agent, prop)
+            if ok and v ~= nil then readable[#readable + 1] = prop end
+        end
     end
-    mlog('probe: readable-but-not-set = ' .. table.concat(readable, ', '))
+    mlog('probe: readable = ' .. table.concat(readable, ', '))
     mlog('probe: end (no match)')
 end
 
-local theme_winner = nil
 local theme_probed = false
 -- Swatch preview cache: per-agent last paint, so re-rendering a row does not
 -- re-probe or fight the engine's own refresh. Plain table, NOT setmetatable:
@@ -120,43 +139,17 @@ local function theme_int(s)
     if r == nil then return nil end
     return 255 * 16777216 + tonumber(r, 16) * 65536 + tonumber(g, 16) * 256 + tonumber(b, 16)
 end
--- Paint `agent` with a specific hex. Returns true when the engine accepted it.
+-- Paint `agent` with a specific hex, but ONLY with a property already proven by
+-- probe_props. Until one exists this is a deliberate no-op: spraying unknown
+-- property names at every label during a screen build is what killed the game
+-- mid-menu on 2026-10-02. Discovery happens once, inside probe_props.
 local function paint(agent, hex)
     if agent == nil or pcall == nil or AgentSetProperty == nil then return false end
+    if theme_winner == nil then return false end
     local num = theme_int(hex)
-    -- The engine's AgentSetProperty may accept an unknown key and silently do
-    -- nothing (pcall cannot see that), so a "winner" is only trusted when the
-    -- value also READS BACK. Until a property proves itself the probe keeps
-    -- trying the next candidate on each paint - cosmetic rows fall back to
-    -- their hex text, which is always correct.
-    local function readback(prop)
-        if AgentGetProperty == nil then return nil end
-        local ok, v = pcall(AgentGetProperty, agent, prop)
-        if not ok then return nil end
-        return v
-    end
-    local function same_color(a, b)
-        if a == b then return true end
-        local an, bn = theme_int(tostring(a)), theme_int(tostring(b))
-        return an ~= nil and an == bn
-    end
-    local function try(prop)
-        local ok = pcall(AgentSetProperty, agent, prop, hex)
-        if not ok and num ~= nil then ok = pcall(AgentSetProperty, agent, prop, num) end
-        if not ok then return false end
-        local v = readback(prop)
-        if v == nil then return false end -- unverifiable: keep probing
-        return same_color(v, hex)
-    end
-    if theme_winner ~= nil then return try(theme_winner) end
-    for _, prop in ipairs({'Color', 'Tint Color', 'Font Color', 'Text Color', 'Diffuse'}) do
-        if try(prop) then
-            theme_winner = prop
-            mlog('theme-winner: ' .. prop)
-            return true
-        end
-        mlog('theme-probe: ' .. prop .. '=fail')
-    end
+    local ok = pcall(AgentSetProperty, agent, theme_winner, hex)
+    if not ok and num ~= nil then ok = pcall(AgentSetProperty, agent, theme_winner, num) end
+    return ok
 end
 local function apply_theme(agent)
     -- Bare global, NOT _G.TTMOD_ACCENT: _G is NIL in the game's Lua runtime

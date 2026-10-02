@@ -142,23 +142,39 @@ Menu_Mods_PickColor('demo.config', 'accent', 3)
 assert(nrec('add|sw_13|') == 1 and nrec('add|sw_16|') == 1, 'page 3 tail')
 assert(nrec('add|sw_17|') == 0, 'no row past the palette')
 assert(nrec('add|prevpage|') == 1 and nrec('add|nextpage|') == 0, 'Previous on last page')
--- every swatch row painted with 'Color' exactly once (the only property the
--- stub reads back: unknown keys are accepted-then-ignored, the silent-failure
--- case the read-back guard handles; 'Tint Color' must NOT be attempted after
--- 'Color' proved itself)
+-- paint() is a NO-OP until a property has been proven by the probe: spraying
+-- unknown property names at every label during a screen build killed the game
+-- mid-menu in-game 2026-10-02. So with no probe run, NO colour property is ever
+-- set (only the text). Run the probe, which arms the winner, then painting works.
+local function color_props(list)
+  local n = 0
+  for _, c in ipairs(list) do
+    if c:sub(1, 7) == 'setprop' and c:find('|Color|#', 1, true) then n = n + 1 end
+  end
+  return n
+end
 calls = {}
 Menu_Mods_PickColor('demo.config', 'accent', 1)
-for i = 1, 6 do
-  local row = '|sw_' .. i .. '|'
-  local n, bad = 0, nil
-  for _, c in ipairs(calls) do
-    if c:sub(1, 7) == 'setprop' and c:find(row, 1, true) then
-      if c:find('|Color|#', 1, true) then n = n + 1
-      elseif not c:find('Text String', 1, true) then bad = c end
-    end
+assert(color_props(calls) == 0, 'no colour property before the probe')
+-- run the probe against a real label clone (TTMOD_PROBE_PROPS arms it)
+calls = {}
+TTMOD_PROBE_PROPS = 1
+Menu_Mods_Select('demo.config')
+local probed = 0
+for _, c in ipairs(calls) do if c:find('probe:', 1, true) then probed = probed + 1 end end
+assert(probed >= 3, 'probe dumped candidate properties, got ' .. probed)
+local won = false
+for _, c in ipairs(calls) do if c:find('probe-winner:', 1, true) then won = true end end
+assert(won, 'probe found a colour property')
+TTMOD_PROBE_PROPS = nil
+-- winner armed: swatches now paint, and ONLY with the proven property
+calls = {}
+Menu_Mods_PickColor('demo.config', 'accent', 1)
+assert(color_props(calls) == 6, 'six swatches painted after the probe')
+for _, c in ipairs(calls) do
+  if c:sub(1, 7) == 'setprop' and not c:find('Text String', 1, true) then
+    assert(c:find('|Color|#', 1, true), 'only the proven property painted: ' .. c)
   end
-  assert(n == 1, 'swatch ' .. i .. ' painted once, got ' .. n)
-  assert(bad == nil, 'swatch ' .. i .. ' painted only Color, got ' .. tostring(bad))
 end
 -- picking a swatch writes it and returns to details
 setter_log = {}

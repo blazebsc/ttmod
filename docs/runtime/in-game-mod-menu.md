@@ -96,6 +96,14 @@ process at the first Menu.lua load (`menumods_button_enabled()`).
   `_G` reappears in the UI.
 - Click callbacks swallow errors: trace with `ttmod_menu_log(s)` →
   `menumods-lua:` lines in `logs/ttmod.log`.
+- **`tostring()` on an engine agent can fault.** Agents are userdata whose
+  `__tostring` is not safe; calling it inside a click/populate path killed the
+  process mid-menu (2026-10-02, header label set, then silence + exit). Log
+  property NAMES, never the agent. Compare read-back values only when
+  `type()` says string/number.
+- **Never spray unknown `AgentSetProperty` names during a screen build.**
+  `paint()` is a deliberate no-op until `probe_props` has proven one property;
+  discovery is a single explicit pass, not per-label retrying.
 - `bridge_run_chunk` logs the pcall error MESSAGE, not just the code (a bare
   `pcall=2` names no cause, and these are the only diagnostics available).
 
