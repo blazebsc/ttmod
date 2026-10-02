@@ -75,31 +75,61 @@ local theme_winner = nil
 -- white the moment the cursor touches a row.
 local theme_state_props = {}
 
--- DUMP EVERY REAL PROPERTY of an agent. `AgentGetProperties` (verified present
--- in the exe string table, alongside AgentGetProperty/AgentSetProperty) returns
--- the agent's actual property list, so we can read the true names instead of
--- guessing them. Returns a space-separated string, or nil when unavailable.
+-- DUMP EVERY REAL PROPERTY of an agent. The exe exports AgentGetProperties /
+-- AgentGetClassProperties / AgentGetRuntimeProperties / AgentGetSceneProperties
+-- / AgentGetTransientProperties / AgentHasProperty, but their LUA signatures are
+-- not discoverable from the binary, so try the plausible shapes and report what
+-- answered. Returns a space-separated name list, or nil.
 local function dump_props(agent)
     if agent == nil then return nil end
-    for _, fn in ipairs({ AgentGetProperties, AgentGetClassProperties,
-                          AgentGetRuntimeProperties }) do
-        if fn ~= nil then
-            local ok, list = pcall(fn, agent)
-            if ok and list ~= nil then
-                local parts = {}
-                -- A list may be a table of names or one space-joined string.
-                if type(list) == 'string' then
-                    for w in string.gmatch(list, '[^%s,]+') do parts[#parts + 1] = w end
-                elseif type(list) == 'table' then
-                    for _, v in ipairs(list) do
-                        if type(v) == 'string' then parts[#parts + 1] = v
-                        elseif type(v) == 'table' and type(v.name) == 'string' then
-                            parts[#parts + 1] = v.name
-                        end
-                    end
+    local fns = {
+        { 'AgentGetProperties', AgentGetProperties },
+        { 'AgentGetClassProperties', AgentGetClassProperties },
+        { 'AgentGetRuntimeProperties', AgentGetRuntimeProperties },
+        { 'AgentGetSceneProperties', AgentGetSceneProperties },
+        { 'AgentGetTransientProperties', AgentGetTransientProperties },
+    }
+    local function names_of(list)
+        if list == nil then return nil end
+        local parts = {}
+        if type(list) == 'string' then
+            for w in string.gmatch(list, '[^%s,]+') do parts[#parts + 1] = w end
+        elseif type(list) == 'table' then
+            for _, v in ipairs(list) do
+                if type(v) == 'string' then parts[#parts + 1] = v
+                elseif type(v) == 'table' and type(v.name) == 'string' then
+                    parts[#parts + 1] = v.name
+                elseif type(v) == 'table' and type(v[1]) == 'string' then
+                    parts[#parts + 1] = v[1]
                 end
-                if #parts > 0 then return table.concat(parts, ' ') end
             end
+        else
+            return nil
+        end
+        if #parts == 0 then return nil end
+        return table.concat(parts, ' ')
+    end
+    -- Shapes to try, cheapest first: (agent), (agent, true), (agent, nil),
+    -- (agent, '') for a "runtime only" / "class defaults" style flag.
+    local shapes = {
+        { name = '(agent)', call = function(f, a) return f(a) end },
+        { name = '(agent,true)', call = function(f, a) return f(a, true) end },
+        { name = '(agent,nil)', call = function(f, a) return f(a, nil) end },
+        { name = '(agent,"")', call = function(f, a) return f(a, '') end },
+    }
+    for _, e in ipairs(fns) do
+        local fname, fn = e[1], e[2]
+        if fn ~= nil then
+            for _, sh in ipairs(shapes) do
+                local ok, list = pcall(sh.call, fn, agent)
+                if ok then
+                    local got = names_of(list)
+                    if got ~= nil then return fname .. sh.name .. ' ' .. got end
+                end
+            end
+            mlog('probe-all: ' .. fname .. ' present, no shape returned names')
+        else
+            mlog('probe-all: ' .. fname .. ' missing')
         end
     end
     return nil
@@ -290,6 +320,13 @@ local function setlabel(btn, text)
                 if TTMOD_PROBE_PROPS == 1 and not TT_PROBE_DONE then
                     TT_PROBE_DONE = true
                     probe_props(lab)
+                    -- The engine repaints the ROW (the button agent), not the
+                    -- label, on hover - so enumerate that too. Hover-state
+                    -- colours live there.
+                    if ag ~= nil then
+                        local blist = dump_props(ag)
+                        mlog('probe-all-button: ' .. (blist or 'unavailable'))
+                    end
                 end
                 apply_theme(lab)
                 return lab
