@@ -245,6 +245,19 @@ static void build_scanned(InitCtx& ctx) {
             ttmod::Logger lg;
             if (lg.open(ctx.logpath))
                 lg.info("[TTMod] " + m.id + ": declared plugin missing: " + m.manifest.plugin);
+        } else if (m.manifest.plugin.empty() && !has_dll) {
+            // A DLL sitting in plugins/ (or anywhere else) that the manifest
+            // does not point at is SILENTLY ignored: the mod loads as
+            // resource-only and its plugin never runs. That cost a day of
+            // "the mod does nothing" (2026-10-02, menu.theme). Say so.
+            DWORD sub = GetFileAttributesA(ttmod_win::join(dir, "plugins").c_str());
+            if (sub != INVALID_FILE_ATTRIBUTES && (sub & FILE_ATTRIBUTE_DIRECTORY)) {
+                ttmod::Logger lg;
+                if (lg.open(ctx.logpath))
+                    lg.info("[TTMod] " + m.id +
+                            ": plugins/ exists but the manifest declares no \"plugin\" "
+                            "path, so it is ignored (add \"plugin\": \"plugins/<name>.dll\")");
+            }
         }
         ctx.all.push_back({dir, has_dll, m.packaged, has_dll ? prel : "", m.manifest});
     }

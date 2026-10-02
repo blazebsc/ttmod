@@ -2,9 +2,11 @@
     "id": "menu.theme",
     "name": "Menu Theme (accent demo)",
     "version": "1.0.0",
-    "description": "Tints the native Mods menu from config/menu-theme.json.",
+    "description": "Tints the native Mods menu from config/menu.theme.json.",
     "api": 5,
     "games": ["minecraft-story-mode:s1"],
+    "plugin": "plugins/menu-theme.dll",
+    "arch": "x86",
     "config": [
         {"key": "accent", "type": "color", "label": "Accent color", "default": "#E0A040"}
     ]
