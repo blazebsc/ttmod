@@ -148,7 +148,31 @@ local function dump_props(agent)
                 local packed = { pcall(sh.call, fn, agent) }
                 local ok = packed[1]
                 if ok then
-                    for i = 2, #packed do
+                    -- Log EVERY return's type first. This binding returns at
+                    -- least a type name ('__ScriptObject') before the payload,
+                    -- so accepting the first parseable string throws away the
+                    -- answer. Seeing the full shape costs one launch; guessing
+                    -- the signature costs a week.
+                    if sh.name == '(agent)' then
+                        local shapes_seen = {}
+                        for i = 2, #packed do shapes_seen[#shapes_seen + 1] =
+                            type(packed[i]) end
+                        mlog('enumer-shape: ' .. fname .. ' returns ' .. #shapes_seen ..
+                             ' value(s): ' .. table.concat(shapes_seen, ','))
+                        for i = 2, #packed do
+                            local t = type(packed[i])
+                            if t == 'table' then
+                                local n = 0
+                                for _ in pairs(packed[i]) do n = n + 1 end
+                                mlog('enumer-table: ' .. fname .. ' ret' .. (i - 1) ..
+                                     ' has ' .. n .. ' entries')
+                            elseif t == 'string' then
+                                mlog('enumer-str: ' .. fname .. ' ret' .. (i - 1) ..
+                                     ' = ' .. string.sub(packed[i], 1, 120))
+                            end
+                        end
+                    end
+                    for i = #packed, 2, -1 do
                         local got = names_of(packed[i])
                         if got ~= nil then
                             return fname .. sh.name .. ' ret' .. (i - 1) .. ' ' .. got
@@ -415,15 +439,27 @@ local function theme_widget(widget)
         end
     end
     -- One read-only discovery pass per session, on the first themed widget.
-    -- Sweeps the BUTTON agent (where hover state lives) and its label.
+    -- Sweeps the BUTTON agent and every child the theming above already found:
+    -- 'Text Color' lives on the LABEL, so the state colours almost certainly do
+    -- too. Report why a child was skipped instead of dropping it silently (that
+    -- is why the label never appeared in the log on 2026-10-03).
     if not TT_SWEEP_DONE then
         TT_SWEEP_DONE = true
         pcall(sweep_props, ag, 'button')
         if Clone_Find ~= nil then
-            pcall(function()
-                local okc, c = pcall(Clone_Find, ag, 'label')
-                if okc and c ~= nil then sweep_props(c, 'label') end
-            end)
+            for _, child in ipairs({ 'label', 'ui_listButton_label', 'caption', 'text',
+                                     'ui_header_header', 'button' }) do
+                pcall(function()
+                    local okc, c = pcall(Clone_Find, ag, child)
+                    if not okc then
+                        mlog('sweep-child ' .. child .. ': Clone_Find threw')
+                    elseif c == nil then
+                        mlog('sweep-child ' .. child .. ': not present')
+                    else
+                        sweep_props(c, child)
+                    end
+                end)
+            end
         end
     end
 end
