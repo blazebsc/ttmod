@@ -1,0 +1,6 @@
+{
+    "greeting": "Hello from demo-config!",
+    "level": 3,
+    "fancy": true,
+    "mode": "cozy"
+}

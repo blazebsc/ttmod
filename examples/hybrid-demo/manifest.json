@@ -1,0 +1,11 @@
+{
+    "id": "hybrid.demo",
+    "name": "Hybrid demo (native + files)",
+    "version": "1.0.0",
+    "api": 1,
+    "games": ["minecraft-story-mode:s1"],
+    "plugin": "plugins/hybrid.dll",
+    "files": {
+        "archives/_resdesc_50_German108.lua": "files/_resdesc_50_German108.lua"
+    }
+}

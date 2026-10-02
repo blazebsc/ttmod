@@ -1,0 +1,5 @@
+build/
+build-win32/
+release/
+test-results/
+luac.out

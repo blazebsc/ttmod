@@ -1,0 +1,12 @@
+{
+    "id": "disabled.demo",
+    "name": "Disabled mod (M5 enable/disable test)",
+    "version": "1.0.0",
+    "api": 1,
+    "games": ["minecraft-story-mode:s1"],
+    "enabled": false,
+    "priority": 999,
+    "files": {
+        "archives/_resdesc_50_German108.lua": "files/_resdesc_50_German108.lua"
+    }
+}

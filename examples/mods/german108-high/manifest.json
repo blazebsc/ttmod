@@ -1,0 +1,11 @@
+{
+    "id": "german108.high",
+    "name": "German108 conflicting override, higher priority (M5 test)",
+    "version": "1.0.0",
+    "api": 1,
+    "games": ["minecraft-story-mode:s1"],
+    "priority": 200,
+    "files": {
+        "archives/_resdesc_50_German108.lua": "files/_resdesc_50_German108.lua"
+    }
+}

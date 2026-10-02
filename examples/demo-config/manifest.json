@@ -1,0 +1,16 @@
+{
+    "id": "demo.config",
+    "name": "Demo Config",
+    "version": "1.0.0",
+    "description": "End-to-end proof mod for the native Mods manager.",
+    "api": 1,
+    "games": ["minecraft-story-mode:s1"],
+    "plugin": "plugins/demo.dll",
+    "arch": "x86",
+    "config": [
+        {"key": "greeting", "type": "string", "label": "Greeting", "default": "Hello from demo-config!"},
+        {"key": "level", "type": "int", "label": "Level", "default": 3, "min": 1, "max": 9, "step": 1},
+        {"key": "fancy", "type": "bool", "label": "Fancy", "default": true},
+        {"key": "mode", "type": "enum", "label": "Mode", "options": ["cozy", "wild"]}
+    ]
+}

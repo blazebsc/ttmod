@@ -1,0 +1,7 @@
+{
+    "id": "event.log",
+    "name": "Event Log (M7 demo)",
+    "version": "1.0.0",
+    "api": 3,
+    "games": ["minecraft-story-mode:s1"]
+}

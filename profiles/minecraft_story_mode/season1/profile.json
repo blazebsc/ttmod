@@ -1,0 +1,1 @@
+{"game": "minecraft-story-mode", "season": 1, "arch": "x86", "status": "detected-offline", "exe": {"size": 12179904, "timestamp": 1463779093, "machine": "0x014C", "opt_magic": "0x10B", "linker": "10.0", "lua": "5.2.3", "sha256": "8844367384939dfdc815b0c1129cb268968409dda9da17f3ae0947f4a27817f7"}, "capabilities": "TBD-runtime"}

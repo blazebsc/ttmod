@@ -1,0 +1,7 @@
+{
+    "id": "title.prefix",
+    "name": "Title Prefix (config demo)",
+    "version": "1.0.0",
+    "api": 1,
+    "games": ["minecraft-story-mode:s1"]
+}

@@ -1,0 +1,7 @@
+{
+    "id": "title.mcsm",
+    "name": "Title MCSM (first mod demo)",
+    "version": "1.0.0",
+    "api": 1,
+    "games": ["minecraft-story-mode:s1"]
+}

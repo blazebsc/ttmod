@@ -1,0 +1,12 @@
+{
+    "id": "invalid.demo",
+    "name": "Invalid overrides (M5 safe-failure test)",
+    "version": "1.0.0",
+    "api": 1,
+    "games": ["minecraft-story-mode:s1"],
+    "files": {
+        "archives/never-loads.lua": "files/missing.lua",
+        "archives/ok.lua": "../evil.lua",
+        "c:/windows/not-a-game-file.txt": "files/x.txt"
+    }
+}
