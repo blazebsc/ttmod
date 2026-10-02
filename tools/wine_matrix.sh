@@ -34,26 +34,26 @@ run_case resolver-empty
 chk resolver-empty "index ready" 1
 echo "### 4 valid mod (german108-override, unpacked)"
 M="$G/mods/german108-override"; mkdir -p "$M/files"
-cp "$T/examples/mods/german108-override/manifest.json" "$M/"
+cp "$T/tests/fixtures/german108-override/manifest.json" "$M/"
 cp "$A107" "$M/files/_resdesc_50_German108.lua"
 run_case valid-mod
 chk valid-mod "indexed|override: german" 4
 echo "### 5 conflict A+B (B priority 200 wins)"
 M2="$G/mods/german108-high"; mkdir -p "$M2/files"
-cp "$T/examples/mods/german108-high/manifest.json" "$M2/"
+cp "$T/tests/fixtures/german108-high/manifest.json" "$M2/"
 cp "$BOOT" "$M2/files/_resdesc_50_German108.lua"
 run_case conflict
 chk conflict "indexed|CONFLICT|winner|override:" 8
 echo "### 6 invalid + disabled mods"
 rm -rf "$G/mods"
 mkdir -p "$G/mods/invalid-demo" "$G/mods/disabled-demo"
-cp "$T/examples/mods/invalid-demo/manifest.json" "$G/mods/invalid-demo/"
-cp "$T/examples/mods/disabled-demo/manifest.json" "$G/mods/disabled-demo/"
+cp "$T/tests/fixtures/invalid-demo/manifest.json" "$G/mods/invalid-demo/"
+cp "$T/tests/fixtures/disabled-demo/manifest.json" "$G/mods/disabled-demo/"
 run_case invalid
 chk invalid "problem:|disabled|no usable|index ready" 8
 echo "### 8 M10 deps/conflicts (needs german108-override present)"
 mkdir -p "$G/mods/german108-override/files"
-cp "$T/examples/mods/german108-override/manifest.json" "$G/mods/german108-override/"
+cp "$T/tests/fixtures/german108-override/manifest.json" "$G/mods/german108-override/"
 cp "$G/archives/_resdesc_50_German107.lua" "$G/mods/german108-override/files/_resdesc_50_German108.lua"
 for m in dep-ok dep-missing dep-ver conflictme; do mkdir -p "$G/mods/$m/files"; done
 python3 - "$G/mods" <<'EOF'
@@ -73,7 +73,7 @@ run_case deps
 chk deps "rejected|skipped|override: german" 8
 echo "### 9 M11 packaged mod (drop-in, disable, delete)"
 rm -rf "$G/mods" && mkdir -p /tmp/opencode/m11m/files
-cp "$T/examples/mods/german108-override/manifest.json" /tmp/opencode/m11m/
+cp "$T/tests/fixtures/german108-override/manifest.json" /tmp/opencode/m11m/
 cp "$A107" /tmp/opencode/m11m/files/_resdesc_50_German108.lua
 "$T/build/ttmod" package create /tmp/opencode/m11m /tmp/opencode/m11m.ttmod
 mkdir -p "$G/mods" && cp /tmp/opencode/m11m.ttmod "$G/mods/"
@@ -90,7 +90,7 @@ run_case packaged-deleted
 chk packaged-deleted "Valid mods: 0" 1
 echo "### 10 M20 hybrid mod (native plugin + files override)"
 rm -rf "$G/mods" && mkdir -p "$G/mods/hybrid-demo/files" "$G/mods/hybrid-demo/plugins"
-cp "$T/examples/hybrid-demo/manifest.json" "$G/mods/hybrid-demo/"
+cp "$T/tests/fixtures/hybrid-demo/manifest.json" "$G/mods/hybrid-demo/"
 cp "$T/build-win32/example-plugins/hello-mcsm/plugin.dll" "$G/mods/hybrid-demo/plugins/hybrid.dll"
 cp "$A107" "$G/mods/hybrid-demo/files/_resdesc_50_German108.lua"
 run_case hybrid

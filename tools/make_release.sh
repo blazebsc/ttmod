@@ -23,7 +23,7 @@ for ex in hello-mcsm title-mcsm event-log; do
 done
 # Resource-mod template (manifest + instructions; user adds payload files)
 mkdir -p "$R/examples/resource-template/files"
-cp "$T/examples/mods/german108-override/manifest.json" "$R/examples/resource-template/manifest.json"
+cp "$T/tests/fixtures/german108-override/manifest.json" "$R/examples/resource-template/manifest.json"
 cat > "$R/examples/resource-template/README.txt" <<'EOF'
 Example resource mod template.
 1. Copy a game file you want to replace into files/ (same relative path as
