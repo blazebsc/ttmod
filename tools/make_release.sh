@@ -12,7 +12,8 @@ echo "TTMod release $VER -> $R"
 rm -rf "$R"
 mkdir -p "$R/examples"
 cp "$T/build-win32/dinput8.dll" "$T/build-win32/ttmod_framework.dll" "$R/" || exit 1
-# Example plugins (code only, no game content)
+# Example plugins (code only, no game content). The DLL lands at the path the
+# manifest declares in "plugin" - an undeclared DLL is silently NOT loaded.
 for ex in hello-mcsm title-mcsm event-log; do
   rm -rf "/tmp/opencode/rel_$ex"
   mkdir -p "/tmp/opencode/rel_$ex"
@@ -21,6 +22,14 @@ for ex in hello-mcsm title-mcsm event-log; do
   "$T/build/ttmod" package create "/tmp/opencode/rel_$ex" "$R/examples/$ex.ttmod" || exit 1
   "$T/build/ttmod" package validate "$R/examples/$ex.ttmod" || exit 1
 done
+# menu-theme declares "plugin": "plugins/menu-theme.dll"
+rm -rf /tmp/opencode/rel_menu-theme
+mkdir -p /tmp/opencode/rel_menu-theme/plugins
+cp "$T/examples/menu-theme/manifest.json" /tmp/opencode/rel_menu-theme/
+cp "$T/build-win32/example-plugins/menu-theme/menu-theme.dll" \
+   /tmp/opencode/rel_menu-theme/plugins/
+"$T/build/ttmod" package create /tmp/opencode/rel_menu-theme "$R/examples/menu-theme.ttmod" || exit 1
+"$T/build/ttmod" package validate "$R/examples/menu-theme.ttmod" || exit 1
 # Resource-mod template (manifest + instructions; user adds payload files)
 mkdir -p "$R/examples/resource-template/files"
 cp "$T/tests/fixtures/german108-override/manifest.json" "$R/examples/resource-template/manifest.json"

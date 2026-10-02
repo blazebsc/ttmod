@@ -34,6 +34,21 @@ Add `"plugin": "plugins/my.dll"` (+ optional `"arch": "x86"`) and ship the
 x86 DLL. It must export `int ttmod_plugin_init(const ttmod_host*)`.
 Native code runs wild: users see a WARNING in the log on every load.
 
+Two valid layouts:
+```text
+mymod/                              mymod/
+  manifest.json                      manifest.json   { "plugin": "plugins/mymod.dll" }
+  plugin.dll                         plugins/mymod.dll
+```
+A `plugins/` folder with NO `"plugin"` key loads as **resource-only and the
+plugin never runs, silently** - the mod shows in the menu and does nothing.
+The framework now logs `plugins/ exists but the manifest declares no "plugin"
+path` for that case (added 2026-10-03, after `menu-theme` lost a day to it).
+
+Confirm it loaded: `logs/ttmod.log` must contain `plugins: <id> validated` and
+`plugins: <id> initialized (rc=0)`. **Zero `plugins:` lines means the plugin
+is not loading at all** - check the declared path before anything else.
+
 ## 4. Events (ABI v2+)
 ```c
 host->subscribe(TTMOD_EVENT_RESDESC_OPEN, my_cb, ctx);
