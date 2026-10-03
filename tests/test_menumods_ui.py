@@ -263,8 +263,8 @@ for _, c in ipairs(calls) do all_names = all_names .. c .. '\n' end
 -- PLAIN search (4th arg true), so literal text - no '%' pattern escapes here.
 assert(all_names:find('names tried', 1, true) ~= nil,
   'read-only sweep ran automatically, no debug flag needed')
-assert(all_names:find('sweep-button-all:', 1, true) ~= nil,
-  'sweep summarised what the button agent exposes')
+assert(all_names:find('sweep-root-all:', 1, true) ~= nil,
+  'sweep summarised what the widget root exposes')
 assert(all_names:find('Text Color', 1, true) ~= nil,
   'sweep reported the colour property it found')
 -- The engine stores this property as NAMED fields {r,g,b,a} (in-game probe

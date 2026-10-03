@@ -396,6 +396,19 @@ local TT_SWEEP_SUFFIXES = {
     'Color', 'Colour', 'ColorNormal', 'ColorHighlight', 'ColorHover',
     'ColorPressed', 'ColorSelected', 'ColorDisabled', 'StateNormal',
 }
+-- The engine's own property namespace uses DASHED names ('Button - Command',
+-- 'Text String' - both verified in our research). The colour-name sweep above
+-- never covered that family, which is where a highlight/state property would
+-- most plausibly live. Read-only, so just try them.
+local TT_SWEEP_DASHED = {
+    'Button - Command', 'Button - Highlight', 'Button - State',
+    'Button - Selected', 'Button - Hover', 'Button - Pressed',
+    'Button - Normal', 'Button - Disabled', 'Button - Focus',
+    'Highlight', 'Highlighted', 'Hover', 'Hovered', 'State',
+    'Selected', 'Pressed', 'Normal', 'Disabled', 'Focus', 'Focused',
+    'Enabled', 'Visible', 'Active', 'Tint Color', 'Image Color',
+    'Highlight Color', 'Selection Color',
+}
 local function sweep_props(agent, tag)
     if agent == nil or AgentGetProperty == nil then return end
     local found = {}
@@ -414,6 +427,36 @@ local function sweep_props(agent, tag)
                 found[name] = true
                 mlog('sweep-' .. tag .. '-found: ' .. name .. ' type=' .. type(v))
             end
+        end
+    end
+    -- The engine's own dashed property namespace ('Button - Command',
+    -- 'Text String') plus bare state names - a highlight/state property would
+    -- live here, and this family was never tried before (2026-10-03 gap).
+    for _, name in ipairs(TT_SWEEP_DASHED) do
+        tries = tries + 1
+        local ok, v = pcall(AgentGetProperty, agent, name)
+        if ok and v ~= nil then
+            found[name] = true
+            -- Log the VALUE for state names: knowing Highlight reads false (or
+            -- 0, or a table) is itself the discovery.
+            local tv = type(v)
+            local detail = ''
+            if tv == 'string' then detail = ' val=' .. string.sub(v, 1, 24)
+            elseif tv == 'number' or tv == 'boolean' then detail = ' val=' .. tostring(v)
+            elseif tv == 'table' then
+                local parts = {}
+                for k, fv in pairs(v) do
+                    if type(fv) == 'number' or type(fv) == 'string' or
+                       type(fv) == 'boolean' then
+                        parts[#parts + 1] = tostring(k) .. '=' .. tostring(fv)
+                    else
+                        parts[#parts + 1] = tostring(k) .. '=<' .. type(fv) .. '>'
+                    end
+                end
+                table.sort(parts)
+                detail = ' {' .. table.concat(parts, ' ') .. '}'
+            end
+            mlog('sweep-' .. tag .. '-found: ' .. name .. ' type=' .. tv .. detail)
         end
     end
     mlog('sweep-' .. tag .. ': ' .. tries .. ' names tried')
@@ -561,14 +604,18 @@ theme_widget_settled = function(widget)
         end
     end
     -- One read-only discovery pass per session, once a widget really is
-    -- populated. Sweeps the button agent and every child clone: 'Text Color'
-    -- lives on the LABEL, so the state colours almost certainly do too.
+    -- populated. Walks the REAL clone chain from UI_ListButton.lua (our own
+    -- research, docs/runtime/in-game-mod-menu.md):
+    --   widget.agent -> 'ui_listButton_button' -> .agent -> 'label'
+    -- The button-box clone was never swept before (2026-10-03 gap) and it is
+    -- where a hover-highlight property would live: sweeps are read-only and
+    -- safe, so cover every hop.
     if not TT_SWEEP_DONE and found_any then
         TT_SWEEP_DONE = true
-        pcall(sweep_props, ag, 'button')
+        pcall(sweep_props, ag, 'root')
         if Clone_Find ~= nil then
             for _, child in ipairs({ 'label', 'ui_listButton_label', 'caption', 'text',
-                                     'ui_header_header', 'button' }) do
+                                     'ui_header_header', 'ui_listButton_button' }) do
                 pcall(function()
                     local okc, c = pcall(Clone_Find, ag, child)
                     if not okc then
@@ -577,6 +624,19 @@ theme_widget_settled = function(widget)
                         mlog('sweep-child ' .. child .. ': not present')
                     else
                         sweep_props(c, child)
+                        -- the real chain continues THROUGH the button clone
+                        if child == 'ui_listButton_button' and c ~= nil then
+                            local oka, ba = pcall(function()
+                                return (c.agent ~= nil) and c.agent or c
+                            end)
+                            if oka and ba ~= nil then
+                                sweep_props(ba, 'button-agent')
+                                local okl, lab = pcall(Clone_Find, ba, 'label')
+                                if okl and lab ~= nil then
+                                    sweep_props(lab, 'button-label')
+                                end
+                            end
+                        end
                     end
                 end)
             end
