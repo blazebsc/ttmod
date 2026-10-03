@@ -349,6 +349,14 @@ end
 -- probe_props. Until one exists this is a deliberate no-op: spraying unknown
 -- property names at every label during a screen build is what killed the game
 -- mid-menu on 2026-10-02. Discovery happens once, inside probe_props.
+-- Selection/highlight colours, discovered in-game 2026-10-03 by sweeping the
+-- engine's DASHED property namespace on the button clone:
+--   Selection Color = {r=0.5, g=1, b=0.5, a=1}  (light green, stock)
+-- This is the row's hover/selection highlight. Painted with the accent so a
+-- highlighted row reads as accent-on-accent instead of snapping to stock.
+-- ponytail: single discovered name; if press/disabled variants are ever found,
+-- add them here rather than adding a discovery mechanism.
+local TT_STATE_COLOUR_PROPS = { 'Selection Color' }
 local function paint(agent, hex)
     if agent == nil or pcall == nil or AgentSetProperty == nil then return false end
     if theme_winner == nil then return false end
@@ -356,6 +364,11 @@ local function paint(agent, hex)
     -- State variants too, so hover/press does not snap back to stock colour.
     for _, p in ipairs(theme_state_props) do
         if p ~= theme_winner then set_color(agent, p, hex) end
+    end
+    -- Highlight colours live on the BUTTON clone, not the label; writing them
+    -- where they do not exist is a pcall'd no-op, so paint everywhere we touch.
+    for _, p in ipairs(TT_STATE_COLOUR_PROPS) do
+        set_color(agent, p, hex)
     end
     return true
 end

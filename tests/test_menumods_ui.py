@@ -28,9 +28,12 @@ function Clone_Find(b, what) return {of = (type(b) == 'table' and b.of or '?'), 
 function AgentSetProperty(a, k, v) rec('setprop', tostring(a and a.of), k, tostring(v))
   if k == nil then error('nil property') end
   local key = (tostring(a and a.of) or '?') .. '/' .. (a and a.clone or '') .. '/' .. k
-  -- Only 'Text Color' exists on a label (in-game probe 2026-10-03); every other
+  -- Only these exist on a label (in-game probes 2026-10-03); every other
   -- name is accepted-then-ignored, the silent-failure case read-back catches.
-  if k == 'Text Color' or k == 'Text Color Highlight' or k == 'Text Color Pressed' then
+  -- 'Selection Color' lives on the BUTTON clone: it is the row's hover
+  -- highlight (stock {r=0.5,g=1,b=0.5,a=1} - light green).
+  if k == 'Text Color' or k == 'Text Color Highlight' or k == 'Text Color Pressed'
+     or k == 'Selection Color' then
     _props[key] = v
     _color[key] = v
   end
@@ -209,7 +212,8 @@ assert(painted_base == 6, 'six swatches painted after the probe, got ' .. painte
 assert(painted_states >= 12, 'state variants painted too, got ' .. painted_states)
 for _, c in ipairs(calls) do
   if c:sub(1, 7) == 'setprop' and not c:find('Text String', 1, true) then
-    assert(c:find('|Text Color', 1, true), 'only proven properties painted: ' .. c)
+    assert(c:find('|Text Color', 1, true) or c:find('|Selection Color|', 1, true),
+      'only proven properties painted: ' .. c)
   end
 end
 -- The read-only sweep must discover colour properties WITHOUT any debug flag:
@@ -270,14 +274,14 @@ assert(all_names:find('Text Color', 1, true) ~= nil,
 -- The engine stores this property as NAMED fields {r,g,b,a} (in-game probe
 -- 2026-10-03: 'type=table {a=0 b=0 g=0 r=0}'). A positional array is silently
 -- ignored, so pin the named shape: swatch 1 is #FFFFFF.
-local named = 0
+-- The engine stores these properties as NAMED fields, 0..1 FLOATS (in-game
+-- 2026-10-03). Integers get clamped and render stock. Pin the float form so
+-- this cannot regress, and pin that the highlight is painted too.
+local named, highlighted = 0, 0
 for _, v in pairs(_color) do
   if type(v) == 'table' then
     assert(v.r ~= nil and v.g ~= nil and v.b ~= nil and v.a ~= nil,
       'colour written with NAMED r/g/b/a fields, got ' .. type(v))
-    -- MEASURED IN-GAME 2026-10-03: the engine stores 0..1 FLOATS, not 0..255
-    -- integers. Writing 255/128/0 got clamped and rendered stock, which is why
-    -- hover reverted to white. Pin the float form so this cannot regress.
     for _, ch in ipairs({ 'r', 'g', 'b' }) do
       assert(v[ch] <= 1 and v[ch] >= 0,
         'channel ' .. ch .. ' must be a 0..1 float, got ' .. tostring(v[ch]))
@@ -287,6 +291,16 @@ for _, v in pairs(_color) do
   end
 end
 assert(named >= 6, 'swatch colours written as named 0..1 float fields, got ' .. named)
+-- Selection Color is the hover/selection highlight, discovered on the button
+-- clone 2026-10-03: it must be painted with the accent so hover does not snap
+-- to stock green/white.
+for k, v in pairs(_color) do
+  if type(k) == 'string' and k:find('Selection Color', 1, true) then
+    highlighted = highlighted + 1
+    assert(type(v) == 'table', 'Selection Color painted as a table')
+  end
+end
+assert(highlighted > 0, 'the highlight colour is painted with the accent too')
 -- #FF8000 must arrive as 1.0, 0.502, 0.0 - the exact measured representation
 -- #FF8000 must arrive as 1.0, 0.5019608, 0.0 - the exact measured representation.
 -- Several swatches have r=1 and b=0, so match the green exactly.
