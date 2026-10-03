@@ -35,18 +35,23 @@ awk '/TTMod framework v/{buf=""} {buf=buf $0 "\n"} END{printf "%s",buf}' logs/tt
 
 ## Open, with the next concrete step
 
-1. **Hover/press tint reverts to stock (KNOWN LIMITATION, engine-owned).**
-   Verdict after eight instrumented launches (2026-10-03): base `Text Color` is
-   written as 0..1 floats, verified holding exactly (`verify-ok (exact)` on every
-   label), and hover still reverts. The engine exposes exactly ONE colour
-   property on a label (`Text Color`); a 297-name read-only sweep found no
-   hover/press/selected variant, and the exe contains no hover or mouse-enter
-   concept (`MouseClick` only). The white highlight is the engine's own
-   row-highlight rendering, drawn from internal state.
-   *Fixing it needs a native detour into the widget drawing code - a new hook
-   surface, which api-policy.md forbids without a demanding mod. Authorized
-   route if ever needed: find the row-highlight function in Ghidra, detour it
-   late + anchor-verified like the Lua bridge. Do NOT attempt from Lua.*
+1. **Hover/press tint reverts to stock (engine-internal; NATIVE MILESTONE IN
+   PROGRESS).** Property space is exhausted with proof (2026-10-03, ten
+   instrumented launches): base `Text Color` is written as 0..1 floats and
+   verified holding; `Selection Color` was found on the widget root and button
+   clone via the dashed-namespace sweep and painted with the accent (root
+   read-back confirms it), yet hover still reverts. 324 names x every agent in
+   the real clone chain (`widget.agent -> ui_listButton_button -> .agent ->
+   label`) found only `Text Color`, `Selection Color`, `Button - Command`.
+   `AgentGetProperties` returns a 1-entry table (`__ScriptObject`) - useless
+   for enumeration. The white is the engine's own highlight rendering.
+   *Native route (authorized by the user, demand satisfied per api-policy.md):*
+   - [x] `TTMOD_DUMP_MEM=<path>` tool (f5f0395): dumps the unpacked module
+         image once, at Menu.lua load. One user launch produces the dump.
+   - [ ] Ghidra over the dump: find the highlight/state-change function.
+   - [ ] Detour late + anchor-verified (the lua_bridge pattern), expose as
+         `TTMOD_EVENT_WIDGET_STATE` (ABI v6) so any mod can subscribe.
+   - Do NOT attempt from Lua - there is nothing left to set.
 2. **Offline script decryption is unsolved.** The "Blowfish key `Mcsm`" recipe The "Blowfish key `Mcsm`" recipe
    that is repeated in community write-ups **does not work** (verified: distinct
    inputs decrypt to the same head). We read engine behaviour at runtime instead.
