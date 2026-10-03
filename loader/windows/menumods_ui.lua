@@ -398,6 +398,10 @@ end
 -- the process kill. Runs ONCE per session, automatically, the first time a
 -- theme is applied: discovery is triggered by need, not by a debug file.
 local TT_SWEEP_DONE = false
+-- One-shot for the prototype+chore probe below. Declared up here with the
+-- other one-shots: a later `local` would be a nil global at call time, which
+-- kills the process inside a click callback instead of raising an error.
+local TT_PROTO_DONE = false
 local TT_SWEEP_BASES = {
     'Text', 'Label', 'Font', 'Button', 'Bg', 'Background', 'Panel', 'Row',
     'Widget', 'Highlight', 'Hover', 'Pressed', 'Press', 'Select', 'Selected',
@@ -680,6 +684,46 @@ theme_widget_settled = function(widget)
             end
         end
     end
+    -- PROTOTYPE + CHORE probe (one-shot per session). Two hypotheses for why
+    -- unhover restores white instead of our accent, both testable without RE:
+    --
+    -- H1 (template default): the engine snapshots the label color at widget
+    -- creation and restores THAT on unhover. Our paint lands after creation,
+    -- so the snapshot is the stock white. If the ListButton PROTOTYPE has a
+    -- settable label agent, painting it means clones are born with accent and
+    -- the snapshot is accent too. Permanent fix if true, highlight preserved.
+    --
+    -- H2 (nil chore = default flash): rows have no 'Button - Chore Select'
+    -- set, so the engine plays its hardcoded white flash. If "" disables it
+    -- (vs nil meaning "use default"), hover stops touching color at all.
+    -- Highlight feedback is lost, but accent never leaves. Fallback only.
+    if not TT_PROTO_DONE and found_any then
+        TT_PROTO_DONE = true
+        pcall(function()
+            mlog('proto: ListButton type=' .. type(ListButton))
+            local pa = (type(ListButton) == 'table') and ListButton.agent or nil
+            mlog('proto: ListButton.agent type=' .. type(pa))
+            if pa ~= nil and AgentSetProperty ~= nil then
+                local okc, c = pcall(Clone_Find, pa, 'label')
+                mlog('proto: Clone_Find label ok=' .. tostring(okc))
+                if okc and c ~= nil and TTMOD_ACCENT ~= nil then
+                    local okw = pcall(AgentSetProperty, c, 'Text Color',
+                                      TTMOD_ACCENT)
+                    mlog('proto: paint Text Color ok=' .. tostring(okw))
+                end
+            end
+            -- H2: read current chore values, then blank them on THIS widget.
+            if AgentGetProperty ~= nil and ag ~= nil then
+                for _, k in ipairs({'Button - Chore Select',
+                                    'Button - Chore Deselect',
+                                    'Button - Chore Press'}) do
+                    local okr, v = pcall(AgentGetProperty, ag, k)
+                    mlog('proto: read ' .. k .. ' ok=' .. tostring(okr) ..
+                         ' val=' .. tostring(v))
+                end
+            end
+        end)
+    end
     -- No label clone yet: the widget is still being built. Queue it and let
     -- the next theme_widget call retry once the engine has populated it.
     if not found_any then
@@ -733,6 +777,7 @@ end
 -- tests/test_menumods_ui.py, which cannot reach these upvalues directly.
 TTMOD_THEME_RESET_SWEEP = function()
     TT_SWEEP_DONE = false
+    TT_PROTO_DONE = false
     theme_painted = {}
     TT_PENDING = {}
     TT_VERIFY_DONE = false

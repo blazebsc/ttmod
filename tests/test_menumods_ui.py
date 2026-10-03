@@ -301,6 +301,24 @@ local saw_log = false
 for _, c in ipairs(calls) do if c:find('theme-hover: exit', 1, true) then saw_log = true end end
 assert(saw_log, 'hover exit logged')
 
+-- Prototype + chore probe (one-shot per reset): distinguishes WHY unhover
+-- restores white instead of the accent. H1 = template default (paint the
+-- prototype and clones are born with accent); H2 = nil chore means "default
+-- flash" (blank the chore names and hover stops touching color). The stub has
+-- no ListButton.agent, so the probe must log the miss, not crash; chore reads
+-- must be attempted and logged either way.
+TTMOD_ACCENT = '#FF8000'
+TTMOD_THEME_RESET_SWEEP()
+calls = {}
+TTMOD_THEME_WIDGET({ id = 'proto_probe', agent = { of = 'proto_probe' } })
+local saw_proto, saw_chore = false, false
+for _, c in ipairs(calls) do
+  if c:find('proto: ListButton', 1, true) then saw_proto = true end
+  if c:find('proto: read Button - Chore', 1, true) then saw_chore = true end
+end
+assert(saw_proto, 'prototype probe ran and logged what it found')
+assert(saw_chore, 'chore reads attempted and logged')
+
 -- The engine stores these properties as NAMED fields, 0..1 FLOATS (in-game
 -- 2026-10-03). Integers get clamped and render stock. Pin the float form so
 -- this cannot regress, and pin that the highlight is painted too.
