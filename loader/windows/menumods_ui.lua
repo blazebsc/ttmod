@@ -592,30 +592,10 @@ local function theme_verify(agent, tag)
     end
 end
 
--- HOVER HOOK (no native detour needed). The unpacked dump's property table
--- (rva 0x84C9DA..0x84CB28) revealed the widget exposes:
---   'Trigger Entered Callback' / 'Trigger Exited Callback' - settable STRING
---   properties; the engine fires the named function on mouse enter/exit.
--- The engine repaints a hovered row white from its own state and never restores
--- our accent on exit (it does not know the accent), so the Exited callback
--- re-applies it. Entered re-applies too: harmless if the engine rewrites after.
--- Agents are tracked so the callbacks (which receive no useful args) can
--- re-theme everything we painted.
-TTMOD_THEMED_AGENTS = {}
-function TTMOD_THEME_HOVER_ENTER()
-    local acc = TTMOD_ACCENT
-    if type(acc) ~= 'string' then return end
-    mlog('theme-hover: enter')
-    theme_painted = {}
-    for _, a in ipairs(TTMOD_THEMED_AGENTS) do pcall(apply_theme, a) end
-end
-function TTMOD_THEME_HOVER_EXIT()
-    local acc = TTMOD_ACCENT
-    if type(acc) ~= 'string' then return end
-    mlog('theme-hover: exit')
-    theme_painted = {}
-    for _, a in ipairs(TTMOD_THEMED_AGENTS) do pcall(apply_theme, a) end
-end
+-- NOTE (2026-10-03): the Trigger Entered/Exited Callback mechanism that used
+-- to live here is gone. Those are 3D scene-trigger properties; across every
+-- in-game session the callbacks fired zero times on UI widgets. Removed rather
+-- than left to mislead. See the chore-blanking probe in theme_widget_settled.
 
 theme_widget_settled = function(widget)
     -- true  = settled (or deliberately skipped), stop retrying
@@ -713,6 +693,11 @@ theme_widget_settled = function(widget)
                 end
             end
             -- H2: read current chore values, then blank them on THIS widget.
+            -- nil chore = engine plays its default white flash. If "" means
+            -- "play nothing" (vs nil meaning "use default"), hover stops
+            -- touching color entirely: accent stays always, at the cost of
+            -- losing the highlight flash. Fully pcall'd; worst case the
+            -- engine treats "" like nil and nothing changes.
             if AgentGetProperty ~= nil and ag ~= nil then
                 for _, k in ipairs({'Button - Chore Select',
                                     'Button - Chore Deselect',
@@ -720,6 +705,10 @@ theme_widget_settled = function(widget)
                     local okr, v = pcall(AgentGetProperty, ag, k)
                     mlog('proto: read ' .. k .. ' ok=' .. tostring(okr) ..
                          ' val=' .. tostring(v))
+                    if AgentSetProperty ~= nil then
+                        local okw = pcall(AgentSetProperty, ag, k, '')
+                        mlog('proto: blank ' .. k .. ' ok=' .. tostring(okw))
+                    end
                 end
             end
         end)
@@ -741,18 +730,12 @@ theme_widget_settled = function(widget)
             end
         end)
     end
-    -- Hover hook: register the enter/exit callbacks on this widget, and track
-    -- it so the callbacks can re-apply the accent (the engine repaints a
-    -- hovered row white and never restores ours on exit).
-    if found_any then
-        pcall(AgentSetProperty, ag, 'Trigger Entered Callback', 'TTMOD_THEME_HOVER_ENTER')
-        pcall(AgentSetProperty, ag, 'Trigger Exited Callback', 'TTMOD_THEME_HOVER_EXIT')
-        local tracked = false
-        for _, a in ipairs(TTMOD_THEMED_AGENTS) do
-            if a == ag then tracked = true break end
-        end
-        if not tracked then TTMOD_THEMED_AGENTS[#TTMOD_THEMED_AGENTS + 1] = ag end
-    end
+    -- NOTE (2026-10-03): the Trigger Entered/Exited Callback registration that
+    -- used to live here is gone. It set scene-trigger properties on UI widgets;
+    -- across every in-game session the callbacks fired zero times (the engine
+    -- only honors them on 3D scene trigger volumes, not UI). Dead code removed
+    -- rather than left to mislead; the chore-blanking above is the live hover
+    -- experiment.
     return true
 end
 -- Exposed so the Menu_Add wrapper (loader/windows/menu_bridge.hpp) can theme

@@ -274,33 +274,9 @@ assert(all_names:find('Text Color', 1, true) ~= nil,
 -- The engine stores this property as NAMED fields {r,g,b,a} (in-game probe
 -- 2026-10-03: 'type=table {a=0 b=0 g=0 r=0}'). A positional array is silently
 -- ignored, so pin the named shape: swatch 1 is #FFFFFF.
--- Hover hook (2026-10-03, from the unpacked dump's property table): the widget
--- exposes 'Trigger Entered/Exited Callback' as settable STRING properties, and
--- the engine fires the named function on mouse enter/exit. The engine repaints
--- a hovered row white from its own state and never restores the accent, so the
--- callbacks re-apply it. Registered on every settled widget:
-TTMOD_ACCENT = '#FF8000'
-TTMOD_THEME_RESET_SWEEP()
-calls = {}
-TTMOD_THEME_WIDGET({ id = 'hover_w', agent = { of = 'hover_w' } })
-local reg_enter, reg_exit = 0, 0
-for _, c in ipairs(calls) do
-  if c:find('|Trigger Entered Callback|', 1, true) then reg_enter = reg_enter + 1 end
-  if c:find('|Trigger Exited Callback|', 1, true) then reg_exit = reg_exit + 1 end
-end
-assert(reg_enter >= 1 and reg_exit >= 1, 'hover callbacks registered on the widget')
--- and the callbacks themselves re-theme the tracked agents on exit:
-calls = {}
-TTMOD_THEME_HOVER_EXIT()
-local repaint = 0
-for _, c in ipairs(calls) do
-  if c:sub(1, 7) == 'setprop' and c:find('Text Color', 1, true) then repaint = repaint + 1 end
-end
-assert(repaint > 0, 'hover exit re-applied the accent')
-local saw_log = false
-for _, c in ipairs(calls) do if c:find('theme-hover: exit', 1, true) then saw_log = true end end
-assert(saw_log, 'hover exit logged')
-
+-- Hover-callback mechanism REMOVED 2026-10-03 (see menumods_ui.lua note):
+-- Trigger Entered/Exited are scene-trigger properties, never fired on UI.
+-- The live hover experiment is the chore-blanking probe below.
 -- Prototype + chore probe (one-shot per reset): distinguishes WHY unhover
 -- restores white instead of the accent. H1 = template default (paint the
 -- prototype and clones are born with accent); H2 = nil chore means "default
@@ -318,6 +294,13 @@ for _, c in ipairs(calls) do
 end
 assert(saw_proto, 'prototype probe ran and logged what it found')
 assert(saw_chore, 'chore reads attempted and logged')
+-- H2 execution: the three chore names must actually be blanked (set to ""),
+-- not just read. If "" means "play nothing" the hover flash disappears.
+local blanked = 0
+for _, c in ipairs(calls) do
+  if c:find('proto: blank Button - Chore', 1, true) then blanked = blanked + 1 end
+end
+assert(blanked == 3, 'all three chore names blanked, got ' .. blanked)
 
 -- The engine stores these properties as NAMED fields, 0..1 FLOATS (in-game
 -- 2026-10-03). Integers get clamped and render stock. Pin the float form so
