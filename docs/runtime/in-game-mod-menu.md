@@ -117,32 +117,33 @@ probe: Text Color    set=true reads=true type=table   <- THE ONE
 probe-winner: Text Color (exists, value format differs)
 ```
 - The property name is **`Text Color`** (exactly that spacing/casing).
-- Its value is a **TABLE with NAMED fields** - the probe dumped
-  `type=table {a=0 b=0 g=0 r=0}`. Writing `"#FF8000"` silently does nothing,
-  and so does a positional `{r,g,b}`; the engine only honours
-  `{ r = .., g = .., b = .., a = 255 }`. That is why every string/int/array
-  attempt looked like a failure.
-- `paint()` therefore tries, in order: `{r=,g=,b=,a=}` (the proven shape), then
-  the hex string, `{r,g,b,255}`, `{r,g,b}`, `0xFFRRGGBB`. First accepted wins.
-  `tests/test_menumods_ui.py` pins the named-field shape so a positional-array
-  regression fails the suite.
+- Its value is a **TABLE with NAMED fields, 0..1 FLOATS**. Read-back was
+  `0.87843102216721,…,1`: writing integers 0..255 gets CLAMPED and renders
+  stock - that clamping masqueraded as "the engine overwrote us" for a day.
+  Write `{ r = ri/255, g = gi/255, b = bi/255, a = 1 }`; positional arrays and
+  hex strings are silently ignored. `tests/test_menumods_ui.py` pins the
+  float form and the exact `#FF8000` value.
+- **Hover/press is an engine-owned limitation (2026-10-03 verdict).** After the
+  float fix the write provably holds (`verify-ok (exact)` on every label), yet
+  hover still reverts: a 297-name read-only sweep found no hover/press
+  property, and the exe has no hover concept at all (`MouseClick` only). The
+  white row-highlight is the engine's own rendering from internal state.
+  Fixing it needs a native detour into the widget drawing code - a new hook
+  surface, forbidden by api-policy.md without a demanding mod.
 - Only OUR Mods-menu labels are themed. Game screens are untouched.
 - `paint()` stays a no-op until the probe has run once per session: the
   property is discovered, never guessed, on the first label clone built.
 
-## Hover resets the colour (per-state properties)
-An accent applied only to the base `Text Color` works on a static screen but
-snaps back to stock the moment the cursor touches a row: the engine repaints
-each state (normal / highlighted / pressed) from its own property. The probe
-therefore does NOT stop at the first readable property - it keeps scanning and
-collects every readable sibling as a state variant (`probe-state: <name>`),
-which `paint()` then writes alongside the winner.
+## Hover resets the colour (RESOLVED VERDICT: engine-owned, see above)
+The 2026-10-02 hypothesis below ("the engine repaints each state from its own
+property") turned out wrong - there IS no per-state property. The section is
+kept for the method, which is still right: scan, never guess.
 
-**Declaration order in menumods_ui.lua is load-bearing.** `probe_props()`
-references `theme_winner` / `theme_state_props` / `theme_int`, so all must be
-declared ABOVE it. A reference to a later `local` is a nil global at call time,
-and in a click callback that kills the process instead of raising an error
-(cost a crash on 2026-10-02). `tests/test_menumods_ui.py` runs the real file
+**Declaration order in menumods_ui.lua is load-bearing.** A reference to a later
+`local` is a nil global at call time, and in a click callback that kills the
+process instead of raising an error (cost a crash on 2026-10-02 - then twice
+more, silently, in `theme_drain` and the retry queue). Declare above the use,
+or forward-declare explicitly. `tests/test_menumods_ui.py` runs the real file
 and catches this class.
 
 ## Colour-property probe (diagnostic)

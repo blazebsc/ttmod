@@ -478,10 +478,12 @@ local function colour_matches(v, ir, ig, ib)
     return near(v.r, ir) and near(v.g, ig) and near(v.b, ib)
 end
 
--- Verify the write: read the value back right after painting. If the engine
--- repaints a hovered row from its own state, the read-back differs from what we
--- wrote - the only reliable way to tell "we never wrote it" from "the engine
--- overwrote it". Exposed so the menu can re-check after an interaction.
+-- Verify the write: read the value back after painting. Proved its point
+-- (2026-10-03): the engine stores 0..1 FLOATS, so the integer form was clamped
+-- and rendered stock. Now that the format is known and pinned by a test, this
+-- runs ONCE per session purely as a health check - one verify-ok line is the
+-- all-clear; per-widget logging was 30% of the whole runtime log.
+local TT_VERIFY_DONE = false
 local function theme_verify(agent, tag)
     if agent == nil or AgentGetProperty == nil or theme_winner == nil then return end
     local ok, v = pcall(AgentGetProperty, agent, theme_winner)
@@ -591,7 +593,10 @@ theme_widget_settled = function(widget)
                              'ui_header_header' }) do
         pcall(function()
             local okc, c = pcall(Clone_Find, ag, child)
-            if okc and c ~= nil then theme_verify(c, child) end
+            if okc and c ~= nil and not TT_VERIFY_DONE then
+                TT_VERIFY_DONE = true
+                theme_verify(c, child)
+            end
         end)
     end
     return true
@@ -620,6 +625,7 @@ TTMOD_THEME_RESET_SWEEP = function()
     TT_SWEEP_DONE = false
     theme_painted = {}
     TT_PENDING = {}
+    TT_VERIFY_DONE = false
 end
 -- Test seam: how many widgets are waiting for a retry.
 TTMOD_THEME_PENDING = function() return #TT_PENDING end

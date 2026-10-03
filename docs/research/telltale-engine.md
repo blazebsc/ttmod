@@ -78,12 +78,15 @@ before a push land on the *current* menu and vanish). Properties go through `Age
 `AgentGetProperty` on a widget's `.agent`. `Clone_Find` **throws** on a wrong target and wants the agent, not
 the widget table - always wrap engine calls in `pcall`.
 
-- The label text property is exactly `Text Color` - value is a **table with named fields**
-  `{ r = , g = , b = , a = }`. A positional array `{r,g,b}` and a hex string are both silently ignored.
-  Guessed names (`Color`, `Tint Color`, `Font Color`, `Diffuse`) do **not** exist on a label; only
-  `Text Color` read back.
-- The engine repaints each widget state (normal / highlighted / pressed) from its own property, so an accent
-  applied only to the base property **reverts to stock the moment the cursor touches a row**.
+- The label text property is exactly `Text Color` - value is a **table with named fields,
+  0..1 FLOATS**: `{ r = ri/255, g = gi/255, b = bi/255, a = 1 }`. Integers 0..255 get CLAMPED and render
+  stock, which masquerades as "the engine overwrote us". A positional array `{r,g,b}` and a hex string
+  are silently ignored. Guessed names (`Color`, `Tint Color`, `Font Color`, `Diffuse`) do **not** exist
+  on a label; only `Text Color` read back.
+- **Hover/press highlight is engine-owned.** After the float fix the write provably holds
+  (`verify-ok (exact)`), yet hover still reverts: a 297-name read-only sweep found no state property, and
+  the exe contains no hover concept (`MouseClick` only). The row-highlight is drawn by the engine from
+  internal state; changing it needs a native detour, not a Lua property.
 
 **Script crypto does not work (unresolved).** Loose scripts are `\x1bLEo` + opaque bytes; archived ones
 `\x1bLEn` + opaque. The widely repeated recipe "strip the 4-byte magic, Blowfish with the profile key
@@ -139,13 +142,17 @@ MCSM2, and any offline script decryption.
    reuse the proven one. A per-label retry loop over guesses is what crashed a menu.
 8. **The engine renders a fixed number of list rows per menu.** Rows past that are added but render blank
    (hovering one shows its label). Paginate any generated list, e.g. a colour picker.
-9. **A labelled colour property does not imply a state-specific one exists.** Probing read back only
-   `Text Color`; none of ~14 guessed hover/press variants existed. Hover tinting is unsolved - it needs the
-   engine's real state property names, which we could not enumerate offline.
-10. **Menus have a hard row budget** and generated palettes must be paged or they render as empty boxes.
-11. **`AgentGetProperties` and friends exist in the exe but their Lua calling convention is unknown**;
-    guessing call shapes did not enumerate anything. Enumerating at runtime would be the clean route to the
-    property names and is the recommended next step.
+9. **A labelled colour property does not imply a state-specific one exists.** A
+   297-name read-only sweep found only `Text Color`; no hover/press variant
+   exists, and the exe has no hover concept at all. The white you see on hover
+   is the engine's own row-highlight rendering. Themed base colour verified
+   holding exactly (0..1 floats); hover tint is an engine-owned limitation
+   unless a native detour is authorized.
+10. **`AgentGetProperties` returns `(type-name, props-table)`-shaped values;**
+    accept answers from ANY return, not the first. Its first return is a type
+    name (`__ScriptObject`), which a first-value-only parser mistakes for the
+    answer.
+11. **Menus have a hard row budget** and generated palettes must be paged or they render as empty boxes.
 
 ## Assets
 
