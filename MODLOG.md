@@ -35,23 +35,22 @@ awk '/TTMod framework v/{buf=""} {buf=buf $0 "\n"} END{printf "%s",buf}' logs/tt
 
 ## Open, with the next concrete step
 
-1. **Hover/press tint reverts to stock (engine-internal; NATIVE MILESTONE IN
-   PROGRESS).** Property space is exhausted with proof (2026-10-03, ten
-   instrumented launches): base `Text Color` is written as 0..1 floats and
-   verified holding; `Selection Color` was found on the widget root and button
-   clone via the dashed-namespace sweep and painted with the accent (root
-   read-back confirms it), yet hover still reverts. 324 names x every agent in
-   the real clone chain (`widget.agent -> ui_listButton_button -> .agent ->
-   label`) found only `Text Color`, `Selection Color`, `Button - Command`.
-   `AgentGetProperties` returns a 1-entry table (`__ScriptObject`) - useless
-   for enumeration. The white is the engine's own highlight rendering.
-   *Native route (authorized by the user, demand satisfied per api-policy.md):*
-   - [x] `TTMOD_DUMP_MEM=<path>` tool (f5f0395): dumps the unpacked module
-         image once, at Menu.lua load. One user launch produces the dump.
-   - [ ] Ghidra over the dump: find the highlight/state-change function.
-   - [ ] Detour late + anchor-verified (the lua_bridge pattern), expose as
-         `TTMOD_EVENT_WIDGET_STATE` (ABI v6) so any mod can subscribe.
-   - Do NOT attempt from Lua - there is nothing left to set.
+1. **Hover tint (RESOLVED IN PRINCIPLE 2026-10-03: engine-callback route).**
+   The unpacked dump's widget property table (rva 0x84C6D8..0x84CB60) revealed
+   `Trigger Entered Callback` / `Trigger Exited Callback` - settable STRING
+   properties the engine fires BY NAME on mouse enter/exit. The theme mod now
+   registers them and re-applies the accent on exit (the engine repaints a
+   hovered row white from its own state and never restores ours).
+   *IMPORTANT correction:* the earlier "the exe has no hover concept" finding
+   was an artifact of searching the PACKED file - the strings only exist in
+   unpacked memory. `TTMOD_DUMP_MEM` + string analysis is the reliable route.
+   Pending in-game verification of the hover round trip.
+   Full property list found (never enumerable at runtime): Text Background
+   Color, Text Shadow Color, Text Image Color, Text Color, Trigger Enabled,
+   Trigger Target Name, Trigger Entered/Exited Callback, mbGameSelectable,
+   mSelectionOrder, etc.
+   Ghidra MCP is set up (headless server + opencode.json) if deeper RE is
+   ever needed; the callback route should close this without a native detour.
 2. **Offline script decryption is unsolved.** The "Blowfish key `Mcsm`" recipe The "Blowfish key `Mcsm`" recipe
    that is repeated in community write-ups **does not work** (verified: distinct
    inputs decrypt to the same head). We read engine behaviour at runtime instead.
