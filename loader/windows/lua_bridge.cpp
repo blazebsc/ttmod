@@ -66,6 +66,52 @@ static int __cdecl append_log(lua_State* L) {
     return 0;
 }
 
+// One-shot UNPACKED-MEMORY DUMP (TTMOD_DUMP_MEM=<path>, research tool).
+// The exe is packed: file bytes differ from live code, so static analysis of
+// the on-disk exe only sees the packer. This dumps the live module image at
+// the moment Menu.lua loads - by then the engine has unpacked and is running
+// its menu/UI code, which is the region we need to analyse (the hover
+// highlight is engine-internal rendering; no settable property exists, so a
+// native hook is the only route). Dumped once per process, then the flag is
+// inert. The dump is game-derived: keep it outside the repo (policy).
+static volatile LONG g_dump_done = 0;
+static void dump_module_image(const char* out_path) {
+    HMODULE exe = GetModuleHandleA(nullptr);
+    if (!exe || out_path == nullptr || !out_path[0]) return;
+    BYTE* base = (BYTE*)exe;
+    IMAGE_DOS_HEADER* dos = (IMAGE_DOS_HEADER*)base;
+    if (dos->e_magic != IMAGE_DOS_SIGNATURE) {
+        emit("dump: bad DOS signature, aborting");
+        return;
+    }
+    IMAGE_NT_HEADERS* nt = (IMAGE_NT_HEADERS*)(base + dos->e_lfanew);
+    if (nt->Signature != IMAGE_NT_SIGNATURE) {
+        emit("dump: bad NT signature, aborting");
+        return;
+    }
+    IMAGE_SECTION_HEADER* sec = IMAGE_FIRST_SECTION(nt);
+    FILE* f = fopen(out_path, "wb");
+    if (!f) {
+        emit("dump: cannot open output file");
+        return;
+    }
+    // Header + every mapped section, each prefixed with its file offset so the
+    // dump can be re-assembled at the right RVAs for static analysis.
+    fwrite(base, 1, nt->OptionalHeader.SizeOfHeaders, f);
+    for (int i = 0; i < nt->FileHeader.NumberOfSections; ++i, ++sec) {
+        if (sec->SizeOfRawData == 0) continue;
+        // the image is mapped: VirtualAddress IS the file offset in the dump
+        fseek(f, sec->PointerToRawData ? sec->PointerToRawData : sec->VirtualAddress,
+              SEEK_SET);
+        fwrite(base + sec->VirtualAddress, 1, sec->SizeOfRawData, f);
+    }
+    fclose(f);
+    char m[160];
+    snprintf(m, sizeof m, "dump: wrote unpacked image (%u sections) to %s",
+             nt->FileHeader.NumberOfSections, out_path);
+    emit(m);
+}
+
 static int __cdecl hook_loadresource(lua_State* L, char* filename) {
     int rc = g_origLoadResource(L, filename);
     if (!L || g_dead) return rc;
@@ -83,6 +129,15 @@ static int __cdecl hook_loadresource(lua_State* L, char* filename) {
     // Menu_Add wrapper: Menu.lua defines Menu_Add. Suffix "Menu.lua" does
     // NOT match "Menu_Main.lua" (ends in "Main.lua"), so only Menu.lua
     // itself triggers; the chunk one-shot guard covers reloads anyway.
+    if (filename && tail_matches(filename, "Menu.lua")) {
+        // One-shot unpacked-image dump, at the moment the menu UI code is
+        // certainly unpacked and about to run (see dump_module_image).
+        if (InterlockedCompareExchange(&g_dump_done, 1, 0) == 0) {
+            char dpath[MAX_PATH] = {};
+            if (GetEnvironmentVariableA("TTMOD_DUMP_MEM", dpath, sizeof dpath) > 0)
+                dump_module_image(dpath);
+        }
+    }
     if (filename && tail_matches(filename, "Menu.lua") && g_fnLoadstring && g_fnPcallk &&
         g_fnGettop && g_fnPushCClosure && g_fnSetglobal && g_fnTolstring) {
         // TTMOD_LUA_LRCHUNK=0: observe-only (detour stays, no chunk runs).
