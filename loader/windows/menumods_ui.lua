@@ -452,6 +452,34 @@ local function theme_drain()
 end
 -- The actual theming pass. Returns true once the widget is settled (a label
 -- clone was found and themed), false while it is still unpopulated.
+-- Verify the write: read the value back right after painting. If the engine
+-- repaints a hovered row from its own state, the read-back differs from what we
+-- wrote - the only reliable way to tell "we never wrote it" from "the engine
+-- overwrote it". Exposed so the menu can re-check after an interaction.
+local function theme_verify(agent, tag)
+    if agent == nil or AgentGetProperty == nil or theme_winner == nil then return end
+    local ok, v = pcall(AgentGetProperty, agent, theme_winner)
+    if not ok or v == nil then return end
+    local cur
+    local t = type(v)
+    if t == 'table' then
+        cur = string.format('%s,%s,%s,%s', tostring(v.r), tostring(v.g),
+                            tostring(v.b), tostring(v.a))
+    elseif t == 'string' then cur = v
+    elseif t == 'number' then cur = tostring(v)
+    else return end
+    local acc = TTMOD_ACCENT
+    if type(acc) ~= 'string' then return end
+    local r, g, b = acc:match('^#(%x%x)(%x%x)(%x%x)$')
+    if r == nil then return end
+    local want = string.format('%d,%d,%d,%d', tonumber(r, 16), tonumber(g, 16),
+                               tonumber(b, 16), 255)
+    if cur ~= want then
+        mlog('verify: ' .. theme_winner .. ' = ' .. cur .. ' (wanted ' .. want ..
+             ') -> engine overwrote' .. (tag and (' on ' .. tag) or ''))
+    end
+end
+
 theme_widget_settled = function(widget)
     -- true  = settled (or deliberately skipped), stop retrying
     -- false = the widget is still being built, retry on a later call
@@ -508,6 +536,14 @@ theme_widget_settled = function(widget)
         theme_pending(widget)
         return false
     end
+    -- Prove the write landed, and whether something later overwrites it.
+    for _, child in ipairs({ 'label', 'ui_listButton_label', 'caption', 'text',
+                             'ui_header_header' }) do
+        pcall(function()
+            local okc, c = pcall(Clone_Find, ag, child)
+            if okc and c ~= nil then theme_verify(c, child) end
+        end)
+    end
     return true
 end
 -- Exposed so the Menu_Add wrapper (loader/windows/menu_bridge.hpp) can theme
@@ -516,6 +552,14 @@ end
 -- previous one has been populated and can finally be themed.
 function TTMOD_THEME_WIDGET(widget)
     theme_drain()
+    pcall(theme_widget_settled, widget)
+end
+-- Re-apply the theme to a widget after an interaction (click/selection), for
+-- engines that repaint rows from their own state on interaction. Clears the
+-- per-agent cache first so the next pass really writes again.
+TTMOD_THEME_REFRESH = function(widget)
+    if widget == nil then return end
+    theme_painted = {}
     pcall(theme_widget_settled, widget)
 end
 -- Test seam: force the next themed widget to sweep again AND drop the per-agent
