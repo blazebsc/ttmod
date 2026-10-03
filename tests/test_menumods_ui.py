@@ -220,6 +220,16 @@ end
 TTMOD_THEME_SCOPE = 'all'
 TTMOD_ACCENT = '#FF8000'
 TTMOD_THEME_RESET_SWEEP()
+-- The verifier must compare NUMERICALLY: the engine echoes "1" for 1.0 and
+-- "0.50196081399918" for 128/255, so a formatted string compare reported a false
+-- "engine overwrote" on a value that was exactly right (2026-10-03). The
+-- read-back proves the float write lands: 128/255 == 0.50196081399918.
+TTMOD_ACCENT = '#FF8000'
+calls = {}
+TTMOD_THEME_WIDGET({ id = 'verify_widget', agent = { of = 'verify_widget' } })
+local oklines = 0
+for _, c in ipairs(calls) do if c:find('verify-ok', 1, true) then oklines = oklines + 1 end end
+assert(oklines > 0, 'verifier confirms the float write holds (no false overwrite)')
 -- Menu_Add returns the widget BEFORE its label clone exists (in-game: every
 -- Clone_Find was "not present"), so a widget themed on creation alone gets
 -- nothing. It must be queued and re-themed on a later call, once populated.

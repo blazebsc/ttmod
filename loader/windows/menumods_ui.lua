@@ -462,6 +462,22 @@ local function theme_drain()
 end
 -- The actual theming pass. Returns true once the widget is settled (a label
 -- clone was found and themed), false while it is still unpopulated.
+-- Numeric comparison instead of string compare. The engine echoes back whatever
+-- precision it likes ("1" for 1.0, "0.50196081399918" for 128/255), so a
+-- formatted string comparison reported a false "engine overwrote" on a value
+-- that was in fact exactly right - which sent us hunting a bug that did not
+-- exist. Compare components within a tolerance.
+local function colour_matches(v, ir, ig, ib)
+    if type(v) ~= 'table' then return nil end
+    local function near(a, b)
+        if type(a) ~= 'number' then return false end
+        -- accept either 0..1 or 0..255
+        if math.abs(a - b / 255) < 1e-4 then return true end
+        return math.abs(a - b) < 1e-4
+    end
+    return near(v.r, ir) and near(v.g, ig) and near(v.b, ib)
+end
+
 -- Verify the write: read the value back right after painting. If the engine
 -- repaints a hovered row from its own state, the read-back differs from what we
 -- wrote - the only reliable way to tell "we never wrote it" from "the engine
@@ -470,6 +486,22 @@ local function theme_verify(agent, tag)
     if agent == nil or AgentGetProperty == nil or theme_winner == nil then return end
     local ok, v = pcall(AgentGetProperty, agent, theme_winner)
     if not ok or v == nil then return end
+    local acc0 = TTMOD_ACCENT
+    if type(acc0) == 'string' then
+        local r0, g0, b0 = acc0:match('^#(%x%x)(%x%x)(%x%x)$')
+        if r0 ~= nil then
+            local want = colour_matches(v, tonumber(r0, 16), tonumber(g0, 16),
+                                       tonumber(b0, 16))
+            if want == true then
+                mlog('verify-ok: ' .. theme_winner .. ' holds (exact)' ..
+                     (tag and (' on ' .. tag) or ''))
+            else
+                mlog('verify: ' .. theme_winner .. ' does not hold' ..
+                     (tag and (' on ' .. tag) or ''))
+            end
+            return
+        end
+    end
     local cur
     local t = type(v)
     if t == 'table' then
