@@ -24,6 +24,9 @@ function Menu_Push(m) rec('push') if m.Populate then m:Populate() end end
 function Menu_Pop() rec('pop') end
 -- Clone_Find returns a CLONE AGENT (the engine's real return value), so the
 -- fake carries `of` through; returning the widget table would not model it.
+-- 'ui_listButton_button' must also be findable: it owns 'Selection Color', the
+-- engine's hover/selection fill. Sweeping in-game read its stock value as
+-- green because nothing ever painted it (2026-10-04).
 function Clone_Find(b, what) return {of = (type(b) == 'table' and b.of or '?'), what = what, clone = what} end
 function AgentSetProperty(a, k, v) rec('setprop', tostring(a and a.of), k, tostring(v))
   if k == nil then error('nil property') end
@@ -44,7 +47,7 @@ function AgentSetProperty(a, k, v) rec('setprop', tostring(a and a.of), k, tostr
 -- stand in for the engine's per-state names: they are what the read-only sweep
 -- has to discover, since the framework cannot guess them.
 local REAL_PROPS = {
-  ['Text Color'] = { r = 0, g = 0, b = 0, a = 0 },
+  ['Selection Color'] = { r = 0.5, g = 1, b = 0.5, a = 1 },
   ['Text Color Highlight'] = { r = 255, g = 255, b = 255, a = 255 },
   ['Text Color Pressed'] = { r = 200, g = 200, b = 200, a = 255 },
 }

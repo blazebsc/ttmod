@@ -611,11 +611,16 @@ theme_widget_settled = function(widget)
     end)
     if not ok or ag == nil then return true end
     pcall(apply_theme, ag)
-    -- its common children, which is where the visible text lives
+    -- its common children, which is where the visible text lives.
+    -- NOTE: ui_listButton_button is the button clone; it owns the engine's
+    -- hover/selection fill = 'Selection Color'. Sweeping read it back as
+    -- stock green on the button even after the rest of the widget was themed,
+    -- which is why hover snapped the row to white. Include it so paint()
+    -- reaches its Selection Color too (2026-10-04).
     local found_any = false
     if Clone_Find ~= nil then
         for _, child in ipairs({ 'label', 'caption', 'text', 'ui_listButton_label',
-                                 'ui_header_header' }) do
+                                 'ui_header_header', 'ui_listButton_button' }) do
             pcall(function()
                 local okc, c = pcall(Clone_Find, ag, child)
                 if okc and c ~= nil then
