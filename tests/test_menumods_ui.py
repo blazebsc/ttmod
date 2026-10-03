@@ -265,10 +265,29 @@ for _, v in pairs(_color) do
   if type(v) == 'table' then
     assert(v.r ~= nil and v.g ~= nil and v.b ~= nil and v.a ~= nil,
       'colour written with NAMED r/g/b/a fields, got ' .. type(v))
+    -- MEASURED IN-GAME 2026-10-03: the engine stores 0..1 FLOATS, not 0..255
+    -- integers. Writing 255/128/0 got clamped and rendered stock, which is why
+    -- hover reverted to white. Pin the float form so this cannot regress.
+    for _, ch in ipairs({ 'r', 'g', 'b' }) do
+      assert(v[ch] <= 1 and v[ch] >= 0,
+        'channel ' .. ch .. ' must be a 0..1 float, got ' .. tostring(v[ch]))
+    end
+    assert(v.a == 1 or v.a == 255, 'alpha must be 1 or 255, got ' .. tostring(v.a))
     named = named + 1
   end
 end
-assert(named >= 6, 'swatch colours written as named fields, got ' .. named)
+assert(named >= 6, 'swatch colours written as named 0..1 float fields, got ' .. named)
+-- #FF8000 must arrive as 1.0, 0.502, 0.0 - the exact measured representation
+-- #FF8000 must arrive as 1.0, 0.5019608, 0.0 - the exact measured representation.
+-- Several swatches have r=1 and b=0, so match the green exactly.
+local saw_orange = false
+for _, v in pairs(_color) do
+  if type(v) == 'table' and v.r == 1 and v.b == 0 and
+     math.abs(v.g - (128 / 255)) < 1e-6 then
+    saw_orange = true
+  end
+end
+assert(saw_orange, '#FF8000 written as 1.0, 0.50196, 0.0')
 -- picking a swatch writes it and returns to details
 setter_log = {}
 calls = {}

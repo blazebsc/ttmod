@@ -320,14 +320,24 @@ local function theme_int(s)
 end
 -- Write one colour to one property, trying the value shapes the engine may
 -- want. Returns true on the first shape it accepts.
+-- Write one colour to one property.
+--
+-- MEASURED IN-GAME 2026-10-03: the engine stores this property as FLOATS in
+-- 0..1, not 0..255. Read-back of our first successful write was
+--   0.87843102216721,0.87843102216721,0.87843102216721,1
+-- i.e. our integer 255/128/0/255 was clamped into range, which is why the row
+-- rendered stock and why every earlier "it works" read-back looked like the
+-- engine had overwritten us - it had, with the clamped value.
+-- So the normalised 0..1 form is tried FIRST, and it is the correct one.
 local function set_color(agent, prop, hex)
     local r, g, b = hex:match('^#(%x%x)(%x%x)(%x%x)$')
     if r == nil then return false end
     local num = theme_int(hex)
     local ri, gi, bi = tonumber(r, 16), tonumber(g, 16), tonumber(b, 16)
-    -- Named fields FIRST: the in-game probe showed the engine stores this
-    -- property as {r=..,g=..,b=..,a=..}, so a positional array is silently
-    -- ignored (which is why every earlier attempt looked like a failure).
+    -- 0..1 floats: the engine's actual representation
+    local fr, fg, fb = ri / 255, gi / 255, bi / 255
+    if pcall(AgentSetProperty, agent, prop, { r = fr, g = fg, b = fb, a = 1 }) then return true end
+    -- Fallbacks for other builds/properties that may still want other shapes.
     if pcall(AgentSetProperty, agent, prop, { r = ri, g = gi, b = bi, a = 255 }) then return true end
     if pcall(AgentSetProperty, agent, prop, hex) then return true end
     if pcall(AgentSetProperty, agent, prop, { ri, gi, bi, 255 }) then return true end
@@ -472,11 +482,19 @@ local function theme_verify(agent, tag)
     if type(acc) ~= 'string' then return end
     local r, g, b = acc:match('^#(%x%x)(%x%x)(%x%x)$')
     if r == nil then return end
-    local want = string.format('%d,%d,%d,%d', tonumber(r, 16), tonumber(g, 16),
-                               tonumber(b, 16), 255)
-    if cur ~= want then
-        mlog('verify: ' .. theme_winner .. ' = ' .. cur .. ' (wanted ' .. want ..
-             ') -> engine overwrote' .. (tag and (' on ' .. tag) or ''))
+    -- Compare in BOTH units: the engine stores 0..1 floats, and a mismatch in
+    -- the other direction is just as informative as the one we hit.
+    local ir, ig, ib = tonumber(r, 16), tonumber(g, 16), tonumber(b, 16)
+    local want255 = string.format('%d,%d,%d,%d', ir, ig, ib, 255)
+    local want01 = string.format('%.6f,%.6f,%.6f,%.6f', ir / 255, ig / 255,
+                                 ib / 255, 1)
+    if cur ~= want255 and cur ~= want01 then
+        mlog('verify: ' .. theme_winner .. ' = ' .. cur .. ' (wanted ' .. want255 ..
+             ' or ' .. want01 .. ') -> engine overwrote' ..
+             (tag and (' on ' .. tag) or ''))
+    else
+        mlog('verify-ok: ' .. theme_winner .. ' holds ' .. cur ..
+             (tag and (' on ' .. tag) or ''))
     end
 end
 
