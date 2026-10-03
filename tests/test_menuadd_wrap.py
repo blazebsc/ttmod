@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dynamic Menu_Add wrapper test on stock Lua 5.2 (via nix-shell).
+"""Dynamic Menu_Add wrapper test on stock Lua 5.2 (system interpreter).
 Proves: one-shot install, exact arg/return passthrough incl. varargs,
 append fires only after the main-menu exit row, other menus unaffected,
 re-offer no-op."""

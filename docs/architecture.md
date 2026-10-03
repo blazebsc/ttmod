@@ -11,4 +11,4 @@ Framework Core
 
 Layers: `core/` (detect, sigmatch, profile, log, discovery, resolver, shared `init_from_exe`) → `loader/windows/` (clean-room dinput8 proxy + framework DLL: hooks, lua_bridge, menu_bridge, mods, plugins, events) → `profiles/` (per-game/per-season) → `third_party/` (minhook, miniz, imgui) → `tools/` (offline CLI, Wine matrix, release) → `tests/` → `examples/` → `docs/`. No GUI in core.
 
-Key decisions: never hard-code MCSM1 addresses (signatures + validation + per-build profiles); profiles gate every feature; offline tooling builds on Linux, runtime DLL cross-compiles to Windows x86 via the nix MinGW shell (`nix/mingw-shell.nix`, `TTMOD_BUILD_WIN_RUNTIME=ON`; _WIN32-guarded sources).
+Key decisions: never hard-code MCSM1 addresses (signatures + validation + per-build profiles); profiles gate every feature; offline tooling builds on Linux, runtime DLL cross-compiles to Windows x86 via the system MinGW-w64 toolchain (`mingw-w64-gcc`, `TTMOD_BUILD_WIN_RUNTIME=ON`; _WIN32-guarded sources).

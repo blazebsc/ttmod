@@ -1,6 +1,6 @@
 # ttmod - Telltale Mod Framework (Minecraft: Story Mode first)
 
-## Normal use (no CLI, no GUI)
+## Normal use
 
 1. Install TTMod Framework once (copy `dinput8.dll` + `ttmod_framework.dll`
    beside `MinecraftStoryMode.exe`).
@@ -37,12 +37,3 @@ cmake -S . -B build && cmake --build build && ctest --test-dir build
 
 Windows cross-build + Wine validation: `docs/development/cross-compiling-windows.md`,
 `docs/testing/mcsm1-wine.md`.
-
-## Status
-
-M1 bootstrap · M2 hooks/research · M3 plugins · M4 first mod · M5 resource
-overrides · M6 Lua research · M7 events · M8 game state · M9 multi-build ·
-M10 deps · M11 drop-in packages · in-game Mods menu (main-menu button →
-list/details/toggles, proven live 2026-10-01). Details per milestone under
-`docs/`.
-License: MIT (see LICENSE); third-party terms: `docs/third-party.md`.

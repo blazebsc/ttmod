@@ -339,7 +339,7 @@ print('menumods-ui: screen logic OK')
 # there - a setmetatable in menumods_ui.lua killed every menu screen in-game
 # while this suite stayed green on 5.2) and has _G == nil. So the same proof
 # runs on BOTH interpreters, against the game's actual missing-global shape.
-# Interpreters are resolved portably (system lua5.1/lua5.2, then nix); this used
+# Interpreters are resolved from the system (lua5.1/lua5.2 on PATH); this used
 # to hardcode `nix-shell`, which exists on the author's box and nowhere else,
 # so every Lua test failed on CI in 0.1s.
 import lua_runner

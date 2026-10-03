@@ -7,7 +7,7 @@ game_version: 'MCSM1 x86 (mcsm1_pc_x86, build 101 2024-RC 2016.05.23, SHA256 884
 platform: windows
 engine: unknown
 route: native-hook
-tools: ['cmake', 'mingw-w64 i686 (nix shell)', 'MinHook', 'miniz', 'TelltaleToolKit (archive reading only)', 'python3 + lua5_1 for offline proofs']
+tools: ['cmake', 'mingw-w64-gcc (Arch)', 'MinHook', 'miniz', 'TelltaleToolKit (archive reading only)', 'python3 + lua5.1/5.2 for offline proofs']
 anti_cheat: 'none - single-player, offline. No DRM/anti-cheat was present or touched.'
 status: working
 agents:
@@ -34,8 +34,9 @@ tags: [proxy-dll, packed-exe, lua, minhook, mingw-cross, telltale, menu-ui, agen
 - **Game:** MCSM1, x86 PE32. The build is identified by PE machine + timestamp + size + FNV-1a64, not by
   name. Unknown/cracked variants (NoDVD/ALI213/CODEX) boot to **idle by design** — the framework detects but
   does not hook, so the game still runs vanilla.
-- **Toolchain:** the DLLs are cross-compiled i686 MinGW-w64 from Linux. A 7-line `nix-shell` file provides a
-  reproducible compiler with no sudo. Plain system mingw also works if `i686-w64-mingw32-gcc` is on PATH.
+- **Toolchain:** the DLLs are cross-compiled i686 MinGW-w64 from Linux. The system toolchain
+  (`mingw-w64-gcc` on Arch/CachyOS, `mingw-w64` on Debian/Ubuntu) provides `i686-w64-mingw32-{gcc,g++}`.
+  CI installs it via apt, so local and CI build the same way.
 - **Validation gate:** a script checks both DLLs are PE32/i386, export an undecorated `DirectInput8Create`,
   and import **only system DLLs** (no game DLLs). Run it after every win32 build; it catches accidental
   static linking of something odd.
@@ -102,9 +103,8 @@ head, which real encryption cannot do. Do not trust older write-ups of this; the
 cmake -S . -B build && cmake --build build && ctest --test-dir build
 
 # win32 cross-build (separate dir, never mixed)
-nix-shell nix/mingw-shell.nix --run \
-  'cmake -S . -B build-win32 -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-i686.cmake \
-   -DTTMOD_BUILD_WIN_RUNTIME=ON && cmake --build build-win32'
+cmake -S . -B build-win32 -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-i686.cmake \
+  -DTTMOD_BUILD_WIN_RUNTIME=ON && cmake --build build-win32
 sh tools/verify_win32.sh build-win32
 
 # deploy (after the gate passes)

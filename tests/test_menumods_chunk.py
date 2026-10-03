@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dynamic Menu_Mods chunk test on stock Lua 5.2 (via nix-shell, same
+"""Dynamic Menu_Mods chunk test on stock Lua 5.2 (system interpreter, same
 interpreter family as the game's 5.2.3 for this 5.1-compatible chunk).
 Proves exists/called/returned marker semantics the bridge relies on."""
 import os
