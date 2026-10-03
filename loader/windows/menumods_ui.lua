@@ -588,6 +588,31 @@ local function theme_verify(agent, tag)
     end
 end
 
+-- HOVER HOOK (no native detour needed). The unpacked dump's property table
+-- (rva 0x84C9DA..0x84CB28) revealed the widget exposes:
+--   'Trigger Entered Callback' / 'Trigger Exited Callback' - settable STRING
+--   properties; the engine fires the named function on mouse enter/exit.
+-- The engine repaints a hovered row white from its own state and never restores
+-- our accent on exit (it does not know the accent), so the Exited callback
+-- re-applies it. Entered re-applies too: harmless if the engine rewrites after.
+-- Agents are tracked so the callbacks (which receive no useful args) can
+-- re-theme everything we painted.
+TTMOD_THEMED_AGENTS = {}
+function TTMOD_THEME_HOVER_ENTER()
+    local acc = TTMOD_ACCENT
+    if type(acc) ~= 'string' then return end
+    mlog('theme-hover: enter')
+    theme_painted = {}
+    for _, a in ipairs(TTMOD_THEMED_AGENTS) do pcall(apply_theme, a) end
+end
+function TTMOD_THEME_HOVER_EXIT()
+    local acc = TTMOD_ACCENT
+    if type(acc) ~= 'string' then return end
+    mlog('theme-hover: exit')
+    theme_painted = {}
+    for _, a in ipairs(TTMOD_THEMED_AGENTS) do pcall(apply_theme, a) end
+end
+
 theme_widget_settled = function(widget)
     -- true  = settled (or deliberately skipped), stop retrying
     -- false = the widget is still being built, retry on a later call
@@ -671,6 +696,18 @@ theme_widget_settled = function(widget)
                 theme_verify(c, child)
             end
         end)
+    end
+    -- Hover hook: register the enter/exit callbacks on this widget, and track
+    -- it so the callbacks can re-apply the accent (the engine repaints a
+    -- hovered row white and never restores ours on exit).
+    if found_any then
+        pcall(AgentSetProperty, ag, 'Trigger Entered Callback', 'TTMOD_THEME_HOVER_ENTER')
+        pcall(AgentSetProperty, ag, 'Trigger Exited Callback', 'TTMOD_THEME_HOVER_EXIT')
+        local tracked = false
+        for _, a in ipairs(TTMOD_THEMED_AGENTS) do
+            if a == ag then tracked = true break end
+        end
+        if not tracked then TTMOD_THEMED_AGENTS[#TTMOD_THEMED_AGENTS + 1] = ag end
     end
     return true
 end
