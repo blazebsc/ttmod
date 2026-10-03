@@ -220,6 +220,32 @@ end
 TTMOD_THEME_SCOPE = 'all'
 TTMOD_ACCENT = '#FF8000'
 TTMOD_THEME_RESET_SWEEP()
+-- Menu_Add returns the widget BEFORE its label clone exists (in-game: every
+-- Clone_Find was "not present"), so a widget themed on creation alone gets
+-- nothing. It must be queued and re-themed on a later call, once populated.
+local real_find = Clone_Find
+function Clone_Find(b, what) return nil end
+calls = {}
+TTMOD_THEME_WIDGET({ id = 'unbuilt', agent = { of = 'unbuilt' } })
+assert(TTMOD_THEME_PENDING() > 0, 'a widget with no label is queued for retry')
+Clone_Find = real_find
+-- the next widget's creation drains the queue; by then 'unbuilt' has a label
+calls = {}
+TTMOD_THEME_WIDGET({ id = 'next', agent = { of = 'next' } })
+local repainted = 0
+for _, c in ipairs(calls) do
+  if c:sub(1, 7) == 'setprop' and c:find('|unbuilt|', 1, true) then repainted = repainted + 1 end
+end
+assert(repainted > 0, 'a widget with no label yet is re-themed once populated')
+-- and it must not loop forever: a widget that never gets a label is dropped
+calls = {}
+for _ = 1, 8 do TTMOD_THEME_WIDGET({ id = 'ghost', agent = { of = 'ghost' } }) end
+function Clone_Find(b, what) return nil end
+for _ = 1, 8 do TTMOD_THEME_WIDGET({ id = 'ghost2', agent = { of = 'ghost2' } }) end
+Clone_Find = real_find
+-- The sweep only runs once a widget is genuinely populated (label clone found),
+-- which the retry above guarantees. Drive one more settled widget to observe it.
+TTMOD_THEME_RESET_SWEEP()
 calls = {}
 TTMOD_THEME_WIDGET({ id = 'sweep_widget', agent = { of = 'sweep_widget' } })
 local all_names = ''

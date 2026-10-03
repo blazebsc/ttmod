@@ -416,34 +416,74 @@ local function sweep_props(agent, tag)
         mlog('sweep-' .. tag .. '-all: (none readable)')
     end
 end
-local function theme_widget(widget)
-    if widget == nil or pcall == nil then return end
+-- Menu_Add returns the widget BEFORE its label child exists, so a single
+-- immediate pass finds no clone and themes nothing (verified in-game
+-- 2026-10-03: every Clone_Find returned "not present"). The engine populates
+-- each row during its own Populate pass, so the NEXT widget's creation is a
+-- reliable later moment to retry. Queue unthemed widgets and drain on the next
+-- theme_widget call - no per-frame engine hook exists, and inventing one would
+-- be a new hook surface for a cosmetic gain. Bounded: a widget is retried at
+-- most a few times, then dropped.
+local TT_PENDING = {}
+local TT_PENDING_MAX = 32
+local function theme_pending(widget)
+    if #TT_PENDING >= TT_PENDING_MAX then return end
+    TT_PENDING[#TT_PENDING + 1] = { widget, 0 }
+end
+-- Forward declaration. theme_drain calls theme_widget_settled, which is defined
+-- below; referencing a later `local` is a nil global at call time (this bit us
+-- before with theme_int and it KILLED the game inside a click callback). Declare
+-- it here and assign later, so the ordering is explicit.
+local theme_widget_settled
+local function theme_drain()
+    if #TT_PENDING == 0 then return end
+    local queue = TT_PENDING
+    TT_PENDING = {}
+    for _, entry in ipairs(queue) do
+        local widget, tries = entry[1], entry[2] + 1
+        -- theme_widget_settled re-queues itself if the label is still missing
+        if tries <= 4 then
+            local ok, settled = pcall(theme_widget_settled, widget)
+            if not ok or settled ~= true then
+                theme_pending(widget)
+            end
+        end
+    end
+end
+-- The actual theming pass. Returns true once the widget is settled (a label
+-- clone was found and themed), false while it is still unpopulated.
+theme_widget_settled = function(widget)
+    -- true  = settled (or deliberately skipped), stop retrying
+    -- false = the widget is still being built, retry on a later call
+    if widget == nil or pcall == nil then return true end
     -- Scope: "all" (default) re-themes the game's own menus as well as ours,
     -- because the Menu_Add wrapper routes every widget here. "ttmod" leaves the
     -- game's own screens alone. Set by the menu-theme mod from config.
-    if TTMOD_THEME_SCOPE == 'ttmod' then return end
-    if type(TTMOD_ACCENT) ~= 'string' and next(theme_roles) == nil then return end
+    if TTMOD_THEME_SCOPE == 'ttmod' then return true end
+    if type(TTMOD_ACCENT) ~= 'string' and next(theme_roles) == nil then return true end
     local ok, ag = pcall(function()
         return (widget.agent ~= nil) and widget.agent or widget
     end)
-    if not ok or ag == nil then return end
+    if not ok or ag == nil then return true end
     pcall(apply_theme, ag)
     -- its common children, which is where the visible text lives
+    local found_any = false
     if Clone_Find ~= nil then
         for _, child in ipairs({ 'label', 'caption', 'text', 'ui_listButton_label',
                                  'ui_header_header' }) do
             pcall(function()
                 local okc, c = pcall(Clone_Find, ag, child)
-                if okc and c ~= nil then apply_theme(c) end
+                if okc and c ~= nil then
+                    apply_theme(c)
+                    found_any = true
+                end
             end)
         end
     end
-    -- One read-only discovery pass per session, on the first themed widget.
-    -- Sweeps the BUTTON agent and every child the theming above already found:
-    -- 'Text Color' lives on the LABEL, so the state colours almost certainly do
-    -- too. Report why a child was skipped instead of dropping it silently (that
-    -- is why the label never appeared in the log on 2026-10-03).
-    if not TT_SWEEP_DONE then
+    -- One read-only discovery pass per session, once a widget really is
+    -- populated. Sweeps the button agent and every child clone: 'Text Color'
+    -- lives on the LABEL, so the state colours almost certainly do too.
+    if not TT_SWEEP_DONE and found_any then
         TT_SWEEP_DONE = true
         pcall(sweep_props, ag, 'button')
         if Clone_Find ~= nil then
@@ -462,10 +502,22 @@ local function theme_widget(widget)
             end
         end
     end
+    -- No label clone yet: the widget is still being built. Queue it and let
+    -- the next theme_widget call retry once the engine has populated it.
+    if not found_any then
+        theme_pending(widget)
+        return false
+    end
+    return true
 end
 -- Exposed so the Menu_Add wrapper (loader/windows/menu_bridge.hpp) can theme
 -- every widget the engine creates, including the game's own screens.
-TTMOD_THEME_WIDGET = theme_widget
+-- Drains the retry queue FIRST: by the time the next widget is added the
+-- previous one has been populated and can finally be themed.
+function TTMOD_THEME_WIDGET(widget)
+    theme_drain()
+    pcall(theme_widget_settled, widget)
+end
 -- Test seam: force the next themed widget to sweep again AND drop the per-agent
 -- paint cache (an agent already painted would otherwise return early and the
 -- sweep would be the only thing left to observe). Only used by
@@ -473,7 +525,10 @@ TTMOD_THEME_WIDGET = theme_widget
 TTMOD_THEME_RESET_SWEEP = function()
     TT_SWEEP_DONE = false
     theme_painted = {}
+    TT_PENDING = {}
 end
+-- Test seam: how many widgets are waiting for a retry.
+TTMOD_THEME_PENDING = function() return #TT_PENDING end
 
 -- Returns the label agent it wrote to (nil when nothing usable was found), so
 -- callers that need to paint the same clone don't have to re-find it.
