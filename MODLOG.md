@@ -51,7 +51,40 @@ awk '/TTMod framework v/{buf=""} {buf=buf $0 "\n"} END{printf "%s",buf}' logs/tt
    mSelectionOrder, etc.
    Ghidra MCP is set up (headless server + opencode.json) if deeper RE is
    ever needed; the callback route should close this without a native detour.
-2. **Offline script decryption is unsolved.** The "Blowfish key `Mcsm`" recipe The "Blowfish key `Mcsm`" recipe
+2. **Offline script decryption is unsolved.**
+   The "Blowfish key `Mcsm`" recipe that is repeated in community write-ups
+   **does not work** (verified: distinct inputs decrypt to the same head). We
+   read engine behaviour at runtime instead. Extension artifacts ("unpack-tools",
+   "texpack") use the real Lua-function bridge (5 Lua globals registered via
+   `AgentGetProperties`-symboled thunks at known RVAs) + `ffi`, no engine
+   decryption.
+
+3. **Ghidra RE of render loop (IN PROGRESS - WIP).**
+   `TTMOD_DUMP_MEM` stage → `ghidra-mcp` server over `launch.sh`. Got this far
+   (xref map, property list): two tools new to Ghidra MCP v7: 
+   - `tools.ghidra.list_functions({ query: "UI_ListButton" })` to find the
+     script class that owns button-logic
+   - `tools.ghidra.xref_to_addr({ address: "0082C944" })` → xrefs to "Text Color"
+     (props table) to walk to the Lua function that renders labels
+   - `tools.ghidra.xref_from_addr({ address: ... })` similar, then flag the color-function.
+   The Ghidra MCP tool is flaky between sessions (restart dies; keep a full
+   server log). Diagnostic: `curl http://127.0.0.1:8089/check_connection` —
+   empty = server dead. The workflow is only useful for ongoing static-analysis
+   services (powered-off).
+
+4. **Hover highlight is engine-owned.**
+   `Text Color` *does* overwrite stock for us. The hover-white is rendered
+   internally (no Lua property). The external probe surface that lands =
+   "canvas clone". Two remaining pieces of evidence would prove this before
+   you spend: 
+   - In-game, from an interactive session: a row that is NOT hovered should show
+     the accent. If it does, the problem exists on HOVER only (engine overrides
+     entry point). If it *always* whites them, it's stock rendering.
+   - The Ghidra analysis (task 3) would prove which address reads Text Color
+     and what decides to write white.
+
+5. **Interval timerhouse does not exist in engine.** We do not have a
+   frame-callback hook, only the Lua init-time hooks (Menu_Add/Chore play path). The "Blowfish key `Mcsm`" recipe The "Blowfish key `Mcsm`" recipe
    that is repeated in community write-ups **does not work** (verified: distinct
    inputs decrypt to the same head). We read engine behaviour at runtime instead.
 3. **MCSM2** is detection-only, deliberately out of scope.
