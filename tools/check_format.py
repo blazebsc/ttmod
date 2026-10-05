@@ -27,12 +27,35 @@ def sh(*args):
 
 
 def base_rev():
+    """Resolve the diff base, or None if we should check the whole tree.
+
+    A base that does not resolve (force-push, first push to a new branch,
+    typo) used to yield an empty diff and a silent PASS - the gate could not
+    fail, which is the one thing a gate must never do. Fall back to
+    merge-base(HEAD, origin/master); if even that fails, check EVERYTHING.
+    """
     if len(sys.argv) > 1:
-        return sys.argv[1]
+        given = sys.argv[1].strip()
+        if given and resolves(given):
+            return given
+        print(f"check_format: base {given!r} does not resolve, checking whole tree")
+        return None
     r = sh("git", "merge-base", "HEAD", "origin/master")
     if r.returncode == 0 and r.stdout.strip():
         return r.stdout.strip()
     return None
+
+
+def resolves(rev):
+    return sh("git", "cat-file", "-e", f"{rev}^{{commit}}").returncode == 0
+
+
+def line_count(path):
+    try:
+        with open(os.path.join(_ROOT, path), encoding="utf-8") as f:
+            return sum(1 for _ in f)
+    except OSError:
+        return 0
 
 
 def changed_hunks(base):
@@ -40,9 +63,17 @@ def changed_hunks(base):
 
     Untracked C++ files are yielded whole: new files must be fully clean
     (CI's diff would otherwise pass vacuously on exactly the files that
-    need the check most).
+    need the check most). base=None (unresolvable) also checks the whole
+    tracked tree - a gate that cannot fail is not a gate.
     """
     if base is None:
+        r = sh("git", "ls-files", "--cached", "--exclude-standard")
+        for line in r.stdout.splitlines():
+            p = line.strip()
+            if p.endswith(SUFFIXES) and not SKIP_RE.match(p):
+                size = line_count(p)
+                if size > 0:
+                    yield p, [(1, size)]
         return
     diff = sh("git", "diff", "-U0", base, "HEAD").stdout.splitlines()
     path, hunks = None, []
@@ -61,18 +92,10 @@ def changed_hunks(base):
     r = sh("git", "ls-files", "--others", "--exclude-standard")
     for line in r.stdout.splitlines():
         p = line.strip()
-        if not p.endswith(SUFFIXES):
-            continue
-        if SKIP_RE.match(p):
-            continue
-        size = 0
-        try:
-            with open(os.path.join(_ROOT, p), encoding="utf-8") as f:
-                size = sum(1 for _ in f)
-        except OSError:
-            continue
-        if size > 0:
-            yield p, [(1, size)]
+        if p.endswith(SUFFIXES) and not SKIP_RE.match(p):
+            size = line_count(p)
+            if size > 0:
+                yield p, [(1, size)]
 
 
 def main():

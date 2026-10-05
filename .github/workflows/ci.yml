@@ -2,62 +2,128 @@ name: CI
 
 on:
   push:
+    branches: [master]
   pull_request:
+  workflow_dispatch:
+
+# One run per ref; a new push supersedes the old one instead of racing it.
+# master pushes are never cancelled (cancel-in-progress on the default
+# branch is how you lose the run that gated a merge).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  # -lua5.1 -lua5.2 (not the default lua): the Lua proofs run on BOTH.
+  # The game behaves as 5.1 (nil _G, no setmetatable); stock 5.2 would
+  # hide exactly the two bugs these tests exist to catch. They also share a
+  # writable tmp dir between test_modconfig and test_menumods_ui.
+  DEBIAN_FRONTEND: noninteractive
 
 jobs:
   native:
-    runs-on: ubuntu-latest
+    name: native (debug + 22 tests)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install deps
-        # lua5.1 + lua5.2 are REQUIRED, not optional: the Lua proofs run on
-        # both, because the game behaves as 5.1 (no setmetatable, nil _G) while
-        # stock 5.2 would hide both bugs. They also need a writable shared tmp
-        # dir for the menu-literal round trip between test_modconfig and
-        # test_menumods_ui.
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake g++ python3 lua5.1 lua5.2
       - name: Show resolved Lua versions
-        run: |
-          lua5.1 -v
-          lua5.2 -v
+        run: lua5.1 -v; lua5.2 -v
       - name: Build and test
-        run: cmake --preset linux-debug && cmake --build --preset linux-debug && ctest --preset linux-debug
+        run: |
+          cmake --preset linux-debug
+          cmake --build --preset linux-debug -j
+          ctest --preset linux-debug --output-on-failure
 
   cross-win32:
-    runs-on: ubuntu-latest
+    name: win32 cross (i686 game DLLs)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install MinGW
-        run: sudo apt-get update && sudo apt-get install -y mingw-w64
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mingw-w64 binutils
       - name: Cross-build win32 runtime
-        run: cmake --preset win32-mingw && cmake --build --preset win32-mingw
+        run: |
+          cmake --preset win32-mingw
+          cmake --build --preset win32-mingw -j
       - name: Verify win32 artifacts
         run: sh tools/verify_win32.sh build-win32
+      # A stale DLL once cost a whole debug round: menumods_ui.lua is
+      # EMBEDDED at build time, so an edit that does not reach the shipped
+      # binary looks exactly like a no-op edit. Cheap to assert here.
+      - name: Menu Lua is embedded in the built DLL
+        run: |
+          for m in "Native Mods menu screens" "menu.Populate = function(self)" "ttmod_menu_refresh"; do
+            strings -n 6 build-win32/ttmod_framework.dll | grep -qF "$m" \
+              || { echo "FAIL: marker not embedded: $m"; exit 1; }
+          done
+          echo "PASS: embedded menu Lua markers present"
+      - name: Upload game DLLs
+        uses: actions/upload-artifact@v5
+        with:
+          name: win32-dlls
+          path: |
+            build-win32/dinput8.dll
+            build-win32/ttmod_framework.dll
+          if-no-files-found: error
 
   sanitize:
-    runs-on: ubuntu-latest
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false # report every sanitizer's verdict, not just the first
+      matrix:
+        include:
+          - name: asan
+            preset: linux-asan
+          - name: ubsan
+            preset: linux-ubsan
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install deps
-        run: sudo apt-get update && sudo apt-get install -y cmake g++ python3 lua5.1 lua5.2
-      - name: ASan build and test
-        run: cmake --preset linux-asan && cmake --build --preset linux-asan && ctest --preset linux-asan
-      - name: UBSan build and test
-        run: cmake --preset linux-ubsan && cmake --build --preset linux-ubsan && ctest --preset linux-ubsan
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ python3 lua5.1 lua5.2
+      - name: ${{ matrix.name }} build and test
+        run: |
+          cmake --preset ${{ matrix.preset }}
+          cmake --build --preset ${{ matrix.preset }} -j
+          ctest --preset ${{ matrix.preset }} --output-on-failure
 
   format:
-    runs-on: ubuntu-latest
+    name: format (changed lines)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      # fetch-depth 0: check_format.py diffs changed lines against a base rev,
+      # and the merge-base fallback needs origin/master present.
+      - uses: actions/checkout@v5
         with:
-          fetch-depth: 0 # check_format.py diffs changed lines vs base
+          fetch-depth: 0
       - name: Install clang-format
-        run: sudo apt-get update && sudo apt-get install -y clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format
+      - name: Show resolved clang-format
+        # Format is version-sensitive; a silent toolchain swap turns a green
+        # gate into a red one for reasons unrelated to the diff.
+        run: clang-format --version
       - name: Changed lines match .clang-format
         # Grandfathered tree: only lines changed in this push/PR are checked
         # (see tools/check_format.py). Base = PR base, or previous push.
+        # An unresolvable base falls back to checking the whole tree rather
+        # than passing vacuously, so a force-push cannot skip the gate.
         run: |
           if [ -n "${{ github.base_ref }}" ]; then
             python3 tools/check_format.py "origin/${{ github.base_ref }}"
