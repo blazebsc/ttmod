@@ -17,7 +17,8 @@ import subprocess
 import sys
 
 SUFFIXES = (".cpp", ".hpp", ".h", ".c")
-SKIP_DIRS = ("third_party/", "build/", "build-win32/")
+# Any build*/ or release output, vendored code, packaging areas.
+SKIP_RE = re.compile(r"^(build[^/]*/|release/|third_party/|preserve/)")
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -62,7 +63,7 @@ def changed_hunks(base):
         p = line.strip()
         if not p.endswith(SUFFIXES):
             continue
-        if any(p.startswith(d) for d in SKIP_DIRS):
+        if SKIP_RE.match(p):
             continue
         size = 0
         try:
@@ -81,7 +82,7 @@ def main():
     for path, hunks in changed_hunks(base):
         if not path.endswith(SUFFIXES):
             continue
-        if any(path.startswith(d) for d in SKIP_DIRS):
+        if SKIP_RE.match(path):
             continue
         ranges = [(s, s + c - 1) for s, c in hunks if c > 0]
         if not ranges:

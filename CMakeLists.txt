@@ -3,8 +3,22 @@ project(ttmod VERSION 0.12.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+# NOTE: no CMAKE_C_EXTENSIONS OFF - vendored miniz needs GNU extensions
+# (fseeko/ftello). First-party C++ stays strict via CMAKE_CXX_EXTENSIONS OFF.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_library(ttmod_core
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+include(helpers)
+include(warnings)
+include(sanitizers)
+
+# One canonical core source list (ADR: single owner). Both the native static
+# lib and the Windows framework DLL consume it - adding a core file is one
+# edit, and neither binary can silently miss it.
+set(TTMOD_CORE_SRCS
   core/src/detect.cpp
   core/src/sigmatch.cpp
   core/src/profile.cpp
@@ -26,6 +40,10 @@ add_library(ttmod_core
   core/src/uiqueue.cpp
   core/src/theme_color.cpp
 )
+
+add_library(ttmod_core ${TTMOD_CORE_SRCS})
+ttmod_apply_warnings(ttmod_core)
+ttmod_apply_sanitizers(ttmod_core)
 target_include_directories(ttmod_core PUBLIC core/include)
 
 # miniz (MIT, vendored) for .ttmod ZIP handling.
@@ -39,73 +57,46 @@ target_link_libraries(ttmod_core PRIVATE miniz)
 
 add_executable(ttmod-detect tools/detect_main.cpp)
 target_link_libraries(ttmod-detect PRIVATE ttmod_core)
+ttmod_apply_warnings(ttmod-detect)
+ttmod_apply_sanitizers(ttmod-detect)
 
 add_executable(ttmod tools/ttmod_main.cpp)
 target_link_libraries(ttmod PRIVATE ttmod_core)
+ttmod_apply_warnings(ttmod)
+ttmod_apply_sanitizers(ttmod)
 
-add_executable(test_sigmatch tests/test_sigmatch.cpp)
-target_link_libraries(test_sigmatch PRIVATE ttmod_core)
+ttmod_add_unit_test(sigmatch tests/test_sigmatch.cpp)
 
-add_executable(test_profile tests/test_profile.cpp)
-target_link_libraries(test_profile PRIVATE ttmod_core)
+ttmod_add_unit_test(profile tests/test_profile.cpp)
 
-add_executable(test_manifest tests/test_manifest.cpp)
-target_link_libraries(test_manifest PRIVATE ttmod_core)
+ttmod_add_unit_test(manifest tests/test_manifest.cpp)
 
-add_executable(test_pathnorm tests/test_pathnorm.cpp)
-target_link_libraries(test_pathnorm PRIVATE ttmod_core)
+ttmod_add_unit_test(pathnorm tests/test_pathnorm.cpp)
 
-add_executable(test_resolver tests/test_resolver.cpp)
-target_link_libraries(test_resolver PRIVATE ttmod_core)
+ttmod_add_unit_test(resolver tests/test_resolver.cpp)
 
-add_executable(test_events tests/test_events.cpp)
-target_link_libraries(test_events PRIVATE ttmod_core)
+ttmod_add_unit_test(events tests/test_events.cpp)
 
-add_executable(test_gamestate tests/test_gamestate.cpp)
-target_link_libraries(test_gamestate PRIVATE ttmod_core)
+ttmod_add_unit_test(gamestate tests/test_gamestate.cpp)
 
-add_executable(test_package tests/test_package.cpp)
-target_link_libraries(test_package PRIVATE ttmod_core miniz)
+ttmod_add_unit_test(package tests/test_package.cpp)
+target_link_libraries(test_package PRIVATE miniz)
 
-add_executable(test_modstate tests/test_modstate.cpp)
-target_link_libraries(test_modstate PRIVATE ttmod_core)
+ttmod_add_unit_test(modstate tests/test_modstate.cpp)
 
-add_executable(test_discovery tests/test_discovery.cpp)
-target_link_libraries(test_discovery PRIVATE ttmod_core)
+ttmod_add_unit_test(discovery tests/test_discovery.cpp)
 
-add_executable(test_cache tests/test_cache.cpp)
-target_link_libraries(test_cache PRIVATE ttmod_core)
+ttmod_add_unit_test(cache tests/test_cache.cpp)
 
-add_executable(test_offline tests/test_offline.cpp)
-target_link_libraries(test_offline PRIVATE ttmod_core)
+ttmod_add_unit_test(offline tests/test_offline.cpp)
 
-add_executable(test_lua_bridge tests/test_lua_bridge.cpp)
-target_link_libraries(test_lua_bridge PRIVATE ttmod_core)
+ttmod_add_unit_test(lua_bridge tests/test_lua_bridge.cpp)
 
-add_executable(test_modconfig tests/test_modconfig.cpp)
-target_link_libraries(test_modconfig PRIVATE ttmod_core)
+ttmod_add_unit_test(modconfig tests/test_modconfig.cpp)
 
 enable_testing()
-add_test(NAME sigmatch COMMAND test_sigmatch)
-add_test(NAME profile COMMAND test_profile)
-add_test(NAME manifest COMMAND test_manifest)
-add_test(NAME pathnorm COMMAND test_pathnorm)
-add_test(NAME resolver COMMAND test_resolver)
-add_test(NAME events COMMAND test_events)
-add_test(NAME gamestate COMMAND test_gamestate)
-add_test(NAME package COMMAND test_package)
-add_test(NAME modstate COMMAND test_modstate)
-add_test(NAME discovery COMMAND test_discovery)
-add_test(NAME cache COMMAND test_cache)
-add_test(NAME offline COMMAND test_offline)
-add_test(NAME lua_bridge COMMAND test_lua_bridge)
-add_test(NAME modconfig COMMAND test_modconfig)
-add_executable(test_uiqueue tests/test_uiqueue.cpp)
-target_link_libraries(test_uiqueue PRIVATE ttmod_core)
-add_test(NAME uiqueue COMMAND test_uiqueue)
-add_executable(test_themecolor tests/test_themecolor.cpp)
-target_link_libraries(test_themecolor PRIVATE ttmod_core)
-add_test(NAME themecolor COMMAND test_themecolor)
+ttmod_add_unit_test(uiqueue tests/test_uiqueue.cpp)
+ttmod_add_unit_test(themecolor tests/test_themecolor.cpp)
 find_program(PYTHON3_BIN python3)
 if(PYTHON3_BIN)
   add_test(NAME lua_dis COMMAND ${PYTHON3_BIN} ${CMAKE_SOURCE_DIR}/tests/test_lua_dis.py)
@@ -124,6 +115,11 @@ endif()
 # OFF everywhere else. Sources are _WIN32-guarded and never built on Linux.
 option(TTMOD_BUILD_WIN_RUNTIME "Build Windows proxy+framework DLLs (VS2022 x86 / mingw-w64)" OFF)
 if(TTMOD_BUILD_WIN_RUNTIME)
+  # The Windows runtime is 32-bit x86 only (the game is PE32). Fail early
+  # instead of shipping an unloadable x64 DLL.
+  if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
+    message(FATAL_ERROR "TTMOD_BUILD_WIN_RUNTIME requires a 32-bit x86 toolchain (i686)")
+  endif()
   add_library(dinput8 SHARED loader/windows/dinput8_proxy.cpp)
   # MinHook (BSD-2-Clause, Tsuda Kageyu; see third_party/minhook/LICENSE.txt).
   add_library(minhook STATIC
@@ -133,7 +129,9 @@ if(TTMOD_BUILD_WIN_RUNTIME)
     third_party/minhook/src/hde/hde32.c
     third_party/minhook/src/hde/hde64.c)
   target_include_directories(minhook PUBLIC third_party/minhook/include)
-  add_library(ttmod_framework SHARED loader/windows/framework.cpp loader/windows/hooks.cpp loader/windows/plugins.cpp loader/windows/mods.cpp loader/windows/events.cpp loader/windows/lua_bridge.cpp loader/windows/menu_bridge.cpp core/src/detect.cpp core/src/profile.cpp core/src/log.cpp core/src/sigmatch.cpp core/src/manifest.cpp core/src/pathnorm.cpp core/src/resolver.cpp core/src/events.cpp core/src/gamestate.cpp core/src/moddeps.cpp core/src/package.cpp core/src/modstate.cpp core/src/discovery.cpp core/src/cache.cpp core/src/lua_bridge.cpp core/src/modconfig.cpp core/src/uiqueue.cpp core/src/theme_color.cpp)
+  add_library(ttmod_framework SHARED loader/windows/framework.cpp loader/windows/hooks.cpp loader/windows/plugins.cpp loader/windows/mods.cpp loader/windows/events.cpp loader/windows/lua_bridge.cpp loader/windows/menu_bridge.cpp ${TTMOD_CORE_SRCS})
+ttmod_apply_warnings(ttmod_framework)
+ttmod_apply_sanitizers(ttmod_framework)
   target_include_directories(ttmod_framework PUBLIC core/include)
   target_include_directories(ttmod_framework PRIVATE loader/windows third_party/minhook/include)
   target_link_libraries(ttmod_framework PRIVATE minhook miniz)

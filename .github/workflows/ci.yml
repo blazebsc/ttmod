@@ -23,7 +23,7 @@ jobs:
           lua5.1 -v
           lua5.2 -v
       - name: Build and test
-        run: cmake -S . -B build && cmake --build build && ctest --test-dir build
+        run: cmake --preset linux-debug && cmake --build --preset linux-debug && ctest --preset linux-debug
 
   cross-win32:
     runs-on: ubuntu-latest
@@ -32,9 +32,20 @@ jobs:
       - name: Install MinGW
         run: sudo apt-get update && sudo apt-get install -y mingw-w64
       - name: Cross-build win32 runtime
-        run: cmake -S . -B build-win32 -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-i686.cmake -DTTMOD_BUILD_WIN_RUNTIME=ON && cmake --build build-win32
+        run: cmake --preset win32-mingw && cmake --build --preset win32-mingw
       - name: Verify win32 artifacts
         run: sh tools/verify_win32.sh build-win32
+
+  sanitize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y cmake g++ python3 lua5.1 lua5.2
+      - name: ASan build and test
+        run: cmake --preset linux-asan && cmake --build --preset linux-asan && ctest --preset linux-asan
+      - name: UBSan build and test
+        run: cmake --preset linux-ubsan && cmake --build --preset linux-ubsan && ctest --preset linux-ubsan
 
   format:
     runs-on: ubuntu-latest

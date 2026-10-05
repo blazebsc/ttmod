@@ -1,5 +1,8 @@
 /build/
 /build-win32/
+/build-release/
+/build-asan/
+/build-ubsan/
 /release/
 test-results/
 luac.out

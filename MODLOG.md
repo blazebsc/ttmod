@@ -209,3 +209,16 @@ awk '/TTMod framework v/{buf=""} {buf=buf $0 "\n"} END{printf "%s",buf}' logs/tt
 - Anchors/retry stay in loader/windows: thread + Win32 types can't move to
   portable core. Init-phase functions declined for the same reason the
   self-test exists - declaration order, not file count, is the hazard.
+
+## 2026-10-05 refactor Stage A (foundation)
+
+- `core/theme_color.hpp` already landed; this stage: `TTMOD_CORE_SRCS`
+  single list, `cmake/{helpers,warnings,sanitizers}.cmake`,
+  `ttmod_add_unit_test` (short ctest names preserved), baseline warnings
+  (no -Werror), ASan/UBSan options (Linux-only), x86 enforcement for the
+  win32 runtime, `CMakePresets.json` (linux-debug/release/asan/ubsan,
+  win32-mingw), `compile_commands.json` on.
+- C standard kept at gnu11 deliberately: strict `-std=c11` breaks vendored
+  miniz (`fseeko`); C++ stays strict. 21/21 green on debug+ASan+UBSan,
+  win32 gate green. CI jobs (native/cross/sanitize/format) all run on
+  presets now.
