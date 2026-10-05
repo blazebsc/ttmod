@@ -50,7 +50,7 @@ function Menu_Add(widget, id, label, cb, ...)
   return {id = id}
 end
 """ + CHUNK + r"""
-CDCB = 'if Menu_Mods then Menu_Mods() end'
+CDCB = 'if Menu_Main_AppendLog ~= nil then Menu_Main_AppendLog([[mods-clicked]]) end if Menu_Mods then Menu_Mods() end'
 assert(type(Menu_Add) == 'function' and ttmod_orig_Add ~= nil, 'wrapped')
 -- other menu rows pass through untouched, return preserved (single agent)
 local a = Menu_Add(ListButton, 'settings', 'label_settings', 'Menu_Options()', 'xtra')

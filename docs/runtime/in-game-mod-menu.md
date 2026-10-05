@@ -90,6 +90,12 @@ process at the first Menu.lua load (`menumods_button_enabled()`).
   theming for one full day: the code read `_G.TTMOD_ACCENT`, always nil, and
   returned early, so no colour was ever attempted.
 - **`setmetatable` is nil too** (Lua 5.1, not 5.2). Also `table.unpack`.
+- **`type` (and standard libs) may not exist at chunk-load time.** The UI chunk
+  runs at `lua_newstate` capture, before the engine opens libs on that state.
+  Top-level code must only DEFINE, never CALL: a load-time `type()` call
+  killed the whole chunk in-game 2026-10-04 (`pcall=2 ... attempt to call
+  global 'type'`), taking `Menu_Mods` and all painting with it. Lazy-install
+  from `TTMOD_THEME_WIDGET` (runs during menu builds, libs present) instead.
 - Stock `lua5_1` and `lua5_2` BOTH provide `_G` and `setmetatable`, so a suite
   run on either cannot catch either bug. `tests/test_menumods_ui.py` now nils
   `_G` in its stubs and runs the proof on BOTH interpreters, and it fails if

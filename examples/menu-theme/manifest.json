@@ -1,6 +1,6 @@
 {
     "id": "menu.theme",
-    "name": "Menu Theme (accent demo)",
+    "name": "Text Recolour",
     "version": "1.0.0",
     "description": "Tints the native Mods menu from config/menu.theme.json.",
     "api": 5,

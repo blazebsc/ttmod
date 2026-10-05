@@ -64,6 +64,27 @@ _wrote = {}
 _color = {}
 _props = {}
 AgentGetProperty = AgentGetPropertyImpl
+-- Rollover binding (found at RVA 0x73F730 in the unpacked image): the hover
+-- mechanism. enable=true writes white, falsy restores stock gray - through
+-- native setters, bypassing the AgentSetProperty global entirely.
+function RolloverEnableTextColor(a, e) rec('roll', tostring(a and a.of), tostring(e))
+  local key = (tostring(a and a.of) or '?') .. '/' .. (a and a.clone or '') .. '/Text Color'
+  if e then _props[key] = { r = 1, g = 1, b = 1, a = 1 }
+  else _props[key] = { r = 0.878, g = 0.878, b = 0.878, a = 1 } end
+  _color[key] = _props[key]
+  return 1 end
+-- TextSetColor (binding 0x730690): alternate color path game scripts may
+-- drive hover through. Stores whatever it receives, like the engine.
+function TextSetColor(a, r, g, b, al) rec('tsc', tostring(a and a.of), tostring(r))
+  local key = (tostring(a and a.of) or '?') .. '/' .. (a and a.clone or '') .. '/Text Color'
+  if type(r) == 'table' then _props[key] = r
+  elseif type(r) == 'number' then _props[key] = { r = r, g = g, b = b, a = al } end
+  _color[key] = _props[key]
+  return 1 end
+-- Rollover family: log-only traffic witnesses (see theme_wrap_rolfam).
+function RolloverEnableRolloverMesh(a, b) rec('mesh', tostring(b)) return 1 end
+function RolloverEnableTextBackgroundColor(a, b) rec('bg', tostring(b)) return 1 end
+function RolloverResetStatus() rec('resetstatus') return 1 end
 function EscapeText2(s) return tostring(s) end
 function WidgetInputHandler_EnableInput(b) rec('input', tostring(b)) end
 function Menu_OpenTextEntryBox(init, prompt) rec('textbox', tostring(init), tostring(prompt)) return 'Typed!', true end
@@ -104,6 +125,11 @@ assert(nrec('push') == 1, 'pushed once')
 local found = false
 for _, c in ipairs(calls) do if c:find('Demo', 1, true) and c:find('ON', 1, true) then found = true end end
 assert(found, 'demo literal label with state')
+-- REGRESSION 2026-10-04: the chunk must not call globals at load (it runs at
+-- state capture, before the engine opens standard libs - a load-time type()
+-- call killed the whole chunk in-game: dead Mods button, no painting).
+-- Install is lazy via TTMOD_THEME_WIDGET, so the marker is still unset here.
+assert(ttmod_asp_wrapped ~= true, 'no load-time wrapping')
 -- select -> details (version, toggle, 3 config rows, hint, back)
 calls = {}
 Menu_Mods_Select('demo.config')
@@ -304,6 +330,102 @@ for _, c in ipairs(calls) do
   if c:find('proto: blank Button - Chore', 1, true) then blanked = blanked + 1 end
 end
 assert(blanked == 3, 'all three chore names blanked, got ' .. blanked)
+-- theme_audit: the stuck-white diagnostic. Simulate the engine overwriting a
+-- painted label with white (hover), then drive any new widget: the drain must
+-- log exactly one overwritten label and must NOT repaint it (read-only).
+TTMOD_ACCENT = '#FF8000'
+TTMOD_THEME_SCOPE = 'all'
+calls = {}
+TTMOD_THEME_WIDGET({ id = 'audit_w', agent = { of = 'audit_w' } })
+assert(_props['audit_w/label/Text Color'] ~= nil, 'audit fixture painted')
+_props['audit_w/label/Text Color'] = { r = 1, g = 1, b = 1, a = 1 }
+calls = {}
+TTMOD_THEME_WIDGET({ id = 'audit_next', agent = { of = 'audit_next' } })
+local saw_audit = false
+for _, c in ipairs(calls) do
+  if c:find('theme-audit: 1 of ', 1, true) then saw_audit = true end
+  if c:sub(1, 7) == 'setprop' and c:find('audit_w', 1, true) then
+    error('audit repainted instead of only reading')
+  end
+end
+assert(saw_audit, 'audit logged the engine-overwritten label')
+-- theme_sub: script-path white writes become the accent (the stuck-white
+-- fix); disabled-gray and other values pass through untouched.
+TTMOD_ACCENT = '#FF8000'
+TTMOD_THEME_SCOPE = 'all'
+calls = {}
+AgentSetProperty({ of = 'sub_w' }, 'Text Color', { r = 1, g = 1, b = 1, a = 1 })
+local sub = _color['sub_w//Text Color']
+assert(type(sub) == 'table' and sub.r == 1 and sub.b == 0 and
+  math.abs(sub.g - (128 / 255)) < 1e-6, 'white write substituted with accent')
+local saw_sub = false
+for _, c in ipairs(calls) do if c:find('theme-sub:', 1, true) then saw_sub = true end end
+assert(saw_sub, 'substitution logged')
+calls = {}
+AgentSetProperty({ of = 'sub_g' }, 'Text Color', { r = 0.4, g = 0.4, b = 0.4, a = 1 })
+assert(_color['sub_g//Text Color'].r == 0.4, 'disabled gray passes through')
+-- scope ttmod: unknown agents pass through, painted ones still substituted
+TTMOD_THEME_SCOPE = 'ttmod'
+calls = {}
+AgentSetProperty({ of = 'sub_u' }, 'Text Color', { r = 1, g = 1, b = 1, a = 1 })
+assert(_color['sub_u//Text Color'].r == 1 and _color['sub_u//Text Color'].g == 1,
+  'ttmod scope leaves game widgets alone')
+TTMOD_THEME_SCOPE = 'all'
+-- theme_roll: the hover fix, end to end. The stub models the engine: hover
+-- writes white, unhover restores stock gray, both bypassing the
+-- AgentSetProperty global. The wrapper must repaint accent either way.
+TTMOD_ACCENT = '#FF8000'
+TTMOD_THEME_SCOPE = 'all'
+calls = {}
+TTMOD_THEME_WIDGET({ id = 'roll_w', agent = { of = 'roll_w' } })
+assert(_props['roll_w/label/Text Color'] ~= nil, 'roll fixture painted')
+local rr = RolloverEnableTextColor({ of = 'roll_w' }, true)
+assert(rr == 1, 'rollover return preserved')
+local rl = _color['roll_w/label/Text Color']
+assert(type(rl) == 'table' and rl.r == 1 and rl.b == 0 and
+  math.abs(rl.g - (128 / 255)) < 1e-6, 'hover white repainted accent')
+local saw_roll = false
+for _, c in ipairs(calls) do if c:find('theme-roll:', 1, true) then saw_roll = true end end
+assert(saw_roll, 'rollover interception logged')
+calls = {}
+RolloverEnableTextColor({ of = 'roll_w' }, false)
+rl = _color['roll_w/label/Text Color']
+assert(type(rl) == 'table' and rl.r == 1 and rl.b == 0 and
+  math.abs(rl.g - (128 / 255)) < 1e-6, 'unhover stock repainted accent')
+-- theme_tc: TextSetColor path. White numbers and white tables become accent;
+-- gray passes through.
+calls = {}
+TextSetColor({ of = 'tc_w' }, 1, 1, 1, 1)
+local tc = _color['tc_w//Text Color']
+assert(type(tc) == 'table' and tc.r == 1 and tc.b == 0 and
+  math.abs(tc.g - (128 / 255)) < 1e-6, 'white numbers substituted')
+local saw_tc = false
+for _, c in ipairs(calls) do if c:find('theme-tc:', 1, true) then saw_tc = true end end
+assert(saw_tc, 'tsc substitution logged')
+calls = {}
+TextSetColor({ of = 'tc_g' }, 0.4, 0.4, 0.4, 1)
+assert(_color['tc_g//Text Color'].r == 0.4, 'tsc gray passes through')
+-- rollover family: log-only, verbatim passthrough (proves hover traffic).
+calls = {}
+local mr = RolloverEnableRolloverMesh({ of = 'm' }, true)
+assert(mr == 1, 'mesh return preserved')
+local saw_mesh = false
+for _, c in ipairs(calls) do
+  if c:find('theme-mesh:', 1, true) then saw_mesh = true end
+  if c:sub(1, 5) == 'mesh|' then assert(c == 'mesh|true', 'mesh args untouched') end
+end
+assert(saw_mesh, 'mesh wrapper logged')
+-- attribution: labels painted inside our own Populate tag as 'own', so the
+-- audit can tell live main-menu overwrites from popped-screen corpses.
+TTMOD_THEME_RESET_SWEEP()
+calls = {}
+Menu_Mods_Show()
+_props['mod_demo.config/label/Text Color'] = { r = 0.878, g = 0.878, b = 0.878, a = 1 }
+calls = {}
+TTMOD_THEME_WIDGET({ id = 'own_next', agent = { of = 'own_next' } })
+local saw_own = false
+for _, c in ipairs(calls) do if c:find('own:1 menu:0', 1, true) then saw_own = true end end
+assert(saw_own, 'audit attributes the overwrite to own screens')
 
 -- The engine stores these properties as NAMED fields, 0..1 FLOATS (in-game
 -- 2026-10-03). Integers get clamped and render stock. Pin the float form so

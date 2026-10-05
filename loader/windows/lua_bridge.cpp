@@ -57,6 +57,74 @@ static bool tail_matches(const char* path, const char* tail) {
     return n >= m && strcmp(path + n - m, tail) == 0;
 }
 
+// Native color-setter hook addresses. The UI region unpacks progressively,
+// so hook_loadresource starts the bounded retry thread below instead of
+// installing in the late-hook window.
+static BYTE* g_aspbase = nullptr;
+using ScolFn = int(__attribute__((thiscall)) *)(void*, void*, void*, int);
+static ScolFn g_origScol = nullptr;
+static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* color, int flag);
+static bool scol_accent(float* out);
+
+// Bounded retry for the UI-region hook: that memory unpacks progressively,
+// so the anchor may take up to a minute to match. Gives up loudly.
+struct UiProbeTarget {
+    const char* tag;
+    uint32_t rva;
+    uint8_t anchor[10];
+    size_t alen;
+    LPVOID detour;
+    LPVOID* origstore;
+    volatile LONG hits;
+    int cap;
+    bool done;
+};
+static UiProbeTarget g_uiprobes[] = {
+    {"scol", 0x168430,
+     {0x55, 0x8B, 0xEC, 0x51, 0x56, 0x57, 0x8B, 0xF1, 0xE8, 0xD3}, 10,
+     (LPVOID)hook_scol, (LPVOID*)&g_origScol, 0, 5000, false},
+};
+static DWORD WINAPI ui_probe_thread(LPVOID) {
+    int remaining = 1;
+    for (size_t k = 0; k < sizeof g_uiprobes / sizeof g_uiprobes[0]; ++k)
+        if (g_uiprobes[k].done) --remaining;
+    for (int i = 0; i < 30 && !g_dead && remaining > 0; ++i) {
+        Sleep(2000);
+        if (g_dead) return 0;
+        BYTE* rbase = (BYTE*)GetModuleHandleA(nullptr);
+        if (!rbase) continue;
+        for (size_t k = 0; k < sizeof g_uiprobes / sizeof g_uiprobes[0]; ++k) {
+            UiProbeTarget& t = g_uiprobes[k];
+            if (t.done) continue;
+            if (memcmp(rbase + t.rva, t.anchor, t.alen) != 0) continue;
+            g_aspbase = rbase;
+            void* tgt = (void*)(rbase + t.rva);
+            if (MH_CreateHook(tgt, t.detour, t.origstore) == MH_OK &&
+                MH_EnableHook(tgt) == MH_OK) {
+                char m[128];
+                snprintf(m, sizeof m, "%s: hook installed (anchor-verified, retry)",
+                         t.tag);
+                emit(m);
+            } else {
+                char m[128];
+                snprintf(m, sizeof m, "%s: MH_CreateHook failed, will not retry", t.tag);
+                emit(m);
+            }
+            t.done = true;
+            --remaining;
+        }
+    }
+    for (size_t k = 0; k < sizeof g_uiprobes / sizeof g_uiprobes[0]; ++k) {
+        if (!g_uiprobes[k].done) {
+            char m[128];
+            snprintf(m, sizeof m, "%s: anchor never matched (60s), giving up", g_uiprobes[k].tag);
+            emit(m);
+            g_uiprobes[k].done = true;
+        }
+    }
+    return 0;
+}
+
 // Append-report sink for the Menu_Main wrapper (same-thread, never errors).
 static int __cdecl append_log(lua_State* L) {
     const char* s = g_fnTolstring ? g_fnTolstring(L, 1, nullptr) : nullptr;
@@ -138,6 +206,28 @@ static int __cdecl hook_loadresource(lua_State* L, char* filename) {
                 dump_module_image(dpath);
         }
     }
+    if (filename && tail_matches(filename, "Menu.lua")) {
+        // UI-region probes (rollover binding, native color setters): install
+        // via bounded retry thread. That memory unpacks progressively -
+        // still packed at Menu.lua load on fast runs - so anchor matching
+        // can take up to a minute. One starter per process.
+        static volatile LONG ui_started = 0;
+        if (InterlockedCompareExchange(&ui_started, 1, 0) == 0) {
+            char roff[8] = {};
+            if (GetEnvironmentVariableA("TTMOD_SETCOLOR", roff, sizeof roff) > 0 &&
+                strcmp(roff, "0") == 0) {
+                emit("scol: skipped via TTMOD_SETCOLOR=0");
+                for (size_t k = 0; k < sizeof g_uiprobes / sizeof g_uiprobes[0]; ++k)
+                    g_uiprobes[k].done = true;
+            } else {
+                HANDLE t = CreateThread(nullptr, 0, ui_probe_thread, nullptr, 0, nullptr);
+                if (t)
+                    CloseHandle(t);
+                else
+                    emit("uiprobe: retry thread failed, probes unavailable");
+            }
+        }
+    }
     if (filename && tail_matches(filename, "Menu.lua") && g_fnLoadstring && g_fnPcallk &&
         g_fnGettop && g_fnPushCClosure && g_fnSetglobal && g_fnTolstring) {
         // TTMOD_LUA_LRCHUNK=0: observe-only (detour stays, no chunk runs).
@@ -161,6 +251,152 @@ static int __cdecl hook_loadresource(lua_State* L, char* filename) {
     }
     return rc;
 }
+
+// (2026-10-05 cleanup) Retired diagnosis detours - asp (binding probe),
+// rol (dead binding), scolB (getter: substitution was a no-op), uifx
+// (flag means click-armed, not just highlighted) - lived here. What remains
+// is the one load-bearing hook below: scol color substitution.
+
+// Native color-setter probes (log-only). 0x568430 / 0x5684B0 are the engine
+// setters the Rollover binding calls: thiscall (ecx=this, ret $0xc), args
+// (desc, colorStruct*, flag). The detour logs the 4 floats + caller so the
+// hover writer identifies itself; MinGW thiscall forwards ecx untouched, so
+// the trampoline sees the original register state either way.
+static void scol_log(const char* tag, volatile LONG* hits, int cap, void* color) {
+    LONG n = InterlockedIncrement(hits);
+    if (n <= cap && g_aspbase && color) {
+        float* c = (float*)color;
+        void* ret = __builtin_return_address(0);
+        char m[192];
+        snprintf(m, sizeof m, "%s: #%ld t=%lu c=%.3f,%.3f,%.3f,%.3f caller=%08X", tag, (long)n,
+                 (unsigned long)GetTickCount(), c[0], c[1], c[2], c[3],
+                 (unsigned)((BYTE*)ret - g_aspbase));
+        emit(m);
+    }
+}
+// Accent source for scolB substitution: the same file the menu-theme mod
+// reads (config/menu.theme.json {"accent": "#RRGGBB"}). Missing/invalid =
+// passthrough. Read per substitution (hover-rate, tiny file, no cache).
+static bool scol_accent(float* out) {
+    // Cached per process: config changes need restart everywhere else too.
+    // (Hover/init bursts fire thousands of sets per second; file I/O per
+    // set would hitch menu builds.)
+    static bool cached = false;
+    static bool have = false;
+    static float rgb[3] = {};
+    if (cached) {
+        if (!have) return false;
+        out[0] = rgb[0];
+        out[1] = rgb[1];
+        out[2] = rgb[2];
+        return true;
+    }
+    cached = true;
+    char path[MAX_PATH] = {};
+    if (!GetModuleFileNameA(nullptr, path, sizeof path)) return false;
+    char* s = strrchr(path, '\\');
+    if (!s) return false;
+    *s = '\0';
+    if (strlen(path) + 28 >= sizeof path) return false;
+    strcat(path, "\\config\\menu.theme.json");
+    FILE* f = fopen(path, "rb");
+    if (!f) return false;
+    char t[256] = {};
+    size_t r = fread(t, 1, sizeof t - 1, f);
+    fclose(f);
+    if (r == 0) return false;
+    const char* k = strstr(t, "\"accent\"");
+    if (!k) return false;
+    const char* q = strchr(k + 8, '"');
+    if (!q || q[1] != '#' || strlen(q + 2) < 6) return false;
+    unsigned int v = 0;
+    for (int i = 0; i < 6; ++i) {
+        char c = q[2 + i];
+        v <<= 4;
+        if (c >= '0' && c <= '9') v |= (unsigned)(c - '0');
+        else if (c >= 'a' && c <= 'f') v |= (unsigned)(c - 'a' + 10);
+        else if (c >= 'A' && c <= 'F') v |= (unsigned)(c - 'A' + 10);
+        else return false;
+    }
+    out[0] = ((v >> 16) & 255) / 255.0f;
+    out[1] = ((v >> 8) & 255) / 255.0f;
+    out[2] = (v & 255) / 255.0f;
+    rgb[0] = out[0];
+    rgb[1] = out[1];
+    rgb[2] = out[2];
+    // Honor mod disable: substitution only runs while menu.theme is enabled
+    // in config/mods.json (2026-10-05: it fired with the mod disabled,
+    // contaminating a stock-behavior test). Missing/unparseable = off.
+    {
+        char mp[MAX_PATH] = {};
+        strncpy(mp, path, sizeof mp - 1);
+        char* c = strrchr(mp, '\\');
+        if (!c) return false;
+        *c = '\0';
+        if (strlen(mp) + 16 >= sizeof mp) return false;
+        strcat(mp, "\\mods.json");
+        FILE* mf = fopen(mp, "rb");
+        if (!mf) return false;
+        char mt[512] = {};
+        size_t mr = fread(mt, 1, sizeof mt - 1, mf);
+        fclose(mf);
+        if (mr == 0) return false;
+        const char* id = strstr(mt, "menu.theme");
+        if (!id || id - mt + 200 > (ptrdiff_t)sizeof mt) return false;
+        const char* en = strstr(id, "\"enabled\"");
+        if (!en || en - id > 200) return false;
+        const char* colon = strchr(en + 9, ':');
+        if (!colon) return false;
+        const char* p = colon + 1;
+        while (*p == ' ' || *p == '\t') ++p;
+        if (strncmp(p, "true", 4) != 0) return false;
+    }
+    have = true;
+    return true;
+}
+static volatile LONG g_scolBsub = 0;
+static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* color, int flag) {
+    // Substitution (2026-10-05): REA proved 0x5684B0 (scolB) is a property
+    // GETTER - its "substitute" edited a buffer the getter overwrites, i.e.
+    // it never did anything. THIS setter (0x568430) is the real write path:
+    // near-gray-bright color structs become the accent. Broad by necessity:
+    // descriptors are per-agent-instance (agent+0x58 per the binding
+    // callsite), so identity learning would churn every menu rebuild.
+    // Scope instead by value shape (gray+bright only; black, disabled gray,
+    // real tints pass) + theme gate (config accent + mod enabled).
+    // scolB stays as the traffic witness.
+    float* c = (float*)color;
+    if (color && desc) {
+        float acc[3] = {};
+        bool haveAcc = scol_accent(acc);
+        float mn = c[0], mx = c[0];
+        for (int i = 1; i < 3; ++i) {
+            if (c[i] < mn) mn = c[i];
+            if (c[i] > mx) mx = c[i];
+        }
+        bool graybright = (mx - mn < 0.05f && mn >= 0.8f);
+        bool black = (mn <= 0.001f && mx <= 0.001f);
+        if (graybright && haveAcc) {
+            LONG n = InterlockedIncrement(&g_scolBsub);
+            if (n <= 400) {
+                char m[128];
+                snprintf(m, sizeof m, "scol-sub: %.3f,%.3f,%.3f -> accent",
+                         c[0], c[1], c[2]);
+                emit(m);
+            }
+            c[0] = acc[0];
+            c[1] = acc[1];
+            c[2] = acc[2];
+        } else if (!graybright && !black) {
+            scol_log("scol", &g_uiprobes[0].hits, g_uiprobes[0].cap, color);
+        } else {
+            InterlockedIncrement(&g_uiprobes[0].hits);
+        }
+    }
+    if (g_origScol) return g_origScol(self, desc, color, flag);
+    return 0;
+}
+
 
 static lua_State* __cdecl hook_lua_newstate(lua_Alloc alloc, void* ud) {
     lua_State* L = g_origNewstate(alloc, ud);

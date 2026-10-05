@@ -312,6 +312,12 @@ local theme_probed = false
 -- re-probe or fight the engine's own refresh. Plain table, NOT setmetatable:
 -- the game's Lua is 5.1 (no setmetatable, no table.unpack) - verified in-game.
 local theme_painted = {}
+-- Attribution: which screen painted the agent. Set in apply_theme from the
+-- TTMOD_OWN_BUILD flag (true while OUR Populate runs inside Menu_Push -
+-- synchronous, single-threaded). 'own' = our Mods screens (popped menus
+-- destroy their agents: post-pop reads are corpses, not live overwrites);
+-- 'menu' = game menus incl. the never-popped main menu (always live truth).
+local theme_where = {}
 local function theme_int(s)
     if type(s) ~= 'string' then return nil end
     local r, g, b = s:match('^#(%x%x)(%x%x)(%x%x)$')
@@ -379,11 +385,304 @@ local function apply_theme(agent)
     if type(acc) ~= 'string' then return end
     if agent == nil then return end
     if theme_painted[agent] == acc then return end
-    if paint(agent, acc) then theme_painted[agent] = acc
+    if paint(agent, acc) then
+        theme_painted[agent] = acc
+        theme_where[agent] = (TTMOD_OWN_BUILD and 'own' or 'menu')
     elseif not theme_probed then
         mlog('theme-winner: none')
         theme_probed = true
     end
+end
+
+-- Retry queue for unpopulated widgets (declared here: theme_audit reads it,
+-- and declaration order is load-bearing in this file).
+local TT_PENDING = {}
+local TT_PENDING_MAX = 32
+
+-- Read-only audit: proves WHERE the stuck-white comes from. Runs inside
+-- theme_drain (every Menu_Add): re-reads Text Color on every painted agent
+-- and compares numerically to the session accent. ALL engine calls pcall'd,
+-- NEVER writes: discovery only, one log line per drain that finds an
+-- overwrite. Dead agents (read throws or nil) are dropped, which also bounds
+-- the table across menu rebuilds. Forward uses only: defined before
+-- theme_drain (declaration order is load-bearing in this file).
+--   holds        = property still accent -> the white is render-internal
+--                  (only a native render detour could fix it, or accept it).
+--   overwritten  = the engine WROTE a non-accent value into the property
+--                  (a native AgentSetProperty filter can substitute accent
+--                  at the same point - low-frequency, human-driven, no
+--                  per-frame hook needed).
+local function theme_audit()
+    local acc = TTMOD_ACCENT
+    if type(acc) ~= 'string' or AgentGetProperty == nil then return end
+    local r0, g0, b0 = acc:match('^#(%x%x)(%x%x)(%x%x)$')
+    if r0 == nil then return end
+    local wr, wg, wb = tonumber(r0, 16) / 255, tonumber(g0, 16) / 255,
+                       tonumber(b0, 16) / 255
+    local n, over, sample = 0, 0, nil
+    local over_own, over_menu = 0, 0
+    -- Skip agents still awaiting paint: labels exist before the retry queue
+    -- paints them, and auditing a not-yet-painted label reads template stock
+    -- (0.878/white) - a false flag indistinguishable from an overwrite.
+    -- (2026-10-04: every historical flag sampled template values; none ever
+    -- sampled a mid-value no template holds.)
+    local unpainted = {}
+    for _, entry in ipairs(TT_PENDING) do
+        local w = entry[1]
+        if w ~= nil then
+            local ok, ag = pcall(function()
+                return (w.agent ~= nil) and w.agent or w
+            end)
+            if ok and ag ~= nil then unpainted[ag] = true end
+        end
+    end
+    for agent in pairs(theme_painted) do
+        if unpainted[agent] then
+            theme_painted[agent] = nil
+            theme_where[agent] = nil
+        else
+        local ok, v = pcall(AgentGetProperty, agent, 'Text Color')
+        if not ok or v == nil then
+            theme_painted[agent] = nil
+            theme_where[agent] = nil
+        elseif type(v) == 'table' and type(v.r) == 'number' then
+            n = n + 1
+            local function near(a, b) return math.abs(a - b) < 1e-4 end
+            if not (near(v.r, wr) and near(v.g or 0, wg) and
+                    near(v.b or 0, wb)) then
+                over = over + 1
+                if theme_where[agent] == 'own' then over_own = over_own + 1
+                else over_menu = over_menu + 1 end
+                if sample == nil then
+                    sample = string.format('%.3f,%.3f,%.3f', v.r, v.g or 0,
+                                           v.b or 0)
+                end
+            end
+        else
+            n = n + 1
+        end
+        end
+    end
+    if over > 0 then
+        mlog('theme-audit: ' .. over .. ' of ' .. n ..
+             ' painted labels read non-accent (own:' .. over_own ..
+             ' menu:' .. over_menu .. ', e.g. ' .. (sample or '?') .. ')')
+    end
+end
+
+-- Lua-level white-write filter (2026-10-04). The audit proved the stuck-white
+-- is a real WRITE into Text Color (deselect restores stock 0.878 gray, select
+-- writes white) - and the game's own UI scripts drive those writes through
+-- this same Lua global (Clone_Find + AgentSetProperty is the documented UI
+-- idiom). So wrap the global: near-gray-white writes become the accent,
+-- everything else tail-calls the original untouched. Semantics-preserving:
+-- same args, same return values, no recursion (the wrapper never calls the
+-- global, only the saved original). Rule is deliberately narrow - only
+-- near-gray-white (min channel >= 0.8, floats or 0..255 ints); disabled-gray
+-- and deliberate tints pass through. Engine-internal native writes bypass Lua
+-- entirely and are NOT caught here (theme-audit tells us if any remain).
+-- Installs wherever this chunk loads while AgentSetProperty already exists,
+-- at the top of TTMOD_THEME_WIDGET, and from the Menu_Add wrapper chunk at
+-- Menu.lua load (earliest: catches game scripts that localize the global
+-- before the first widget builds). Menu-states only; engine states that
+-- lack Menu_Add stay untouched.
+local function theme_accent_rgb()
+    local acc = TTMOD_ACCENT
+    if type(acc) ~= 'string' then return nil end
+    local r, g, b = acc:match('^#(%x%x)(%x%x)(%x%x)$')
+    if r == nil then return nil end
+    return { tonumber(r, 16) / 255, tonumber(g, 16) / 255,
+             tonumber(b, 16) / 255 }
+end
+local function theme_substitute(prop, v)
+    if prop ~= 'Text Color' or type(v) ~= 'table' then return nil end
+    local r, g, b = v.r, v.g, v.b
+    if type(r) ~= 'number' or type(g) ~= 'number' or
+       type(b) ~= 'number' then
+        return nil
+    end
+    local scale = 1
+    if r > 1 or g > 1 or b > 1 then scale = 255 end
+    local mn = r
+    if g < mn then mn = g end
+    if b < mn then mn = b end
+    if mn / scale < 0.8 then return nil end
+    local rgb = theme_accent_rgb()
+    if rgb == nil then return nil end
+    return { r = rgb[1], g = rgb[2], b = rgb[3],
+             a = (type(v.a) == 'number' and v.a or 1) }
+end
+local function theme_wrap_asp()
+    -- Load-safe: this file's top level must NEVER call globals. The chunk
+    -- runs at lua_newstate capture, before the engine opens standard libs
+    -- (2026-10-04: a load-time type() call killed the whole chunk with
+    -- "attempt to call global 'type' (a nil value)", taking Menu_Mods and
+    -- all painting with it). Install happens from TTMOD_THEME_WIDGET only.
+    if ttmod_asp_wrapped then return end
+    if type == nil or AgentSetProperty == nil then return end
+    if type(AgentSetProperty) ~= 'function' then return end
+    local orig = AgentSetProperty
+    AgentSetProperty = function(agent, prop, v, ...)
+        local sub = theme_substitute(prop, v)
+        if sub ~= nil then
+            local allow = TTMOD_THEME_SCOPE ~= 'ttmod' or
+                (agent ~= nil and theme_painted[agent] ~= nil)
+            if allow then
+                mlog('theme-sub: Text Color stock/white -> accent')
+                return orig(agent, prop, sub)
+            end
+        end
+        return orig(agent, prop, v, ...)
+    end
+    ttmod_asp_wrapped = true
+end
+
+-- Rollover (hover) write filter (2026-10-04). Static analysis of the
+-- unpacked image found the hover mechanism: Lua binding
+-- RolloverEnableTextColor at RVA 0x73F730 (registration thunk pushes the
+-- name + function address), which resolves Text Color natively and writes
+-- through the engine setters - bypassing the AgentSetProperty global
+-- entirely (that is why theme_wrap_asp saw zero writes while theme-audit
+-- proved overwrites). Wrapping THIS global intercepts the hover path:
+-- after the original runs, repaint the agent with the accent.
+-- Same safety shape as theme_wrap_asp: load-safe guard (chunk runs before
+-- libs open), tail-call semantics preserved via { } + unpack (plain unpack
+-- exists in 5.1; table.unpack does not), scope-aware, cache-bypassing
+-- repaint (the paint cache would otherwise skip the just-overwritten agent).
+local function theme_repaint_agent(agent)
+    local acc = TTMOD_ACCENT
+    if type(acc) ~= 'string' then return end
+    if agent == nil then return end
+    theme_painted[agent] = nil
+    apply_theme(agent)
+    if Clone_Find ~= nil then
+        for _, child in ipairs({ 'label', 'caption', 'text', 'ui_listButton_label',
+                                 'ui_header_header', 'ui_listButton_button' }) do
+            pcall(function()
+                local okc, c = pcall(Clone_Find, agent, child)
+                if okc and c ~= nil then
+                    theme_painted[c] = nil
+                    apply_theme(c)
+                end
+            end)
+        end
+    end
+end
+local function theme_wrap_roll()
+    if ttmod_roll_wrapped then return end
+    if type == nil or RolloverEnableTextColor == nil then return end
+    if type(RolloverEnableTextColor) ~= 'function' then return end
+    local orig = RolloverEnableTextColor
+    RolloverEnableTextColor = function(agent, enable, ...)
+        local t = { orig(agent, enable, ...) }
+        if type(TTMOD_ACCENT) == 'string' then
+            local allow = TTMOD_THEME_SCOPE ~= 'ttmod' or
+                (agent ~= nil and theme_painted[agent] ~= nil)
+            if allow then
+                mlog('theme-roll: rollover -> accent')
+                pcall(theme_repaint_agent, agent)
+            end
+        end
+        return unpack(t)
+    end
+    ttmod_roll_wrapped = true
+end
+
+-- TextSetColor wrapper (2026-10-04). The registry also exposes TextSetColor
+-- (binding 0x730690): if game scripts drive hover through it instead of
+-- RolloverEnableTextColor, this is where the white comes from. Same shape as
+-- the ASP wrapper but for NUMBER args (agent, r, g, b[, a]) as well as a
+-- table first value; near-gray-white becomes the accent, all else passes.
+-- One variable at a time: background/mesh rollover bindings stay untouched.
+local function theme_wrap_tc()
+    if ttmod_tc_wrapped then return end
+    if type == nil or TextSetColor == nil then return end
+    if type(TextSetColor) ~= 'function' then return end
+    local orig = TextSetColor
+    TextSetColor = function(agent, r, g, b, a, ...)
+        local v = nil
+        if type(r) == 'table' then
+            v = r
+        elseif type(r) == 'number' and type(g) == 'number' and
+               type(b) == 'number' then
+            v = { r = r, g = g, b = b, a = a }
+        end
+        if v ~= nil then
+            local sub = theme_substitute('Text Color', v)
+            if sub ~= nil then
+                local allow = TTMOD_THEME_SCOPE ~= 'ttmod' or
+                    (agent ~= nil and theme_painted[agent] ~= nil)
+                if allow then
+                    local rgb = theme_accent_rgb()
+                    mlog('theme-tc: TextSetColor stock/white -> accent')
+                    if type(r) == 'table' then
+                        return orig(agent, sub)
+                    end
+                    if r > 1 or g > 1 or b > 1 then
+                        return orig(agent, rgb[1] * 255, rgb[2] * 255,
+                                    rgb[3] * 255, a)
+                    end
+                    return orig(agent, rgb[1], rgb[2], rgb[3], a)
+                end
+            end
+        end
+        return orig(agent, r, g, b, a, ...)
+    end
+    ttmod_tc_wrapped = true
+end
+
+-- Rollover-family LOG-ONLY wrappers (2026-10-05). The white may come from
+-- a separate highlight overlay (RolloverEnableRolloverMesh) rather than the
+-- painted label: root has 3 children, only 2 named. These wrappers NEVER
+-- modify (tail-call verbatim); they prove which rollover traffic fires on
+-- hover. Skip-vs-keep is decided from the log, next round.
+local function theme_wrap_rolfam()
+    if ttmod_rolfam_wrapped then return end
+    if type == nil then return end
+    local names = { 'RolloverEnableRolloverMesh', 'RolloverEnableTextBackgroundColor',
+                    'RolloverResetStatus' }
+    local any = false
+    for _, nm in ipairs(names) do
+        local orig = nil
+        if nm == 'RolloverEnableRolloverMesh' then orig = RolloverEnableRolloverMesh
+        elseif nm == 'RolloverEnableTextBackgroundColor' then orig = RolloverEnableTextBackgroundColor
+        else orig = RolloverResetStatus end
+        if type(orig) == 'function' then
+            any = true
+            local nmc, objc = nm, orig
+            if nmc == 'RolloverEnableRolloverMesh' then
+                RolloverEnableRolloverMesh = function(a, b, ...)
+                    mlog('theme-mesh: ' .. tostring(b))
+                    return objc(a, b, ...)
+                end
+            elseif nmc == 'RolloverEnableTextBackgroundColor' then
+                RolloverEnableTextBackgroundColor = function(a, b, ...)
+                    mlog('theme-bg: ' .. tostring(b))
+                    return objc(a, b, ...)
+                end
+            else
+                RolloverResetStatus = function(...)
+                    mlog('theme-resetstatus')
+                    return objc(...)
+                end
+            end
+        else
+            mlog('theme-rolfam-missing: ' .. nm)
+        end
+    end
+    if any then ttmod_rolfam_wrapped = true end
+end
+
+-- Global entry for the C++ Menu_Add wrapper chunk (a separate chunk only
+-- sees globals): installs all theme wrappers at Menu.lua load, before game
+-- scripts can localize the originals. Idempotent per state. (2026-10-04:
+-- the earlier literal line referenced theme_wrap_asp, a local - always nil
+-- as a global, so early install never ran. This entry fixes that.)
+function TTMOD_THEME_WRAP()
+    theme_wrap_asp()
+    theme_wrap_roll()
+    theme_wrap_tc()
+    theme_wrap_rolfam()
 end
 
 -- Theme a whole widget, not just its label: the button's own agent carries the
@@ -485,6 +784,71 @@ local function sweep_props(agent, tag)
     else
         mlog('sweep-' .. tag .. '-all: (none readable)')
     end
+    -- CHILD enumeration (2026-10-05): the paint covers 6 fixed child names.
+    -- A 7th text-bearing clone would escape paint AND audit (both use the
+    -- same list) while rendering white. AgentGetChild(s) exists in the
+    -- registry (0x77F060/0x77F4E0) - ask it, read-only, all shapes pcall'd.
+    for _, cf in ipairs({ 'AgentGetChildren', 'AgentGetChild' }) do
+        local cfn = nil
+        if cf == 'AgentGetChildren' then cfn = AgentGetChildren
+        else cfn = AgentGetChild end
+        if cfn ~= nil then
+            for _, sh in ipairs({ '(agent)', '(agent,true)' }) do
+                local arg2 = (sh == '(agent,true)')
+                local ok, r1, r2, r3 = nil, nil, nil, nil
+                if arg2 then ok, r1, r2, r3 = pcall(cfn, agent, true)
+                else ok, r1, r2, r3 = pcall(cfn, agent) end
+                if ok then
+                    for ri, rv in ipairs({ r1, r2, r3 }) do
+                        local tv = type(rv)
+                        if tv == 'number' then
+                            mlog('sweep-' .. tag .. '-kids: ' .. cf .. sh ..
+                                 ' count=' .. tostring(rv))
+                        elseif tv == 'table' then
+                            local nk = 0
+                            local vals = {}
+                            for k2, v2 in pairs(rv) do
+                                nk = nk + 1
+                                if #vals < 4 then
+                                    local t2 = type(v2)
+                                    if t2 == 'string' or t2 == 'number' or
+                                       t2 == 'boolean' then
+                                        vals[#vals + 1] = tostring(k2) .. '=' ..
+                                            tostring(v2)
+                                    elseif t2 == 'userdata' then
+                                        -- Name the child agent if possible.
+                                        local nm = '?'
+                                        if AgentGetName ~= nil then
+                                            local okn, nmv = pcall(AgentGetName, v2)
+                                            if okn and type(nmv) == 'string' then
+                                                nm = nmv
+                                            end
+                                        end
+                                        vals[#vals + 1] = tostring(k2) ..
+                                            '=agent(' .. nm .. ')'
+                                    else
+                                        vals[#vals + 1] = tostring(k2) .. '=<' ..
+                                            t2 .. '>'
+                                    end
+                                end
+                            end
+                            mlog('sweep-' .. tag .. '-kids: ' .. cf .. sh ..
+                                 ' table n=' .. nk .. ' ' ..
+                                 table.concat(vals, ' '))
+                        elseif tv == 'string' then
+                            mlog('sweep-' .. tag .. '-kids: ' .. cf .. sh ..
+                                 ' str=' .. string.sub(rv, 1, 80))
+                        elseif tv == 'userdata' then
+                            mlog('sweep-' .. tag .. '-kids: ' .. cf .. sh ..
+                                 ' opaque-userdata')
+                        end
+                    end
+                end
+            end
+        else
+            mlog('sweep-' .. tag .. '-kids: ' .. cf .. ' missing')
+        end
+    end
 end
 -- Menu_Add returns the widget BEFORE its label child exists, so a single
 -- immediate pass finds no clone and themes nothing (verified in-game
@@ -494,8 +858,6 @@ end
 -- theme_widget call - no per-frame engine hook exists, and inventing one would
 -- be a new hook surface for a cosmetic gain. Bounded: a widget is retried at
 -- most a few times, then dropped.
-local TT_PENDING = {}
-local TT_PENDING_MAX = 32
 local function theme_pending(widget)
     if #TT_PENDING >= TT_PENDING_MAX then return end
     TT_PENDING[#TT_PENDING + 1] = { widget, 0 }
@@ -506,6 +868,7 @@ end
 -- it here and assign later, so the ordering is explicit.
 local theme_widget_settled
 local function theme_drain()
+    theme_audit()
     if #TT_PENDING == 0 then return end
     local queue = TT_PENDING
     TT_PENDING = {}
@@ -748,6 +1111,10 @@ end
 -- Drains the retry queue FIRST: by the time the next widget is added the
 -- previous one has been populated and can finally be themed.
 function TTMOD_THEME_WIDGET(widget)
+    theme_wrap_asp()
+    theme_wrap_roll()
+    theme_wrap_tc()
+    theme_wrap_rolfam()
     theme_drain()
     pcall(theme_widget_settled, widget)
 end
@@ -767,6 +1134,7 @@ TTMOD_THEME_RESET_SWEEP = function()
     TT_SWEEP_DONE = false
     TT_PROTO_DONE = false
     theme_painted = {}
+    theme_where = {}
     TT_PENDING = {}
     TT_VERIFY_DONE = false
 end
@@ -880,7 +1248,11 @@ function Menu_Mods_Show()
         setlabel(b, 'Back')
         mlog('populate: done')
     end
+    -- Own-build window: Populate runs synchronously inside Menu_Push
+    -- (single thread), so everything painted here tags as 'own'.
+    TTMOD_OWN_BUILD = true
     Menu_Push(menu)
+    TTMOD_OWN_BUILD = nil
     mlog('show: pushed')
 end
 
@@ -928,7 +1300,11 @@ function Menu_Mods_Select(id)
         setlabel(b, 'Back')
         mlog('populate: details done')
     end
+    -- Own-build window: Populate runs synchronously inside Menu_Push
+    -- (single thread), so everything painted here tags as 'own'.
+    TTMOD_OWN_BUILD = true
     Menu_Push(menu)
+    TTMOD_OWN_BUILD = nil
 end
 
 -- Palette for "color" config rows. 16 hand-picked #RRGGBB values (rows run
@@ -1005,7 +1381,11 @@ function Menu_Mods_PickColor(id, key, page)
         setlabel(b, 'Back')
         mlog('populate: color grid done')
     end
+    -- Own-build window: Populate runs synchronously inside Menu_Push
+    -- (single thread), so everything painted here tags as 'own'.
+    TTMOD_OWN_BUILD = true
     Menu_Push(menu)
+    TTMOD_OWN_BUILD = nil
     mlog('color: pushed grid rows=' .. tostring(Menu_Mods_RowCount()))
 end
 

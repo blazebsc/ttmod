@@ -71,6 +71,7 @@ inline constexpr const char* kMenuModsChunk =
 inline constexpr const char* kMenuAddWrapChunk =
     "if Menu_Add ~= nil and ttmod_orig_Add == nil then "
     "ttmod_orig_Add = Menu_Add "
+    "if TTMOD_THEME_WRAP ~= nil then TTMOD_THEME_WRAP() end "
     "ttmod_madd_n = 0 "
     "Menu_Add = function(widget, id, label, cb, ...) "
     "if Menu_Main_AppendLog ~= nil then "
@@ -89,7 +90,7 @@ inline constexpr const char* kMenuAddWrapChunk =
     "if not ttmod_appended and id == 'exit' then "
     "ttmod_appended = true "
     "if cb ~= nil and Menu_Main_AppendLog ~= nil then Menu_Main_AppendLog(cb) end "
-    "local __b = ttmod_orig_Add(ListButton, 'mods', 'label_help', 'if Menu_Mods then Menu_Mods() end') "
+    "local __b = ttmod_orig_Add(ListButton, 'mods', 'label_help', 'if Menu_Main_AppendLog ~= nil then Menu_Main_AppendLog([[mods-clicked]]) end if Menu_Mods then Menu_Mods() end') "
     "if pcall ~= nil and __b ~= nil then "
     "pcall(function() "
     "local __l = Clone_Find(__b.agent or __b, 'label') "
