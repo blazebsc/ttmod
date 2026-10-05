@@ -39,6 +39,7 @@ set(TTMOD_CORE_SRCS
   core/src/modconfig.cpp
   core/src/uiqueue.cpp
   core/src/theme_color.cpp
+  core/src/validate.cpp
 )
 
 add_library(ttmod_core ${TTMOD_CORE_SRCS})
@@ -54,6 +55,9 @@ add_library(miniz STATIC
   third_party/miniz/src/miniz_zip.c)
 target_include_directories(miniz PUBLIC third_party/miniz/include)
 target_link_libraries(ttmod_core PRIVATE miniz)
+# nlohmann/json (MIT, vendored single header): strict manifest/config
+# parsing. PRIVATE - parse details never cross the core boundary.
+target_include_directories(ttmod_core PRIVATE third_party/nlohmann/include)
 
 add_executable(ttmod-detect tools/detect_main.cpp)
 target_link_libraries(ttmod-detect PRIVATE ttmod_core)
@@ -97,6 +101,7 @@ ttmod_add_unit_test(modconfig tests/test_modconfig.cpp)
 enable_testing()
 ttmod_add_unit_test(uiqueue tests/test_uiqueue.cpp)
 ttmod_add_unit_test(themecolor tests/test_themecolor.cpp)
+ttmod_add_unit_test(security tests/test_security.cpp)
 find_program(PYTHON3_BIN python3)
 if(PYTHON3_BIN)
   add_test(NAME lua_dis COMMAND ${PYTHON3_BIN} ${CMAKE_SOURCE_DIR}/tests/test_lua_dis.py)
@@ -133,7 +138,7 @@ if(TTMOD_BUILD_WIN_RUNTIME)
 ttmod_apply_warnings(ttmod_framework)
 ttmod_apply_sanitizers(ttmod_framework)
   target_include_directories(ttmod_framework PUBLIC core/include)
-  target_include_directories(ttmod_framework PRIVATE loader/windows third_party/minhook/include)
+  target_include_directories(ttmod_framework PRIVATE loader/windows third_party/minhook/include third_party/nlohmann/include)
   target_link_libraries(ttmod_framework PRIVATE minhook miniz)
   # Embedded Mods-menu Lua (generated header, never committed).
   find_package(Python3 COMPONENTS Interpreter)

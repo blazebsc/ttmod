@@ -10,6 +10,7 @@
 #include "ttmod/log.hpp"
 #include "ttmod/manifest.hpp"
 #include "ttmod/modconfig.hpp"
+#include "ttmod/validate.hpp"
 #include "ttmod/modstate.hpp"
 #include "ttmod/plugin_api.h"
 #include "ttmod/uiqueue.hpp"
@@ -48,11 +49,23 @@ static std::string read_file(const std::string& path) {
 }
 
 static bool write_file(const std::string& path, const std::string& text) {
-    FILE* f = fopen(path.c_str(), "wb");
+    // Atomic: temp + flush + rename. A crash never leaves a half-written
+    // config that the next launch would parse as corrupt-then-default.
+    std::string tmp = path + ".tmp";
+    FILE* f = fopen(tmp.c_str(), "wb");
     if (!f) return false;
     size_t w = fwrite(text.data(), 1, text.size(), f);
-    fclose(f);
-    return w == text.size();
+    bool flushed = fflush(f) == 0;
+    bool closed = fclose(f) == 0;
+    if (!flushed || !closed || w != text.size()) {
+        remove(tmp.c_str());
+        return false;
+    }
+    if (std::rename(tmp.c_str(), path.c_str()) != 0) {
+        remove(tmp.c_str());
+        return false;
+    }
+    return true;
 }
 
 // Fresh snapshot: manifests (store time) + enabled (fresh mods.json) +
@@ -164,6 +177,12 @@ static int __cdecl fn_set_value(lua_State* L) {
     const char* key = g_tolstring ? g_tolstring(L, 2, nullptr) : nullptr;
     const char* val = g_tolstring ? g_tolstring(L, 3, nullptr) : nullptr;
     if (!id || !id[0] || !key || !key[0] || !val) return 0;
+    // Trust boundary (Lua -> filesystem): the id becomes a filename.
+    // Manifest ids are validated at parse, but this is the write path.
+    if (!ttmod::is_valid_mod_id(id)) {
+        emit(std::string("menumods: rejecting bad id for config write"));
+        return 0;
+    }
     ttmod::ModManifest m;
     int n = mods_menu_count();
     bool found = false;

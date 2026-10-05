@@ -15,5 +15,6 @@ Licensing matrix. Status as of 2026-10-02. MinHook, miniz, and Dear ImGui are ve
 | MinHook (Tsuda Kageyu) | https://github.com/TsudaKageyu/minhook | BSD-2-Clause (LICENSE.txt kept) | **Vendored** under `third_party/minhook` (full src + include). Used for M2 detours. Attribution retained; binary redistribution reproduces copyright via docs. |
 | miniz (Rich Geldreich et al.) | https://github.com/richgel999/miniz | MIT (LICENSE kept) | **Vendored** under `third_party/miniz` (src + include + static `miniz_export.h`). ZIP read/write for `.ttmod` (core package + CLI + runtime cache). |
 | Dear ImGui (Omar Cornut) | https://github.com/ocornut/imgui | MIT (LICENSE kept) | **Vendored** under `third_party/imgui` (src + include). Compiled into the win32 runtime. |
+| nlohmann/json (Niels Lohmann) | https://github.com/nlohmann/json | MIT (LICENSE.txt kept) | **Vendored** under `third_party/nlohmann` (single header v3.11.3). Strict JSON parsing for manifests/configs; semantic validation stays in core. |
 
 Rules: prefer MIT reuse with attribution → clean-room reimplementation → external process → GPL integration only if whole-work license permits. Uncertain = document, don't copy.

@@ -1,5 +1,6 @@
 // Package cache sync. See cache.hpp.
 #include "ttmod/cache.hpp"
+#include "ttmod/detect.hpp"
 #include "ttmod/package.hpp"
 
 #include <cstdio>
@@ -30,12 +31,15 @@ bool write_file(const std::string& p, const std::string& s) {
 }
 
 std::string marker_for(const std::string& package_path) {
-    std::error_code ec;
-    auto sz = fs::file_size(package_path, ec);
-    if (ec) return "";
-    auto mt = fs::last_write_time(package_path, ec);
-    if (ec) return "";
-    return "size=" + std::to_string(sz) + " mtime=" + std::to_string(mt.time_since_epoch().count());
+    // Identity: content hash + size + schema. Never mtime (unreliable).
+    // Old size+mtime markers never match -> one clean re-extract.
+    uint64_t size = 0;
+    uint64_t hash = fnv1a_file(package_path, &size);
+    if (hash == 0) return "";
+    char m[96];
+    snprintf(m, sizeof m, "v=%d fnv=%016llx size=%llu", kCacheSchema,
+             (unsigned long long)hash, (unsigned long long)size);
+    return m;
 }
 
 } // namespace
@@ -63,14 +67,23 @@ CacheSync sync_package_cache(const std::string& cache_dir,
             continue; // fresh
         }
         fs::remove_all(dir, ec);
+        // Transactional: extract to a temp dir, validate, then rename into
+        // place. A crash mid-extract leaves temp junk, never a partial cache.
+        std::string tmp = dir + ".tmp-ttmod";
+        fs::remove_all(tmp, ec);
         std::string err;
-        if (!extract_package(pkg, dir, err)) {
+        if (!extract_package(pkg, tmp, err) || !write_file((fs::path(tmp) / ".ttmod-cache").string(),
+                                                           marker_for(pkg))) {
+            if (err.empty()) err = "cache marker unwritable";
             out.log.push_back(id + ": cache refresh failed: " + err);
+            fs::remove_all(tmp, ec);
             continue;
         }
-        if (!write_file(marker_path, marker_for(pkg))) {
-            out.log.push_back(id + ": cache marker unwritable");
-            fs::remove_all(dir, ec);
+        fs::remove_all(dir, ec);
+        fs::rename(tmp, dir, ec);
+        if (ec) {
+            out.log.push_back(id + ": cache replace failed: " + ec.message());
+            fs::remove_all(tmp, ec);
             continue;
         }
         out.log.push_back(id + ": cached from package");

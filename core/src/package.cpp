@@ -1,6 +1,7 @@
 // .ttmod package handling (portable, miniz). See package.hpp.
 #include "ttmod/package.hpp"
 #include "ttmod/pathnorm.hpp"
+#include "ttmod/validate.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -21,42 +22,13 @@ constexpr unsigned kUnixIFREG = 0100000;
 constexpr unsigned kUnixIFDIR = 0040000;
 
 // Validate one archive entry name. Returns normalized form or "" if unsafe.
-// Rules: no drive/colon, no leading separator, no UNC/extended prefix,
-// no ".." that escapes. Case is PRESERVED here (Windows targets are
-// case-insensitive, but entries may legitimately use mixed case).
+// Single implementation: validate_mod_relative_path (core/validate.*).
+// Case is PRESERVED here (Windows targets are case-insensitive, but entries
+// may legitimately use mixed case).
 std::string safe_entry_nocase(const std::string& raw) {
-    if (raw.empty() || raw.size() > 512) return "";
-    std::string s = raw;
-    for (char& c : s)
-        if (c == '\\') c = '/';
-    if (s.find(':') != std::string::npos) return "";
-    if (s[0] == '/' || s[0] == '~') return "";
-    if (s.compare(0, 2, "//") == 0) return "";
-    std::vector<std::string> parts;
-    std::string cur;
-    for (size_t i = 0; i <= s.size(); ++i) {
-        char c = i < s.size() ? s[i] : '/';
-        if (c == '/') {
-            if (!cur.empty() && cur != ".") {
-                if (cur == "..") {
-                    if (parts.empty()) return ""; // escape
-                    parts.pop_back();
-                } else {
-                    parts.push_back(cur);
-                }
-            }
-            cur.clear();
-        } else {
-            cur += c;
-        }
-    }
-    std::string o;
-    for (size_t i = 0; i < parts.size(); ++i) {
-        if (i) o += '/';
-        o += parts[i];
-    }
-    if (parts.size() > 32) return ""; // absurd depth: hostile or broken
-    return o;
+    auto r = validate_mod_relative_path(raw);
+    if (!r.ok()) return "";
+    return r.value();
 }
 
 // Dedupe key: safe_entry_nocase + ASCII lowercase.
@@ -94,6 +66,14 @@ bool read_entry(mz_zip_archive& zip, mz_uint idx, std::string& out) {
 
 PackView inspect_package(const std::string& path) {
     PackView v;
+    // Package-level caps (centralized policy): file size, entry count,
+    // per-entry size, total uncompressed size, manifest size.
+    std::error_code pec;
+    uint64_t file_sz = fs::file_size(path, pec);
+    if (pec || file_sz > (512ull << 20)) {
+        v.error = "package too large";
+        return v;
+    }
     OpenZip z(path);
     if (!z.ok) {
         v.error = "cannot open archive";
@@ -104,6 +84,7 @@ PackView inspect_package(const std::string& path) {
         v.error = "bad entry count";
         return v;
     }
+    uint64_t total_uncomp = 0;
     std::vector<std::string> names; // normalized, for dedupe
     std::string manifest;
     int manifests = 0;
@@ -129,6 +110,11 @@ PackView inspect_package(const std::string& path) {
             v.error = std::string("entry too large: ") + raw;
             return v;
         }
+        total_uncomp += st.m_uncomp_size;
+        if (total_uncomp > (256ull << 20)) {
+            v.error = "package total too large";
+            return v;
+        }
         std::string norm = safe_entry(raw);
         if (norm.empty()) {
             v.error = std::string("unsafe path: ") + raw;
@@ -143,6 +129,10 @@ PackView inspect_package(const std::string& path) {
         names.push_back(norm);
         if (norm == "manifest.json") {
             manifests++;
+            if (st.m_uncomp_size > (1ull << 20)) {
+                v.error = "manifest too large";
+                return v;
+            }
             if (!read_entry(z.zip, i, manifest)) {
                 v.error = "cannot read manifest.json";
                 return v;

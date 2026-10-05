@@ -7,9 +7,12 @@ namespace ttmod {
 
 // .ttmod cache sync (portable). Packaged mods extract to
 // <cache_dir>/<id>/ so the runtime consumes one uniform shape (unpacked
-// dirs are used in place). Freshness = package size+mtime marker; stale
-// cache entries (marker present, source gone) are removed. Directories
-// without our marker are never touched.
+// dirs are used in place). Freshness = content hash + size + schema marker;
+// stale cache entries (marker present, source gone) are removed.
+// Directories without our marker are never touched. Extraction is
+// transactional (temp dir + rename): a crash never leaves a partial cache
+// that looks complete.
+inline constexpr int kCacheSchema = 1;
 struct CacheSync {
     // id -> effective dir (cache dir for packages). Empty when nothing synced.
     std::map<std::string, std::string> effective;

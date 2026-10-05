@@ -222,3 +222,15 @@ awk '/TTMod framework v/{buf=""} {buf=buf $0 "\n"} END{printf "%s",buf}' logs/tt
   miniz (`fseeko`); C++ stays strict. 21/21 green on debug+ASan+UBSan,
   win32 gate green. CI jobs (native/cross/sanitize/format) all run on
   presets now.
+
+## 2026-10-05 refactor Stage B (security)
+
+- Canonical `is_valid_mod_id` + `validate_mod_relative_path` (core),
+  single implementation (package entry validation delegates to it).
+- nlohmann/json 3.11.3 vendored (MIT): strict manifest/config parsing,
+  duplicate-key rejection, trailing-garbage rejection, 1MB cap.
+- `tests/test_security.cpp`: traversal/absolute/dup/overflow vectors.
+- Atomic config writes (tmp+flush+rename), transactional cache
+  (tmp dir+rename, hash+size+schema identity, no mtime).
+- Package caps centralized: 512MB file, 4096 entries, 64MB/entry,
+  256MB total, 1MB manifest. Lua->filesystem ID guard at write path.

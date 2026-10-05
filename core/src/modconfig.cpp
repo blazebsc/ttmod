@@ -1,150 +1,15 @@
 // Per-mod configuration backend (see header).
 #include "ttmod/modconfig.hpp"
+#include "ttmod/json.hpp"
 #include "ttmod/modstate.hpp"
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 
 namespace ttmod {
 namespace {
 
-struct P {
-    const char* s;
-    const char* end;
-    std::string err;
-    void ws() {
-        while (s < end && isspace((unsigned char)*s)) ++s;
-    }
-    bool lit(char c) {
-        ws();
-        if (s < end && *s == c) {
-            ++s;
-            return true;
-        }
-        return false;
-    }
-    bool str(std::string& out) {
-        ws();
-        if (s >= end || *s != '"') {
-            err = "expected string";
-            return false;
-        }
-        ++s;
-        out.clear();
-        while (s < end && *s != '"') {
-            if (*s == '\\' && s + 1 < end) {
-                ++s;
-                char e = *s++;
-                // keep it simple: JSON escapes resolve to the char itself,
-                // except n/r/t which become real control chars.
-                if (e == 'n') out += '\n';
-                else if (e == 'r') out += '\r';
-                else if (e == 't') out += '\t';
-                else out += e;
-            } else {
-                out += *s++;
-            }
-        }
-        if (s >= end) {
-            err = "unterminated string";
-            return false;
-        }
-        ++s;
-        return true;
-    }
-    // integer or float; reports which.
-    bool number(double& out, bool& is_int) {
-        ws();
-        const char* b = s;
-        bool neg = false;
-        if (s < end && *s == '-') {
-            neg = true;
-            ++s;
-        }
-        if (s >= end || !isdigit((unsigned char)*s)) {
-            err = "expected number";
-            return false;
-        }
-        double v = 0;
-        while (s < end && isdigit((unsigned char)*s)) v = v * 10 + (*s++ - '0');
-        is_int = true;
-        if (s < end && *s == '.') {
-            is_int = false;
-            ++s;
-            double f = 0.1;
-            if (s >= end || !isdigit((unsigned char)*s)) {
-                err = "bad fraction";
-                return false;
-            }
-            while (s < end && isdigit((unsigned char)*s)) {
-                v += (*s++ - '0') * f;
-                f *= 0.1;
-            }
-        }
-        if (s < end && (*s == 'e' || *s == 'E')) {
-            is_int = false;
-            ++s;
-            bool eneg = false;
-            if (s < end && (*s == '-' || *s == '+')) eneg = *s++ == '-';
-            int e = 0;
-            if (s >= end || !isdigit((unsigned char)*s)) {
-                err = "bad exponent";
-                return false;
-            }
-            while (s < end && isdigit((unsigned char)*s)) e = e * 10 + (*s++ - '0');
-            double m = 1;
-            for (int i = 0; i < e; ++i) m *= 10;
-            v = eneg ? v / m : v * m;
-        }
-        (void)b;
-        out = neg ? -v : v;
-        return true;
-    }
-    bool boolean(bool& out) {
-        ws();
-        if (s + 4 <= end && std::string(s, s + 4) == "true") {
-            s += 4;
-            out = true;
-            return true;
-        }
-        if (s + 5 <= end && std::string(s, s + 5) == "false") {
-            s += 5;
-            out = false;
-            return true;
-        }
-        err = "expected bool";
-        return false;
-    }
-    bool skipval() {
-        ws();
-        if (s >= end) return false;
-        if (*s == '"') {
-            std::string t;
-            return str(t);
-        }
-        if (*s == '[' || *s == '{') {
-            char o = *s++, c = (o == '[') ? ']' : '}';
-            int d = 1;
-            bool instr = false;
-            while (s < end && d) {
-                if (instr) {
-                    if (*s == '\\') ++s;
-                    else if (*s == '"') instr = false;
-                } else if (*s == '"') {
-                    instr = true;
-                } else if (*s == o) {
-                    ++d;
-                } else if (*s == c) {
-                    --d;
-                }
-                ++s;
-            }
-            return d == 0;
-        }
-        while (s < end && *s != ',' && *s != '}' && *s != ']') ++s;
-        return true;
-    }
-};
 
 bool valid_type(const std::string& t) {
     return t == "bool" || t == "int" || t == "float" || t == "string" || t == "enum" ||
@@ -167,223 +32,155 @@ bool valid_color(const std::string& s) {
 
 bool parse_config_schema(const std::string& json, std::vector<ConfigOption>& out,
                          std::string& error) {
-    P p{json.data(), json.data() + json.size()};
-    if (!p.lit('[')) {
+    // Strict: top-level array of objects; unknown keys skipped (additive
+    // schema); duplicate keys rejected (see parse_manifest policy).
+    nlohmann::ordered_json j;
+    if (!parse_json_value(json, j, error) || !j.is_array()) {
         error = "config not array";
         return false;
     }
-    p.ws();
-    if (p.s < p.end && *p.s != ']') {
-        while (true) {
-            if (!p.lit('{')) {
-                error = "config entry not object";
-                return false;
-            }
-            ConfigOption o;
-            bool have_key = false, have_type = false, have_label = false;
-            bool have_default = false;
-            std::string def_s;
-            double def_n = 0;
-            bool def_n_int = true, def_b = false;
-            int def_kind = 0; // 0 none, 1 bool, 2 num, 3 str
-            while (true) {
-                p.ws();
-                if (p.s < p.end && *p.s == '}') {
-                    ++p.s;
-                    break;
-                }
-                std::string k;
-                if (!p.str(k)) {
-                    error = p.err;
-                    return false;
-                }
-                if (!p.lit(':')) {
-                    error = "expected :";
-                    return false;
-                }
-                if (k == "key") {
-                    if (!p.str(o.key) || o.key.empty()) {
-                        error = "bad key";
-                        return false;
-                    }
-                    have_key = true;
-                } else if (k == "type") {
-                    if (!p.str(o.type) || !valid_type(o.type)) {
-                        error = "bad type";
-                        return false;
-                    }
-                    have_type = true;
-                } else if (k == "label") {
-                    if (!p.str(o.label) || o.label.empty()) {
-                        error = "bad label";
-                        return false;
-                    }
-                    have_label = true;
-                } else if (k == "default") {
-                    p.ws();
-                    if (p.s < p.end && *p.s == '"') {
-                        if (!p.str(def_s)) {
-                            error = p.err;
-                            return false;
-                        }
-                        def_kind = 3;
-                    } else if (p.s + 4 <= p.end &&
-                               (std::string(p.s, p.s + 4) == "true" ||
-                                std::string(p.s, p.s + 5) == "false")) {
-                        if (!p.boolean(def_b)) {
-                            error = p.err;
-                            return false;
-                        }
-                        def_kind = 1;
-                    } else {
-                        if (!p.number(def_n, def_n_int)) {
-                            error = p.err;
-                            return false;
-                        }
-                        def_kind = 2;
-                    }
-                    have_default = true;
-                } else if (k == "min") {
-                    if (!p.number(o.min_val, def_n_int)) {
-                        error = p.err;
-                        return false;
-                    }
-                    o.has_min = true;
-                } else if (k == "max") {
-                    if (!p.number(o.max_val, def_n_int)) {
-                        error = p.err;
-                        return false;
-                    }
-                    o.has_max = true;
-                } else if (k == "step") {
-                    if (!p.number(o.step, def_n_int)) {
-                        error = p.err;
-                        return false;
-                    }
-                } else if (k == "options") {
-                    if (!p.lit('[')) {
-                        error = "options not array";
-                        return false;
-                    }
-                    p.ws();
-                    if (p.s < p.end && *p.s != ']') {
-                        while (true) {
-                            std::string v;
-                            if (!p.str(v)) {
-                                error = p.err;
-                                return false;
-                            }
-                            o.options.push_back(v);
-                            p.ws();
-                            if (p.lit(',')) continue;
-                            break;
-                        }
-                    }
-                    if (!p.lit(']')) {
-                        error = "options unterminated";
-                        return false;
-                    }
-                } else if (!p.skipval()) {
-                    error = "bad value";
-                    return false;
-                }
-                p.ws();
-                if (p.lit(',')) continue;
-                // loop re-checks for '}'
-            }
-            if (!have_key || !have_type || !have_label) {
-                error = "entry missing key/type/label";
-                return false;
-            }
-            if (o.type == "enum" && o.options.empty()) {
-                error = "enum needs options";
-                return false;
-            }
-            if (o.type == "color" && have_default && !valid_color(def_s)) {
-                error = "color default must be #RRGGBB";
-                return false;
-            }
-            if (have_default) {
-                if (def_kind == 1) o.def_bool = def_b;
-                if (def_kind == 2) {
-                    o.def_int = (long long)def_n;
-                    o.def_float = def_n;
-                }
-                if (def_kind == 3) o.def_str = def_s;
-            } else if (o.type == "enum") {
-                o.def_str = o.options[0];
-            }
-            out.push_back(o);
-            p.ws();
-            if (p.lit(',')) continue;
-            break;
+    for (auto& e : j) {
+        if (!e.is_object()) {
+            error = "config entry not object";
+            return false;
         }
-    }
-    if (!p.lit(']')) {
-        error = "config unterminated";
-        return false;
+        ConfigOption o;
+        auto get_str = [&](const char* k, std::string& dst, bool& have) {
+            auto it = e.find(k);
+            if (it == e.end()) return true;
+            if (!it->is_string() || it->get<std::string>().empty()) {
+                error = std::string("bad ") + k;
+                return false;
+            }
+            dst = it->get<std::string>();
+            have = true;
+            return true;
+        };
+        bool have_key = false, have_type = false, have_label = false;
+        if (!get_str("key", o.key, have_key) || !get_str("type", o.type, have_type) ||
+            !get_str("label", o.label, have_label))
+            return false;
+        if (!have_key || !have_type || !have_label) {
+            error = "entry missing key/type/label";
+            return false;
+        }
+        if (!valid_type(o.type)) {
+            error = "bad type";
+            return false;
+        }
+        auto num = [&](const char* k, double& dst, bool& has) {
+            auto it = e.find(k);
+            if (it == e.end()) return true;
+            if (!it->is_number()) {
+                error = std::string("bad ") + k;
+                return false;
+            }
+            dst = it->get<double>();
+            if (!std::isfinite(dst)) {
+                error = std::string("bad ") + k;
+                return false;
+            }
+            has = true;
+            return true;
+        };
+        bool hm = false, hx = false, hs = false;
+        if (!num("min", o.min_val, hm)) return false;
+        o.has_min = hm;
+        if (!num("max", o.max_val, hx)) return false;
+        o.has_max = hx;
+        if (!num("step", o.step, hs)) return false;
+        auto oit = e.find("options");
+        if (oit != e.end()) {
+            if (!oit->is_array()) {
+                error = "options not array";
+                return false;
+            }
+            for (auto& v : *oit) {
+                if (!v.is_string()) {
+                    error = "bad options";
+                    return false;
+                }
+                o.options.push_back(v.get<std::string>());
+            }
+        }
+        if (o.type == "enum" && o.options.empty()) {
+            error = "enum needs options";
+            return false;
+        }
+        auto dit = e.find("default");
+        if (dit != e.end()) {
+            if (dit->is_boolean()) {
+                o.def_bool = dit->get<bool>();
+            } else if (dit->is_number_integer() || dit->is_number_unsigned()) {
+                long long v = dit->get<long long>();
+                o.def_int = v;
+                o.def_float = (double)v;
+            } else if (dit->is_number_float()) {
+                double v = dit->get<double>();
+                if (!std::isfinite(v)) {
+                    error = "bad default";
+                    return false;
+                }
+                o.def_int = (long long)v;
+                o.def_float = v;
+            } else if (dit->is_string()) {
+                o.def_str = dit->get<std::string>();
+            } else {
+                error = "bad default";
+                return false;
+            }
+        }
+        if (o.type == "color" && e.contains("default") && !valid_color(o.def_str)) {
+            error = "color default must be #RRGGBB";
+            return false;
+        }
+        if (!e.contains("default") && o.type == "enum") o.def_str = o.options[0];
+        out.push_back(o);
     }
     return true;
 }
 
 ConfigFile parse_config_file(const std::string& text) {
     ConfigFile f;
-    P p{text.data(), text.data() + text.size()};
-    p.ws();
-    if (p.s >= p.end) return f; // blank -> empty (all defaults)
-    if (!p.lit('{')) {
+    // Blank -> empty (all defaults). Anything else must be a strict object;
+    // malformed file -> ok=false (caller falls back to defaults).
+    bool blank = true;
+    for (char c : text) {
+        if (!isspace((unsigned char)c)) {
+            blank = false;
+            break;
+        }
+    }
+    if (blank) return f;
+    json j;
+    std::string error;
+    if (!parse_json_value(text, j, error) || !j.is_object()) {
         f.ok = false;
         return f;
     }
-    while (true) {
-        p.ws();
-        if (p.s < p.end && *p.s == '}') {
-            ++p.s;
-            break;
-        }
-        std::string k;
-        if (!p.str(k)) {
-            f.ok = false;
-            return f;
-        }
-        if (!p.lit(':')) {
-            f.ok = false;
-            return f;
-        }
-        p.ws();
-        if (p.s < p.end && *p.s == '"') {
-            std::string v;
-            if (!p.str(v)) {
+    for (auto& [k, v] : j.items()) {
+        if (v.is_string()) f.values[k] = ConfigValue::text(v.get<std::string>());
+        else if (v.is_boolean()) f.values[k] = ConfigValue::boolean(v.get<bool>());
+        else if (v.is_number_integer() || v.is_number_unsigned()) {
+            long long i = 0;
+            try {
+                i = v.get<long long>();
+            } catch (const json::exception&) {
                 f.ok = false;
                 return f;
             }
-            f.values[k] = ConfigValue::text(v);
-        } else if (p.s + 4 <= p.end &&
-                   (std::string(p.s, p.s + 4) == "true" || std::string(p.s, p.s + 5) == "false")) {
-            bool b = false;
-            if (!p.boolean(b)) {
+            f.values[k] = ConfigValue::integer(i);
+        } else if (v.is_number_float()) {
+            double d = v.get<double>();
+            if (!std::isfinite(d)) {
                 f.ok = false;
                 return f;
             }
-            f.values[k] = ConfigValue::boolean(b);
+            f.values[k] = ConfigValue::number(d);
         } else {
-            double v = 0;
-            bool is_int = true;
-            if (!p.number(v, is_int)) {
-                f.ok = false;
-                return f;
-            }
-            f.values[k] = is_int ? ConfigValue::integer((long long)v) : ConfigValue::number(v);
+            f.ok = false;
+            return f;
         }
-        p.ws();
-        if (p.lit(',')) continue;
-        p.ws();
-        if (p.s < p.end && *p.s == '}') {
-            ++p.s;
-            break;
-        }
-        f.ok = false;
-        return f;
     }
     return f;
 }
