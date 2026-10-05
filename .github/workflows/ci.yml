@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Install deps
         run: |
           sudo apt-get update
@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Install MinGW
         run: |
           sudo apt-get update
@@ -69,7 +69,7 @@ jobs:
           done
           echo "PASS: embedded menu Lua markers present"
       - name: Upload game DLLs
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: win32-dlls
           path: |
@@ -90,7 +90,7 @@ jobs:
           - name: ubsan
             preset: linux-ubsan
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Install deps
         run: |
           sudo apt-get update
@@ -108,7 +108,7 @@ jobs:
     steps:
       # fetch-depth 0: check_format.py diffs changed lines against a base rev,
       # and the merge-base fallback needs origin/master present.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Install clang-format
