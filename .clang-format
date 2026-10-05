@@ -1,0 +1,15 @@
+# TTMod C++ style: LLVM base, 4-space indent, 120 columns. Matches the
+# existing tree (pragma-once headers, ttmod:: namespace, assert-driven tests).
+# Check: clang-format --dry-run --Werror on the C++ sources (see CI).
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 120
+AllowShortFunctionsOnASingleLine: Empty
+AlwaysBreakAfterReturnType: None
+BreakBeforeBraces: Attach
+PointerAlignment: Left
+# Tree idioms (encoded, not fought): single-line guard clauses everywhere,
+# includes in pragmatic order (windows.h placement matters to MSVC).
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortLoopsOnASingleLine: true
+SortIncludes: false

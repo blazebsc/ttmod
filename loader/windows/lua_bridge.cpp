@@ -7,6 +7,7 @@
 
 #include "MinHook.h"
 #include "ttmod/log.hpp"
+#include "ttmod/theme_color.hpp"
 #include "ttmod/lua_bridge.hpp"
 #include "ttmod/uiqueue.hpp"
 #include "lua_abi.hpp"
@@ -80,9 +81,15 @@ struct UiProbeTarget {
     bool done;
 };
 static UiProbeTarget g_uiprobes[] = {
-    {"scol", 0x168430,
-     {0x55, 0x8B, 0xEC, 0x51, 0x56, 0x57, 0x8B, 0xF1, 0xE8, 0xD3}, 10,
-     (LPVOID)hook_scol, (LPVOID*)&g_origScol, 0, 5000, false},
+    {"scol",
+     0x168430,
+     {0x55, 0x8B, 0xEC, 0x51, 0x56, 0x57, 0x8B, 0xF1, 0xE8, 0xD3},
+     10,
+     (LPVOID)hook_scol,
+     (LPVOID*)&g_origScol,
+     0,
+     5000,
+     false},
 };
 static DWORD WINAPI ui_probe_thread(LPVOID) {
     int remaining = 1;
@@ -99,11 +106,9 @@ static DWORD WINAPI ui_probe_thread(LPVOID) {
             if (memcmp(rbase + t.rva, t.anchor, t.alen) != 0) continue;
             g_aspbase = rbase;
             void* tgt = (void*)(rbase + t.rva);
-            if (MH_CreateHook(tgt, t.detour, t.origstore) == MH_OK &&
-                MH_EnableHook(tgt) == MH_OK) {
+            if (MH_CreateHook(tgt, t.detour, t.origstore) == MH_OK && MH_EnableHook(tgt) == MH_OK) {
                 char m[128];
-                snprintf(m, sizeof m, "%s: hook installed (anchor-verified, retry)",
-                         t.tag);
+                snprintf(m, sizeof m, "%s: hook installed (anchor-verified, retry)", t.tag);
                 emit(m);
             } else {
                 char m[128];
@@ -202,8 +207,7 @@ static int __cdecl hook_loadresource(lua_State* L, char* filename) {
         // certainly unpacked and about to run (see dump_module_image).
         if (InterlockedCompareExchange(&g_dump_done, 1, 0) == 0) {
             char dpath[MAX_PATH] = {};
-            if (GetEnvironmentVariableA("TTMOD_DUMP_MEM", dpath, sizeof dpath) > 0)
-                dump_module_image(dpath);
+            if (GetEnvironmentVariableA("TTMOD_DUMP_MEM", dpath, sizeof dpath) > 0) dump_module_image(dpath);
         }
     }
     if (filename && tail_matches(filename, "Menu.lua")) {
@@ -214,17 +218,13 @@ static int __cdecl hook_loadresource(lua_State* L, char* filename) {
         static volatile LONG ui_started = 0;
         if (InterlockedCompareExchange(&ui_started, 1, 0) == 0) {
             char roff[8] = {};
-            if (GetEnvironmentVariableA("TTMOD_SETCOLOR", roff, sizeof roff) > 0 &&
-                strcmp(roff, "0") == 0) {
+            if (GetEnvironmentVariableA("TTMOD_SETCOLOR", roff, sizeof roff) > 0 && strcmp(roff, "0") == 0) {
                 emit("scol: skipped via TTMOD_SETCOLOR=0");
-                for (size_t k = 0; k < sizeof g_uiprobes / sizeof g_uiprobes[0]; ++k)
-                    g_uiprobes[k].done = true;
+                for (size_t k = 0; k < sizeof g_uiprobes / sizeof g_uiprobes[0]; ++k) g_uiprobes[k].done = true;
             } else {
                 HANDLE t = CreateThread(nullptr, 0, ui_probe_thread, nullptr, 0, nullptr);
-                if (t)
-                    CloseHandle(t);
-                else
-                    emit("uiprobe: retry thread failed, probes unavailable");
+                if (t) CloseHandle(t);
+                else emit("uiprobe: retry thread failed, probes unavailable");
             }
         }
     }
@@ -269,8 +269,7 @@ static void scol_log(const char* tag, volatile LONG* hits, int cap, void* color)
         void* ret = __builtin_return_address(0);
         char m[192];
         snprintf(m, sizeof m, "%s: #%ld t=%lu c=%.3f,%.3f,%.3f,%.3f caller=%08X", tag, (long)n,
-                 (unsigned long)GetTickCount(), c[0], c[1], c[2], c[3],
-                 (unsigned)((BYTE*)ret - g_aspbase));
+                 (unsigned long)GetTickCount(), c[0], c[1], c[2], c[3], (unsigned)((BYTE*)ret - g_aspbase));
         emit(m);
     }
 }
@@ -308,19 +307,14 @@ static bool scol_accent(float* out) {
     const char* k = strstr(t, "\"accent\"");
     if (!k) return false;
     const char* q = strchr(k + 8, '"');
-    if (!q || q[1] != '#' || strlen(q + 2) < 6) return false;
-    unsigned int v = 0;
-    for (int i = 0; i < 6; ++i) {
-        char c = q[2 + i];
-        v <<= 4;
-        if (c >= '0' && c <= '9') v |= (unsigned)(c - '0');
-        else if (c >= 'a' && c <= 'f') v |= (unsigned)(c - 'a' + 10);
-        else if (c >= 'A' && c <= 'F') v |= (unsigned)(c - 'A' + 10);
-        else return false;
-    }
-    out[0] = ((v >> 16) & 255) / 255.0f;
-    out[1] = ((v >> 8) & 255) / 255.0f;
-    out[2] = (v & 255) / 255.0f;
+    if (!q || q[1] != '#') return false;
+    char hex[8] = {};
+    strncpy(hex, q + 1, 7);
+    auto parsed = ttmod::parse_accent(hex);
+    if (!parsed) return false;
+    out[0] = parsed->r;
+    out[1] = parsed->g;
+    out[2] = parsed->b;
     rgb[0] = out[0];
     rgb[1] = out[1];
     rgb[2] = out[2];
@@ -369,25 +363,18 @@ static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* col
     if (color && desc) {
         float acc[3] = {};
         bool haveAcc = scol_accent(acc);
-        float mn = c[0], mx = c[0];
-        for (int i = 1; i < 3; ++i) {
-            if (c[i] < mn) mn = c[i];
-            if (c[i] > mx) mx = c[i];
-        }
-        bool graybright = (mx - mn < 0.05f && mn >= 0.8f);
-        bool black = (mn <= 0.001f && mx <= 0.001f);
-        if (graybright && haveAcc) {
+        bool sub = haveAcc && ttmod::should_substitute(c[0], c[1], c[2]);
+        if (sub) {
             LONG n = InterlockedIncrement(&g_scolBsub);
             if (n <= 400) {
                 char m[128];
-                snprintf(m, sizeof m, "scol-sub: %.3f,%.3f,%.3f -> accent",
-                         c[0], c[1], c[2]);
+                snprintf(m, sizeof m, "scol-sub: %.3f,%.3f,%.3f -> accent", c[0], c[1], c[2]);
                 emit(m);
             }
             c[0] = acc[0];
             c[1] = acc[1];
             c[2] = acc[2];
-        } else if (!graybright && !black) {
+        } else if (haveAcc && !(c[0] <= 0.001f && c[1] <= 0.001f && c[2] <= 0.001f)) {
             scol_log("scol", &g_uiprobes[0].hits, g_uiprobes[0].cap, color);
         } else {
             InterlockedIncrement(&g_uiprobes[0].hits);
@@ -396,7 +383,6 @@ static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* col
     if (g_origScol) return g_origScol(self, desc, color, flag);
     return 0;
 }
-
 
 static lua_State* __cdecl hook_lua_newstate(lua_Alloc alloc, void* ud) {
     lua_State* L = g_origNewstate(alloc, ud);
@@ -408,8 +394,7 @@ static lua_State* __cdecl hook_lua_newstate(lua_Alloc alloc, void* ud) {
         stage(g_logpath.c_str(), "lua_newstate observed");
     }
     // One-shot proof on the fresh state, on this same game thread.
-    if (InterlockedCompareExchange(&g_test_done, 1, 0) == 0 && g_fnLoadstring && g_fnPcallk &&
-        g_fnGettop) {
+    if (InterlockedCompareExchange(&g_test_done, 1, 0) == 0 && g_fnLoadstring && g_fnPcallk && g_fnGettop) {
         int t0 = g_fnGettop(L);
         int lr = g_fnLoadstring(L, ttmod::kLuaBridgeTestChunk);
         int pr = -1;

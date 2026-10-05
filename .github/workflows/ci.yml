@@ -35,3 +35,21 @@ jobs:
         run: cmake -S . -B build-win32 -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-i686.cmake -DTTMOD_BUILD_WIN_RUNTIME=ON && cmake --build build-win32
       - name: Verify win32 artifacts
         run: sh tools/verify_win32.sh build-win32
+
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # check_format.py diffs changed lines vs base
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install -y clang-format
+      - name: Changed lines match .clang-format
+        # Grandfathered tree: only lines changed in this push/PR are checked
+        # (see tools/check_format.py). Base = PR base, or previous push.
+        run: |
+          if [ -n "${{ github.base_ref }}" ]; then
+            python3 tools/check_format.py "origin/${{ github.base_ref }}"
+          else
+            python3 tools/check_format.py "${{ github.event.before }}"
+          fi

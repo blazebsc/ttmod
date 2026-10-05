@@ -192,3 +192,20 @@ awk '/TTMod framework v/{buf=""} {buf=buf $0 "\n"} END{printf "%s",buf}' logs/tt
 - `strings <dll> | grep <marker>` to confirm a change reached the DLL the game
   loads (a stale DLL cost a debug round once).
 - `um publish check .` before any release.
+
+## 2026-10-05 reorg (architecture review + standards)
+
+- Theme color rule unified in `core/theme_color.hpp` (`parse_accent`,
+  `should_substitute`) with `tests/test_themecolor.cpp` golden vectors;
+  Lua suite asserts the same literals. Native hook calls core (ADR-004).
+- Standards: `.clang-format` (tuned to tree idioms, not LLVM purity),
+  `.editorconfig`, `tools/check_format.py` (changed-lines gate;
+  grandfathered tree), CI `format` job.
+- Knowledge: `CONTEXT.md` glossary + `docs/adr/` (001 hover-restore,
+  002 uifx, 003 setter-not-getter, 004 theme-color-in-core).
+- Lua chunk self-test (`menumods: ui self-test defs=9/9`, load-safe, no
+  `type()` calls) instead of init-phase ceremony - the chunk needs no
+  runtime init. Dual-state uiqueue test deferred (one occurrence).
+- Anchors/retry stay in loader/windows: thread + Win32 types can't move to
+  portable core. Init-phase functions declined for the same reason the
+  self-test exists - declaration order, not file count, is the hazard.

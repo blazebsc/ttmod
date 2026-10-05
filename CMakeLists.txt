@@ -24,6 +24,7 @@ add_library(ttmod_core
   core/src/lua_bridge.cpp
   core/src/modconfig.cpp
   core/src/uiqueue.cpp
+  core/src/theme_color.cpp
 )
 target_include_directories(ttmod_core PUBLIC core/include)
 
@@ -102,6 +103,9 @@ add_test(NAME modconfig COMMAND test_modconfig)
 add_executable(test_uiqueue tests/test_uiqueue.cpp)
 target_link_libraries(test_uiqueue PRIVATE ttmod_core)
 add_test(NAME uiqueue COMMAND test_uiqueue)
+add_executable(test_themecolor tests/test_themecolor.cpp)
+target_link_libraries(test_themecolor PRIVATE ttmod_core)
+add_test(NAME themecolor COMMAND test_themecolor)
 find_program(PYTHON3_BIN python3)
 if(PYTHON3_BIN)
   add_test(NAME lua_dis COMMAND ${PYTHON3_BIN} ${CMAKE_SOURCE_DIR}/tests/test_lua_dis.py)
@@ -129,7 +133,7 @@ if(TTMOD_BUILD_WIN_RUNTIME)
     third_party/minhook/src/hde/hde32.c
     third_party/minhook/src/hde/hde64.c)
   target_include_directories(minhook PUBLIC third_party/minhook/include)
-  add_library(ttmod_framework SHARED loader/windows/framework.cpp loader/windows/hooks.cpp loader/windows/plugins.cpp loader/windows/mods.cpp loader/windows/events.cpp loader/windows/lua_bridge.cpp loader/windows/menu_bridge.cpp core/src/detect.cpp core/src/profile.cpp core/src/log.cpp core/src/sigmatch.cpp core/src/manifest.cpp core/src/pathnorm.cpp core/src/resolver.cpp core/src/events.cpp core/src/gamestate.cpp core/src/moddeps.cpp core/src/package.cpp core/src/modstate.cpp core/src/discovery.cpp core/src/cache.cpp core/src/lua_bridge.cpp core/src/modconfig.cpp core/src/uiqueue.cpp)
+  add_library(ttmod_framework SHARED loader/windows/framework.cpp loader/windows/hooks.cpp loader/windows/plugins.cpp loader/windows/mods.cpp loader/windows/events.cpp loader/windows/lua_bridge.cpp loader/windows/menu_bridge.cpp core/src/detect.cpp core/src/profile.cpp core/src/log.cpp core/src/sigmatch.cpp core/src/manifest.cpp core/src/pathnorm.cpp core/src/resolver.cpp core/src/events.cpp core/src/gamestate.cpp core/src/moddeps.cpp core/src/package.cpp core/src/modstate.cpp core/src/discovery.cpp core/src/cache.cpp core/src/lua_bridge.cpp core/src/modconfig.cpp core/src/uiqueue.cpp core/src/theme_color.cpp)
   target_include_directories(ttmod_framework PUBLIC core/include)
   target_include_directories(ttmod_framework PRIVATE loader/windows third_party/minhook/include)
   target_link_libraries(ttmod_framework PRIVATE minhook miniz)

@@ -503,9 +503,14 @@ local function theme_substitute(prop, v)
     end
     local scale = 1
     if r > 1 or g > 1 or b > 1 then scale = 255 end
-    local mn = r
+    local mn, mx = r, r
     if g < mn then mn = g end
     if b < mn then mn = b end
+    if g > mx then mx = g end
+    if b > mx then mx = b end
+    -- Same rule as core should_substitute (tests/test_themecolor.cpp holds
+    -- the golden vectors; mirror them in the suite below when changing).
+    if mx / scale - mn / scale >= 0.05 then return nil end
     if mn / scale < 0.8 then return nil end
     local rgb = theme_accent_rgb()
     if rgb == nil then return nil end
@@ -1460,4 +1465,26 @@ function Menu_Mods_Adjust(id, key)
     end
     Menu_Pop()
     Menu_Mods_Select(id)
+end
+
+-- Load-time self-test (keep LAST in file). A load-time error aborts the
+-- whole chunk, killing Menu_Mods with the pcall code as the only symptom
+-- (2026-10-04: a load-time type() call did exactly this). This line is the
+-- all-clear: every screen entry point plus the theme entry points defined.
+-- No type()/library calls: libs may not exist yet at capture time. Missing
+-- names are logged by name so the next failure points at itself.
+do
+    local want = { 'Menu_Mods', 'Menu_Mods_Show', 'Menu_Mods_Select',
+        'Menu_Mods_PickColor', 'Menu_Mods_Toggle', 'Menu_Mods_Adjust',
+        'Menu_Mods_RowCount', 'TTMOD_THEME_WIDGET', 'TTMOD_THEME_WRAP' }
+    local have = { Menu_Mods, Menu_Mods_Show, Menu_Mods_Select,
+        Menu_Mods_PickColor, Menu_Mods_Toggle, Menu_Mods_Adjust,
+        Menu_Mods_RowCount, TTMOD_THEME_WIDGET, TTMOD_THEME_WRAP }
+    local n, missing = 0, nil
+    for i = 1, #want do
+        if have[i] ~= nil then n = n + 1
+        elseif missing == nil then missing = want[i] end
+    end
+    mlog('menumods: ui self-test defs=' .. n .. '/' .. #want ..
+         (missing and (' missing=' .. missing) or ''))
 end

@@ -114,6 +114,13 @@ ttmod_menu = { seq = 1, mods = {
 
 DRIVER = STUBS + open(UI, encoding="utf-8").read() + r"""
 function nrec(p) local n = 0 for _, c in ipairs(calls) do if c:sub(1, #p) == p then n = n + 1 end end return n end
+-- load-time self-test ran at chunk load (before anything else): all nine
+-- entry points defined, or the log names the missing one.
+local selfok = false
+for _, c in ipairs(calls) do
+  if c == 'log|menumods: ui self-test defs=9/9' then selfok = true end
+end
+assert(selfok, 'chunk self-test green at load')
 -- list screen
 Menu_Mods()
 assert(nrec('create|ui_menu_options') == 1, 'one menu created')
@@ -351,6 +358,9 @@ end
 assert(saw_audit, 'audit logged the engine-overwritten label')
 -- theme_sub: script-path white writes become the accent (the stuck-white
 -- fix); disabled-gray and other values pass through untouched.
+-- Golden vectors live in tests/test_themecolor.cpp (core): keep the values
+-- below identical to those when either changes. (0..255 int scale is
+-- core-only; engine Lua tables always carry 0..1 floats.)
 TTMOD_ACCENT = '#FF8000'
 TTMOD_THEME_SCOPE = 'all'
 calls = {}
@@ -361,6 +371,15 @@ assert(type(sub) == 'table' and sub.r == 1 and sub.b == 0 and
 local saw_sub = false
 for _, c in ipairs(calls) do if c:find('theme-sub:', 1, true) then saw_sub = true end end
 assert(saw_sub, 'substitution logged')
+-- golden mirror of tests/test_themecolor.cpp (same values, both paths):
+-- stock gray substitutes, saturated bright tint passes through.
+calls = {}
+AgentSetProperty({ of = 'sub_s' }, 'Text Color', { r = 0.878, g = 0.878, b = 0.878, a = 1 })
+local stk = _color['sub_s//Text Color']
+assert(type(stk) == 'table' and stk.r == 1 and stk.b == 0, 'stock gray substituted')
+calls = {}
+AgentSetProperty({ of = 'sub_t' }, 'Text Color', { r = 1, g = 0.9, b = 0.9, a = 1 })
+assert(_color['sub_t//Text Color'].g == 0.9, 'saturated tint passes through')
 calls = {}
 AgentSetProperty({ of = 'sub_g' }, 'Text Color', { r = 0.4, g = 0.4, b = 0.4, a = 1 })
 assert(_color['sub_g//Text Color'].r == 0.4, 'disabled gray passes through')
