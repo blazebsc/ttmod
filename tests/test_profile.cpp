@@ -15,14 +15,14 @@ int main() {
     known.fnv1a64 = 0xA11CD391555291BEull;
     auto p = ttmod::select_profile(known);
     assert(std::string(p.id) == "mcsm1_pc_x86");
-    assert(p.season == 1 && std::string(p.status) == "supported");
+    assert(p.season == 1 && p.status == ttmod::ProfileStatus::Supported);
 
     // Same shape but different bytes (CODEX crack) is NOT supported
     ttmod::ExeInfo codex = known;
     codex.fnv1a64 = 0x26B0BE1D74787BCDull;
     auto pc = ttmod::select_profile(codex);
     assert(std::string(pc.id) == "mcsm1_pc_x86_codex");
-    assert(std::string(pc.status) == "unrecognized-build" && pc.season == 1);
+    assert(pc.status == ttmod::ProfileStatus::UnrecognizedBuild && pc.season == 1);
 
     // ALI213 variant
     ttmod::ExeInfo ali = known;
@@ -35,7 +35,7 @@ int main() {
     var.fnv1a64 = 0x1234ull;
     auto pv = ttmod::select_profile(var);
     assert(std::string(pv.id) == "mcsm1_pc_x86_variant");
-    assert(std::string(pv.status) == "unrecognized-build");
+    assert(pv.status == ttmod::ProfileStatus::UnrecognizedBuild);
 
     // Unknown x86 stays unknown, x64 is explicitly not-implemented
     ttmod::ExeInfo other;
@@ -47,7 +47,7 @@ int main() {
     ttmod::ExeInfo x64;
     x64.ok = true;
     x64.machine = 0x8664;
-    assert(std::string(ttmod::select_profile(x64).status) == "defined-not-implemented");
+    assert(ttmod::select_profile(x64).status == ttmod::ProfileStatus::DefinedNotImplemented);
     ttmod::ExeInfo bad;
     bad.ok = false;
     assert(std::string(ttmod::select_profile(bad).id) == "unknown");
