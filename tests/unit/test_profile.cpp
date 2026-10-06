@@ -2,9 +2,32 @@
 #include "ttmod/profile.hpp"
 #include "ttmod/log.hpp"
 #include <cassert>
+#include <cstdint>
 #include <cstdio>
+#include <span>
 
 int main() {
+    // parse_pe_bytes: layered form, no file I/O. Minimal synthetic image.
+    {
+        uint8_t img[512] = {};
+        img[0] = 'M';
+        img[1] = 'Z';
+        img[0x3C] = 0x40; // lfanew
+        img[0x40] = 'P';
+        img[0x41] = 'E';
+        img[0x44] = 0x4C;
+        img[0x45] = 0x01; // i386
+        img[0x46] = 0x06; // 6 sections
+        img[0x48] = 0x5D;
+        img[0x58] = 0x0B;
+        img[0x59] = 0x01; // PE32
+        auto h = ttmod::parse_pe_bytes(
+            std::span<const std::byte>((const std::byte*)img, sizeof img));
+        assert(h.ok && h.machine == 0x014C && h.num_sections == 6 && h.opt_magic == 0x10B);
+        assert(!h.path.empty() == false); // bytes form carries no path/identity
+        uint8_t bad[512] = {};
+        assert(!ttmod::parse_pe_bytes(std::span<const std::byte>((const std::byte*)bad, 10)).ok);
+    }
     // Known MCSM1 build selects supported profile (identity incl. FNV)
     ttmod::ExeInfo known;
     known.ok = true;

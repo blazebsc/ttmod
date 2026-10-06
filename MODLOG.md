@@ -337,3 +337,13 @@ awk '/TTMod framework v/{buf=""} {buf=buf $0 "\n"} END{printf "%s",buf}' logs/tt
   display shaping stays CLI-side, walk stays core.
 - Examples: `ttmod_add_example_plugin` helper (9 blocks -> 9 lines);
   parked ImGui optional-off (`TTMOD_BUILD_IMGUI`).
+
+## 2026-10-05 refactor Stages 12-15/J (PE layer, docs close-out)
+
+- `parse_pe_bytes(span)` (no file I/O in parser) + unit coverage;
+  path wrapper fills identity/hash. sigmatch already data-based
+  (span-ification declined as cosmetic). Events already structured.
+- SECURITY.md (trust model, guarantees, reporting). docs/adr/README
+  index. Compatibility matrix already existed (docs/games/).
+  Deferred: ABI plugin live-game test, dual-state test, integration/
+  dir, Runtime object, profiles/ dir, render white-datum hunt.

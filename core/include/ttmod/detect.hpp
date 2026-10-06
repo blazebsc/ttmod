@@ -1,5 +1,7 @@
 #pragma once
+#include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string>
 
 namespace ttmod {
@@ -18,6 +20,10 @@ struct ExeInfo {
 };
 
 ExeInfo parse_pe(const std::string& path);
+// Layered form (Stage 12): parse bytes already in memory (no file I/O
+// inside the parser). file_size/fnv1a64 stay empty - the path wrapper
+// fills identity + hash around it.
+ExeInfo parse_pe_bytes(std::span<const std::byte> bytes);
 // FNV-1a 64 over whole file, streamed.
 uint64_t fnv1a_file(const std::string& path, uint64_t* out_size = nullptr);
 
