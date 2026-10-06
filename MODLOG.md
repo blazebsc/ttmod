@@ -326,3 +326,14 @@ awk '/TTMod framework v/{buf=""} {buf=buf $0 "\n"} END{printf "%s",buf}' logs/tt
 - libFuzzer harnesses (manifest/config, validate/version) + linux-fuzz
   preset + CI smoke job (60s each, zero crashes locally). ABI plugin
   test deferred: needs a live game, cannot run in CI.
+
+## 2026-10-05 refactor Stages 16/19/20 (ABI, CLI, examples)
+
+- ABI: V4/V5 constants added; `struct_size`+`reserved` appended to
+  `ttmod_host` (older offsets stable); host sets size; thread_id
+  width documented (Windows-only ABI).
+- CLI split: tools/cli/{main,common,commands.hpp,cmd_detect,package,
+  inspect,map,mods}; CLI file I/O via file_io (incl. atomic save);
+  display shaping stays CLI-side, walk stays core.
+- Examples: `ttmod_add_example_plugin` helper (9 blocks -> 9 lines);
+  parked ImGui optional-off (`TTMOD_BUILD_IMGUI`).

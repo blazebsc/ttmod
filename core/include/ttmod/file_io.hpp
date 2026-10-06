@@ -94,5 +94,37 @@ inline int remove_file(const std::string& path) {
 #endif
 }
 
+// Read a whole file (binary-safe). Empty string on any failure - callers
+// that distinguish use open_read directly.
+inline std::string read_all(const std::string& path) {
+    FILE* f = open_read(path);
+    if (!f) return "";
+    std::string s;
+    char b[4096];
+    size_t r;
+    while ((r = fread(b, 1, sizeof b, f)) > 0) s.append(b, r);
+    fclose(f);
+    return s;
+}
+
+// Atomic write: temp + flush + rename. A crash never leaves a half-written
+// file that the next launch would parse as corrupt.
+inline bool write_file_atomic(const std::string& path, const std::string& text) {
+    std::string tmp = path + ".tmp";
+    FILE* f = open_write(tmp);
+    if (!f) return false;
+    size_t w = fwrite(text.data(), 1, text.size(), f);
+    bool ok = fflush(f) == 0 && fclose(f) == 0 && w == text.size();
+    if (!ok) {
+        remove_file(tmp);
+        return false;
+    }
+    if (rename_file(tmp, path) != 0) {
+        remove_file(tmp);
+        return false;
+    }
+    return true;
+}
+
 } // namespace file_io
 } // namespace ttmod

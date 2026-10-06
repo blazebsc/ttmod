@@ -1,0 +1,71 @@
+#include "commands.hpp"
+
+#include <cstdio>
+#include <string>
+
+#include "ttmod/manifest.hpp"
+#include "ttmod/package.hpp"
+
+static void print_packinfo(const std::string& path) {
+    auto v = ttmod::inspect_package(path);
+    if (!v.ok) {
+        std::printf("INVALID: %s\n", v.error.c_str());
+        return;
+    }
+    auto m = ttmod::parse_manifest(v.manifest_text);
+    std::printf("id: %s\nname: %s\nversion: %s\napi: %d\npackage_format: %d\ngames:",
+                m.identity.id.c_str(), "(see manifest)", m.identity.version.c_str(), m.compat.api,
+                m.package_format);
+    for (auto& g : m.compat.games) std::printf(" %s", g.c_str());
+    std::printf("\npriority: %d\nenabled-field: %s\nfiles: %u\nplugin: %s\narch: %s\nentries: %u\n",
+                m.overrides.priority, m.enabled ? "true" : "false", (unsigned)m.overrides.files.size(),
+                m.plugin.path.empty() ? "(none)" : m.plugin.path.c_str(),
+                ttmod::to_string(m.compat.arch), (unsigned)v.files.size());
+    bool native = !m.plugin.path.empty();
+    for (auto& f : v.files)
+        if (f.name.size() > 4 && f.name.compare(f.name.size() - 4, 4, ".dll") == 0) native = true;
+    std::printf("contains native code: %s\n", native ? "YES - can execute arbitrary code" : "no");
+    if (!m.deps.depends.empty()) {
+        std::printf("depends:");
+        for (auto& [id, ver] : m.deps.depends)
+            std::printf(" %s%s%s", id.c_str(), ver.empty() ? "" : ">=", ver.c_str());
+        std::printf("\n");
+    }
+    if (!m.deps.conflicts.empty()) {
+        std::printf("conflicts:");
+        for (auto& c : m.deps.conflicts) std::printf(" %s", c.c_str());
+        std::printf("\n");
+    }
+    for (auto& f : v.files)
+        std::printf("  %s (%llu)\n", f.name.c_str(), (unsigned long long)f.size);
+}
+
+int cmd_package(int argc, char** argv) {
+    if (argc < 1) return cmd_usage();
+    std::string sub = argv[0];
+    if (sub == "create" && argc == 3) {
+        std::string err;
+        if (!ttmod::create_package(argv[1], argv[2], err)) {
+            std::printf("create failed: %s\n", err.c_str());
+            return 1;
+        }
+        std::printf("created %s\n", argv[2]);
+        return 0;
+    }
+    if (sub == "validate" && argc == 2) {
+        auto v = ttmod::inspect_package(argv[1]);
+        if (!v.ok) {
+            std::printf("INVALID: %s\n", v.error.c_str());
+            return 1;
+        }
+        auto m = ttmod::parse_manifest(v.manifest_text);
+        std::printf("valid: %s %s (%u files)\n", m.identity.id.c_str(),
+                    m.identity.version.c_str(), (unsigned)v.files.size());
+        return 0;
+    }
+    if (sub == "info" && argc == 2) {
+        print_packinfo(argv[1]);
+        return 0;
+    }
+    return cmd_usage();
+}

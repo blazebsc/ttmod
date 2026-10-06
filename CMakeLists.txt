@@ -65,7 +65,14 @@ target_link_libraries(ttmod-detect PRIVATE ttmod_core)
 ttmod_apply_warnings(ttmod-detect)
 ttmod_apply_sanitizers(ttmod-detect)
 
-add_executable(ttmod tools/ttmod_main.cpp)
+add_executable(ttmod
+  tools/cli/main.cpp
+  tools/cli/common.cpp
+  tools/cli/cmd_detect.cpp
+  tools/cli/cmd_package.cpp
+  tools/cli/cmd_inspect.cpp
+  tools/cli/cmd_map.cpp
+  tools/cli/cmd_mods.cpp)
 target_link_libraries(ttmod PRIVATE ttmod_core)
 ttmod_apply_warnings(ttmod)
 ttmod_apply_sanitizers(ttmod)
@@ -169,23 +176,13 @@ ttmod_apply_sanitizers(ttmod_framework)
   add_custom_target(menumods_ui_h DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/menumods_ui.h)
   add_dependencies(ttmod_framework menumods_ui_h)
   target_include_directories(ttmod_framework PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-  # Example plugin (M3): output staged as example-plugins/hello-mcsm/plugin.dll.
-  add_library(hello_mcsm SHARED examples/hello-mcsm/plugin.cpp)
-  target_include_directories(hello_mcsm PRIVATE core/include)
-  set_target_properties(hello_mcsm PROPERTIES PREFIX "" OUTPUT_NAME "plugin"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/example-plugins/hello-mcsm")
-  if(MINGW)
-    target_link_options(hello_mcsm PRIVATE -static-libgcc -static-libstdc++ -static)
-  endif()
-  add_library(title_mcsm SHARED examples/title-mcsm/plugin.cpp)
-  target_include_directories(title_mcsm PRIVATE core/include)
-  set_target_properties(title_mcsm PROPERTIES PREFIX "" OUTPUT_NAME "plugin"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/example-plugins/title-mcsm")
-  if(MINGW)
-    target_link_options(title_mcsm PRIVATE -static-libgcc -static-libstdc++ -static)
-  endif()
-  # Dear ImGui (MIT, vendored). Kept for future diagnostics tooling; the
-  # parked D3D overlay example was removed (native UI is the strategy).
+  # Example plugins: staged as example-plugins/<dir>/plugin.dll.
+  ttmod_add_example_plugin(hello_mcsm hello-mcsm)
+  ttmod_add_example_plugin(title_mcsm title-mcsm)
+  # Dear ImGui (MIT, vendored): parked diagnostics tooling, off by default.
+  # Native UI is the strategy; enable explicitly for overlay experiments.
+  option(TTMOD_BUILD_IMGUI "Build vendored Dear ImGui (parked diagnostics)" OFF)
+  if(TTMOD_BUILD_IMGUI)
   add_library(imgui STATIC
     third_party/imgui/src/imgui.cpp
     third_party/imgui/src/imgui_draw.cpp
@@ -194,57 +191,15 @@ ttmod_apply_sanitizers(ttmod_framework)
     third_party/imgui/src/imgui_impl_dx9.cpp
     third_party/imgui/src/imgui_impl_win32.cpp)
   target_include_directories(imgui PUBLIC third_party/imgui/include)
-  add_library(titleprefix SHARED examples/titleprefix/plugin.cpp)
-  target_include_directories(titleprefix PRIVATE core/include)
-  set_target_properties(titleprefix PROPERTIES PREFIX "" OUTPUT_NAME "plugin"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/example-plugins/titleprefix")
-  if(MINGW)
-    target_link_options(titleprefix PRIVATE -static-libgcc -static-libstdc++ -static)
   endif()
-  add_library(event_log SHARED examples/event-log/plugin.cpp)
-  target_include_directories(event_log PRIVATE core/include)
-  set_target_properties(event_log PROPERTIES PREFIX "" OUTPUT_NAME "plugin"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/example-plugins/event-log")
-  if(MINGW)
-    target_link_options(event_log PRIVATE -static-libgcc -static-libstdc++ -static)
-  endif()
-  add_library(modmenu_core SHARED examples/modmenu-core/plugin.cpp)
-  target_include_directories(modmenu_core PRIVATE core/include)
-  set_target_properties(modmenu_core PROPERTIES PREFIX "" OUTPUT_NAME "plugin"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/example-plugins/modmenu-core")
-  if(MINGW)
-    target_link_options(modmenu_core PRIVATE -static-libgcc -static-libstdc++ -static)
-  endif()
-  add_library(demo_config SHARED examples/demo-config/plugin.cpp)
-  target_include_directories(demo_config PRIVATE core/include)
-  set_target_properties(demo_config PROPERTIES PREFIX "" OUTPUT_NAME "plugin"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/example-plugins/demo-config")
-  if(MINGW)
-    target_link_options(demo_config PRIVATE -static-libgcc -static-libstdc++ -static)
-  endif()
-  add_library(session_clock SHARED examples/session-clock/plugin.cpp)
-  target_include_directories(session_clock PRIVATE core/include)
-  set_target_properties(session_clock PROPERTIES PREFIX "" OUTPUT_NAME "plugin"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/example-plugins/session-clock")
-  if(MINGW)
-    target_link_options(session_clock PRIVATE -static-libgcc -static-libstdc++ -static)
-  endif()
-  add_library(modcount SHARED examples/modcount/plugin.cpp)
-  target_include_directories(modcount PRIVATE core/include)
-  set_target_properties(modcount PROPERTIES PREFIX "" OUTPUT_NAME "plugin"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/example-plugins/modcount")
-  if(MINGW)
-    target_link_options(modcount PRIVATE -static-libgcc -static-libstdc++ -static)
-  endif()
-  add_library(menu_theme SHARED examples/menu-theme/plugin.cpp)
-  target_include_directories(menu_theme PRIVATE core/include)
+  ttmod_add_example_plugin(titleprefix titleprefix)
+  ttmod_add_example_plugin(event_log event-log)
+  ttmod_add_example_plugin(modmenu_core modmenu-core)
+  ttmod_add_example_plugin(demo_config demo-config)
+  ttmod_add_example_plugin(session_clock session-clock)
+  ttmod_add_example_plugin(modcount modcount)
   # Named after the mod, matching manifest "plugin": "plugins/menu-theme.dll".
-  # A generic "plugin.dll" here is what shipped undeclared and never loaded.
-  set_target_properties(menu_theme PROPERTIES PREFIX "" OUTPUT_NAME "menu-theme"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/example-plugins/menu-theme")
-  if(MINGW)
-    target_link_options(menu_theme PRIVATE -static-libgcc -static-libstdc++ -static)
-  endif()
+  ttmod_add_example_plugin(menu_theme menu-theme OUTPUT_NAME menu-theme)
   # Drop-in names: dinput8.dll / ttmod_framework.dll (no lib prefix).
   set_target_properties(dinput8 PROPERTIES PREFIX "" SUFFIX ".dll")
   set_target_properties(ttmod_framework PROPERTIES PREFIX "" SUFFIX ".dll")

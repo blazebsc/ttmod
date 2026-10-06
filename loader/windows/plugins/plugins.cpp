@@ -62,7 +62,8 @@ void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, co
                       host_log,
                       ttmod_win::events_subscribe, ttmod_win::events_unsubscribe,
                       ttmod_win::events_get_state, ttmod_win::mods_menu_count,
-                      ttmod_win::mods_menu_info, ttmod_win::menumods_queue_ui_chunk};
+                      ttmod_win::mods_menu_info, ttmod_win::menumods_queue_ui_chunk,
+                      (uint32_t)sizeof(ttmod_host), 0};
     for (auto& s : all) {
         const ttmod::ModManifest& m = s.manifest;
         if (const std::string* why = blocked_reason(m.identity.id)) {

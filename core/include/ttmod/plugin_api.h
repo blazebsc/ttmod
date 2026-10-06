@@ -6,10 +6,14 @@
 // Older plugins keep working.
 #pragma once
 
+#include <stdint.h>
+
 #define TTMOD_PLUGIN_API_VERSION 5
 #define TTMOD_PLUGIN_API_V1 1
 #define TTMOD_PLUGIN_API_V2 2
 #define TTMOD_PLUGIN_API_V3 3
+#define TTMOD_PLUGIN_API_V4 4
+#define TTMOD_PLUGIN_API_V5 5
 
 #ifdef __cplusplus
 extern "C" {
@@ -32,7 +36,8 @@ struct ttmod_event_file {
     const char* category;    // "resdesc" | "archive" | "other"
     int overridden;
     int succeeded;           // real open did not fail
-    unsigned long thread_id; // caller thread
+    unsigned long thread_id; // caller thread (Win32 LLP64: 32-bit; the ABI
+                             // loads plugins on Windows only, so this is stable)
 };
 
 typedef void (*ttmod_event_cb)(const struct ttmod_event_file* ev, void* ctx);
@@ -74,6 +79,14 @@ struct ttmod_host {
     // every captured state — to trace into ttmod.log. Thread-safe; never
     // blocks on Lua.
     int (*queue_ui_chunk)(const char* code);
+    // ABI negotiation (Stage 16): byte size of THIS struct as the host
+    // built it. A plugin must check
+    //   host->struct_size >= offsetof(ttmod_host, queue_ui_chunk) + sizeof(...)
+    // (or simply == sizeof(ttmod_host) for an exact match) before touching
+    // fields past its own version. Appended last so every older offset is
+    // stable; never insert above this line.
+    uint32_t struct_size;
+    uint32_t reserved;
 };
 
 // Menu entry for get_mod_info (M11 overlay menus).
