@@ -50,7 +50,7 @@ void mods_init(const std::vector<ScannedMod>& all, const char* game_root, const 
     std::vector<ttmod::ModManifest> present;
     for (auto& s : all) present.push_back(s.manifest);
     ttmod::DepResolution dep = ttmod::resolve_dependencies(present);
-    auto blocked_reason = [&](const std::string& id) -> const std::string* {
+    auto blocked_reason = [&](const ttmod::ModId& id) -> const std::string* {
         for (auto& pr : dep.problems)
             if (pr.mod == id) return &pr.message;
         return nullptr;
@@ -58,15 +58,15 @@ void mods_init(const std::vector<ScannedMod>& all, const char* game_root, const 
     for (auto& s : all) {
         const ttmod::ModManifest& m = s.manifest;
         if (const std::string* why = blocked_reason(m.identity.id)) {
-            emit("mods: " + m.identity.id + " skipped (" + *why + ")");
+            emit("mods: " + m.identity.id.str() + " skipped (" + *why + ")");
             continue;
         }
         if (m.overrides.files.empty()) continue; // native-only; plugins loader owns it
-        ttmod::ModDef def{m.identity.id, s.dir, m.overrides.priority, true, m.overrides.files};
+        ttmod::ModDef def{m.identity.id.str(), s.dir, m.overrides.priority, true, m.overrides.files};
         size_t before = g_resolver.problems().size();
         bool used = g_resolver.add_mod(def, exists);
         char sum[192];
-        snprintf(sum, sizeof sum, "mods: %s indexed (priority %d, %s)", m.identity.id.c_str(), m.overrides.priority,
+        snprintf(sum, sizeof sum, "mods: %s indexed (priority %d, %s)", m.identity.id.str().c_str(), m.overrides.priority,
                  used ? "overrides registered" : "no usable overrides");
         emit(sum);
         for (size_t i = before; i < g_resolver.problems().size(); ++i)
@@ -82,7 +82,7 @@ void mods_store_menu(const std::vector<ScannedMod>& enabled,
     std::lock_guard<std::mutex> l(g_menu_mtx);
     g_menu.clear();
     for (auto& s : enabled)
-        g_menu.push_back({s.manifest.identity.id, s.manifest.identity.version, true, s.has_dll, s.packaged,
+        g_menu.push_back({s.manifest.identity.id.str(), s.manifest.identity.version, true, s.has_dll, s.packaged,
                           s.manifest.presentation.name, s.manifest.presentation.description,
                           s.manifest.presentation.config, s.manifest});
     for (auto& d : disabled)

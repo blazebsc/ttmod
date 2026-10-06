@@ -68,7 +68,7 @@ void setup() {
 
 bool has_id(const ttmod::Discovery& d, const std::string& id, bool* packaged = nullptr) {
     for (auto& m : d.mods)
-        if (m.id == id) {
+        if (m.id.str() == id) {
             if (packaged) *packaged = m.packaged;
             return true;
         }
@@ -119,7 +119,7 @@ int main() {
     // ...but still visible for menus
     bool found_dis = false;
     for (auto& m : d2.disabled)
-        if (m.id == "pkg.mod") found_dis = true;
+        if (m.id.str() == "pkg.mod") found_dis = true;
     assert(found_dis);
     // empty dir
     auto d3 = ttmod::discover_mods("/tmp/opencode_ttmod_discovery/nope", st, "minecraft-story-mode", 1);

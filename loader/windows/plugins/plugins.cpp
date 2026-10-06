@@ -43,7 +43,7 @@ void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, co
     std::vector<ttmod::ModManifest> present;
     for (auto& s : all) present.push_back(s.manifest);
     ttmod::DepResolution dep = ttmod::resolve_dependencies(present);
-    auto blocked_reason = [&](const std::string& id) -> const std::string* {
+    auto blocked_reason = [&](const ttmod::ModId& id) -> const std::string* {
         for (auto& pr : dep.problems)
             if (pr.mod == id) return &pr.message;
         return nullptr;
@@ -67,40 +67,40 @@ void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, co
     for (auto& s : all) {
         const ttmod::ModManifest& m = s.manifest;
         if (const std::string* why = blocked_reason(m.identity.id)) {
-            emit("plugins: " + m.identity.id + " rejected (" + *why + ")");
+            emit("plugins: " + m.identity.id.str() + " rejected (" + *why + ")");
             continue;
         }
         if (!s.has_dll) continue; // resource-only; mods loader owns it
         // M11: manifest-declared plugin path (or legacy plugin.dll), arch gate.
         if (m.compat.arch != ttmod::Architecture::Any && m.compat.arch != ttmod::Architecture::X86) {
-            emit("plugins: " + m.identity.id + " rejected (arch " + ttmod::to_string(m.compat.arch) + " != x86)");
+            emit("plugins: " + m.identity.id.str() + " rejected (arch " + ttmod::to_string(m.compat.arch) + " != x86)");
             continue;
         }
         std::string dllpath = join(s.dir, s.plugin_rel);
         auto pe = ttmod::parse_pe(dllpath);
         if (!pe.ok() || pe.value().machine != 0x014C) {
-            emit("plugins: " + m.identity.id + " rejected (plugin is not x86 PE)");
+            emit("plugins: " + m.identity.id.str() + " rejected (plugin is not x86 PE)");
             continue;
         }
-        emit("plugins: " + m.identity.id + " validated");
-        emit("plugins: WARNING " + m.identity.id +
+        emit("plugins: " + m.identity.id.str() + " validated");
+        emit("plugins: WARNING " + m.identity.id.str() +
              " contains native code and can execute arbitrary code (manifest-declared)");
         HMODULE dll = ttmod_win::load_library(dllpath);
         if (!dll) {
             char r[160];
-            snprintf(r, sizeof r, "plugins: %s failed to load (err %lu)", m.identity.id.c_str(), GetLastError());
+            snprintf(r, sizeof r, "plugins: %s failed to load (err %lu)", m.identity.id.str().c_str(), GetLastError());
             emit(r);
             continue;
         }
         using InitFn = int (*)(const ttmod_host*);
         InitFn init = (InitFn)GetProcAddress(dll, "ttmod_plugin_init");
         if (!init) {
-            emit("plugins: " + m.identity.id + " has no ttmod_plugin_init, kept loaded (no init)");
+            emit("plugins: " + m.identity.id.str() + " has no ttmod_plugin_init, kept loaded (no init)");
             continue;
         }
         int rc = init(&host);
         char done[160];
-        snprintf(done, sizeof done, "plugins: %s initialized (rc=%d)", m.identity.id.c_str(), rc);
+        snprintf(done, sizeof done, "plugins: %s initialized (rc=%d)", m.identity.id.str().c_str(), rc);
         emit(done);
     }
 }

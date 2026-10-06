@@ -105,7 +105,7 @@ std::string serialize_config(const std::vector<ConfigOption>& schema,
 // Future UI frontends consume the model, never the literal. The menu
 // consumes ONLY snapshots below.
 struct MenuModSnapshot {
-    std::string id;
+    std::string id; // serialized via ModId::str() at the boundary
     std::string name;
     std::string version;
     std::string description;

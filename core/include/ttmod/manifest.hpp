@@ -6,6 +6,7 @@
 #include <vector>
 #include "ttmod/modconfig.hpp"
 #include "ttmod/profile.hpp"
+#include "ttmod/modid.hpp"
 #include "ttmod/result.hpp"
 
 namespace ttmod {
@@ -25,7 +26,7 @@ namespace ttmod {
 // Responsibilities are split into nested structs (Stage C); storage lives
 // here, Lua-visible shapes are built field-by-field by callers.
 struct ModIdentity {
-    std::string id;
+    ModId id;
     std::string version;
 };
 struct ModCompatibility {
@@ -35,9 +36,9 @@ struct ModCompatibility {
 };
 struct DependencySpec {
     // depends entries {mod id, minimum version ("" = any)}.
-    std::vector<std::pair<std::string, std::string>> depends;
+    std::vector<std::pair<ModId, std::string>> depends;
     // conflicts entries (mod ids that must NOT be present+enabled).
-    std::vector<std::string> conflicts;
+    std::vector<ModId> conflicts;
 };
 struct OverrideSpec {
     // game path -> mod-rel replacement.
