@@ -32,9 +32,9 @@ void setup() {
           "{\"id\":\"pkg.mod\",\"version\":\"2.0.0\",\"api\":1,\"games\":[\"minecraft-story-mode:s1\"],"
           "\"files\":{\"a.txt\":\"files/a.txt\"}}");
     wfile("/tmp/opencode_ttmod_discovery/src/pkgdir/files/a.txt", "pkg");
-    std::string err;
     assert(ttmod::create_package("/tmp/opencode_ttmod_discovery/src/pkgdir",
-                                 std::string(kD) + "/pkgmod.ttmod", err));
+                                 std::string(kD) + "/pkgmod.ttmod")
+               .ok());
     // junk: ignored silently
     wfile(std::string(kD) + "/README.txt", "hi");
     wfile(std::string(kD) + "/random.dll", "MZ");
@@ -62,7 +62,8 @@ void setup() {
           "{\"id\":\"dup.mod\",\"api\":1,\"games\":[\"minecraft-story-mode:s1\"],\"files\":{}}");
     wfile("/tmp/opencode_ttmod_discovery/src/dupsrc/files/a.txt", "x");
     assert(ttmod::create_package("/tmp/opencode_ttmod_discovery/src/dupsrc",
-                                 std::string(kD) + "/dup.ttmod", err));
+                                 std::string(kD) + "/dup.ttmod")
+               .ok());
 }
 
 bool has_id(const ttmod::Discovery& d, const std::string& id, bool* packaged = nullptr) {

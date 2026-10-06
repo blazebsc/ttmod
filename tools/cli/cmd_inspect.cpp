@@ -7,11 +7,12 @@
 
 int cmd_inspect(int argc, char** argv) {
     if (argc != 1) return cmd_usage();
-    auto h = ttmod::inspect_ttarch2(argv[0]);
-    if (!h.ok) {
-        std::printf("NOT-TTARCH2: %s\n", h.error.c_str());
+    auto hr = ttmod::inspect_ttarch2(argv[0]);
+    if (!hr.ok()) {
+        std::printf("NOT-TTARCH2: %s\n", hr.error().message.c_str());
         return 1;
     }
+    auto h = hr.value();
     std::printf("magic: %.4s\nsize: %llu\nu16: %u %u %u %u\n"
                 "u64: %llu %llu %llu\ntag: ",
                 h.magic, (unsigned long long)h.file_size, h.w[0], h.w[1], h.w[2], h.w[3],

@@ -65,25 +65,25 @@ bool read_entry(mz_zip_archive& zip, mz_uint idx, std::string& out) {
 
 } // namespace
 
-PackView inspect_package(const std::string& path) {
+Result<PackView> inspect_package(const std::string& path) {
     PackView v;
+    auto fail = [&](const std::string& msg, const char* cat) {
+        return Result<PackView>::fail(Error{"inspect-package", path, cat, msg});
+    };
     // Package-level caps (centralized policy): file size, entry count,
     // per-entry size, total uncompressed size, manifest size.
     std::error_code pec;
     uint64_t file_sz = fs::file_size(path, pec);
     if (pec || file_sz > (512ull << 20)) {
-        v.error = "package too large";
-        return v;
+        return fail("package too large", errcat::kLimit);
     }
     OpenZip z(path);
     if (!z.ok) {
-        v.error = "cannot open archive";
-        return v;
+        return fail("cannot open archive", errcat::kIO);
     }
     mz_uint n = mz_zip_reader_get_num_files(&z.zip);
     if (n == 0 || n > 4096) {
-        v.error = "bad entry count";
-        return v;
+        return fail("bad entry count", errcat::kLimit);
     }
     uint64_t total_uncomp = 0;
     std::vector<std::string> names; // normalized, for dedupe
@@ -92,8 +92,7 @@ PackView inspect_package(const std::string& path) {
     for (mz_uint i = 0; i < n; ++i) {
         mz_zip_archive_file_stat st;
         if (!mz_zip_reader_file_stat(&z.zip, i, &st)) {
-            v.error = "unreadable central directory";
-            return v;
+            return fail("unreadable central directory", errcat::kIO);
         }
         std::string raw = st.m_filename;
         bool is_dir = st.m_is_directory != 0 || (!raw.empty() && raw.back() == '/');
@@ -102,60 +101,52 @@ PackView inspect_package(const std::string& path) {
         if (mode != 0) {
             unsigned ft = mode & kUnixIFMT;
             if (ft != 0 && ft != kUnixIFREG && ft != kUnixIFDIR) {
-                v.error = std::string("unsafe special entry: ") + raw;
-                return v;
+                return fail(std::string("unsafe special entry: ") + raw, errcat::kTraversal);
             }
         }
         if (is_dir) continue; // dirs implicit; validated via file paths
         if (st.m_uncomp_size > (64ull << 20)) {
-            v.error = std::string("entry too large: ") + raw;
-            return v;
+            return fail(std::string("entry too large: ") + raw, errcat::kLimit);
         }
         total_uncomp += st.m_uncomp_size;
         if (total_uncomp > (256ull << 20)) {
-            v.error = "package total too large";
-            return v;
+            return fail("package total too large", errcat::kLimit);
         }
         std::string norm = safe_entry(raw);
         if (norm.empty()) {
-            v.error = std::string("unsafe path: ") + raw;
-            return v;
+            return fail(std::string("unsafe path: ") + raw, errcat::kTraversal);
         }
         for (auto& e : names) {
             if (e == norm) {
-                v.error = std::string("duplicate entry: ") + raw;
-                return v;
+                return fail(std::string("duplicate entry: ") + raw, errcat::kDuplicate);
             }
         }
         names.push_back(norm);
         if (norm == "manifest.json") {
             manifests++;
             if (st.m_uncomp_size > (1ull << 20)) {
-                v.error = "manifest too large";
-                return v;
+                return fail("manifest too large", errcat::kLimit);
             }
             if (!read_entry(z.zip, i, manifest)) {
-                v.error = "cannot read manifest.json";
-                return v;
+                return fail("cannot read manifest.json", errcat::kIO);
             }
             continue;
         }
         v.files.push_back({norm, st.m_uncomp_size});
     }
     if (manifests == 0) {
-        v.error = "manifest.json missing";
-        return v;
+        return fail("manifest.json missing", errcat::kMissing);
     }
     if (manifests > 1) {
-        v.error = "multiple manifest.json entries";
-        return v;
+        return fail("multiple manifest.json entries", errcat::kDuplicate);
     }
     v.manifest_text = manifest;
     // Manifest must parse; every declared file + plugin path must be present.
     Result<ModManifest> pm = parse_manifest(manifest);
     if (!pm.ok()) {
-        v.error = std::string("manifest invalid: ") + pm.error().message;
-        return v;
+        return Result<PackView>::fail(
+            Error{"inspect-package", path, pm.error().category,
+                  std::string("manifest invalid: ") + pm.error().message});
     }
     ModManifest m = pm.value();
     auto has = [&](const std::string& rel) {
@@ -167,78 +158,73 @@ PackView inspect_package(const std::string& path) {
     };
     for (auto& [from, to] : m.overrides.files) {
         if (!has(to)) {
-            v.error = std::string("declared file missing: ") + to;
-            return v;
+            return fail(std::string("declared file missing: ") + to, errcat::kMissing);
         }
     }
     if (!m.plugin.path.empty() && !has(m.plugin.path)) {
-        v.error = std::string("declared plugin missing: ") + m.plugin.path;
-        return v;
+        return fail(std::string("declared plugin missing: ") + m.plugin.path, errcat::kMissing);
     }
-    v.ok = true;
-    return v;
+    return Result<PackView>::ok(std::move(v));
 }
 
-bool extract_package(const std::string& path, const std::string& dest_dir, std::string& error) {
-    PackView v = inspect_package(path);
-    if (!v.ok) {
-        error = v.error;
-        return false;
-    }
+Result<void> extract_package(const std::string& path, const std::string& dest_dir) {
+    auto insp = inspect_package(path);
+    if (!insp.ok()) return Result<void>::fail(insp.error());
+    auto fail = [&](const std::string& msg, const char* cat) {
+        return Result<void>::fail(Error{"extract-package", path, cat, msg});
+    };
     std::error_code ec;
     if (fs::exists(dest_dir, ec)) {
         if (!fs::is_empty(dest_dir, ec)) {
-            error = "destination not empty";
-            return false;
+            return fail("destination not empty", errcat::kIO);
         }
     } else if (!fs::create_directories(dest_dir, ec)) {
-        error = "cannot create destination";
-        return false;
+        return fail("cannot create destination", errcat::kIO);
     }
-    auto fail = [&](const std::string& e) {
-        error = e;
+    auto fail_cleanup = [&](const std::string& msg, const char* cat) {
         fs::remove_all(dest_dir, ec);
-        return false;
+        return Result<void>::fail(Error{"extract-package", path, cat, msg});
     };
     OpenZip z(path);
-    if (!z.ok) return fail("cannot reopen archive");
+    if (!z.ok) return fail_cleanup("cannot reopen archive", errcat::kIO);
     mz_uint n = mz_zip_reader_get_num_files(&z.zip);
     for (mz_uint i = 0; i < n; ++i) {
         mz_zip_archive_file_stat st;
-        if (!mz_zip_reader_file_stat(&z.zip, i, &st)) return fail("central directory changed");
+        if (!mz_zip_reader_file_stat(&z.zip, i, &st))
+            return fail_cleanup("central directory changed", errcat::kIO);
         std::string raw = st.m_filename;
         bool is_dir = st.m_is_directory != 0 || (!raw.empty() && raw.back() == '/');
         if (is_dir) continue;
         std::string norm = safe_entry_nocase(raw);
-        if (norm.empty()) return fail(std::string("unsafe path: ") + raw);
+        if (norm.empty()) return fail_cleanup(std::string("unsafe path: ") + raw, errcat::kTraversal);
         fs::path out = fs::path(dest_dir) / norm;
         fs::create_directories(out.parent_path(), ec);
-        if (ec) return fail("cannot create directory");
+        if (ec) return fail_cleanup("cannot create directory", errcat::kIO);
         size_t sz = 0;
         void* p = mz_zip_reader_extract_to_heap(&z.zip, i, &sz, 0);
-        if (!p) return fail(std::string("extract failed: ") + raw);
+        if (!p) return fail_cleanup(std::string("extract failed: ") + raw, errcat::kIO);
         FILE* f = ttmod::file_io::open_write(out.string());
         if (!f) {
             mz_free(p);
-            return fail(std::string("cannot write: ") + raw);
+            return fail_cleanup(std::string("cannot write: ") + raw, errcat::kIO);
         }
         size_t w = fwrite(p, 1, sz, f);
         fclose(f);
         mz_free(p);
-        if (w != sz) return fail(std::string("short write: ") + raw);
+        if (w != sz) return fail_cleanup(std::string("short write: ") + raw, errcat::kIO);
     }
     // Re-validate the result: manifest present + parseable.
     std::string mt;
     {
         FILE* f = ttmod::file_io::open_read((fs::path(dest_dir) / "manifest.json").string());
-        if (!f) return fail("extracted manifest missing");
+        if (!f) return fail_cleanup("extracted manifest missing", errcat::kMissing);
         char buf[4096];
         size_t r;
         while ((r = fread(buf, 1, sizeof buf, f)) > 0) mt.append(buf, r);
         fclose(f);
     }
-    if (!parse_manifest(mt).ok()) return fail("extracted manifest invalid");
-    return true;
+    if (!parse_manifest(mt).ok()) return fail_cleanup("extracted manifest invalid", errcat::kSyntax);
+    return Result<void>::success();
 }
 
 // Content policy: package these top-level names; skip the rest silently
@@ -252,23 +238,23 @@ static bool wanted_top(const std::string& top) {
     return false;
 }
 
-bool create_package(const std::string& src_dir, const std::string& out_path, std::string& error) {
+Result<void> create_package(const std::string& src_dir, const std::string& out_path) {
+    auto fail = [&](const std::string& msg, const char* cat) {
+        return Result<void>::fail(Error{"create-package", src_dir, cat, msg});
+    };
     std::error_code ec;
     if (!fs::is_directory(src_dir, ec)) {
-        error = "source not a directory";
-        return false;
+        return fail("source not a directory", errcat::kIO);
     }
     if (!fs::exists(fs::path(src_dir) / "manifest.json", ec)) {
-        error = "manifest.json missing in source";
-        return false;
+        return fail("manifest.json missing in source", errcat::kMissing);
     }
     // Collect regular files, sorted, skipping policy-excluded + junk.
     std::vector<std::string> rels;
     for (auto it = fs::recursive_directory_iterator(src_dir, ec); it != fs::recursive_directory_iterator();
          ++it) {
         if (ec) {
-            error = "directory walk failed";
-            return false;
+            return fail("directory walk failed", errcat::kIO);
         }
         if (!it->is_regular_file()) continue;
         std::string rel = fs::relative(it->path(), src_dir, ec).generic_string();
@@ -279,13 +265,11 @@ bool create_package(const std::string& src_dir, const std::string& out_path, std
         if (!leaf.empty() && leaf[0] == '.') continue; // dotfiles excluded
         std::string key = safe_entry(rel); // lowercase key: case-collisions rejected
         if (key.empty()) {
-            error = std::string("unsafe name in source: ") + rel;
-            return false;
+            return fail(std::string("unsafe name in source: ") + rel, errcat::kTraversal);
         }
         for (auto& done : rels)
             if (safe_entry(done) == key) {
-                error = std::string("ambiguous names in source: ") + rel;
-                return false;
+                return fail(std::string("ambiguous names in source: ") + rel, errcat::kDuplicate);
             }
         rels.push_back(rel);
     }
@@ -293,15 +277,13 @@ bool create_package(const std::string& src_dir, const std::string& out_path, std
     mz_zip_archive zip;
     memset(&zip, 0, sizeof zip);
     if (!mz_zip_writer_init_file(&zip, out_path.c_str(), 0)) {
-        error = "cannot open output";
-        return false;
+        return fail("cannot open output", errcat::kIO);
     }
-    auto fail = [&](const std::string& e) {
-        error = e;
+    auto fail_cleanup = [&](const std::string& msg, const char* cat) {
         mz_zip_writer_end(&zip);
         std::error_code ec2;
         fs::remove(out_path, ec2);
-        return false;
+        return Result<void>::fail(Error{"create-package", src_dir, cat, msg});
     };
     // Fixed timestamp (1980-01-01) + sorted entries + fixed level =>
     // deterministic bytes (modulo local TZ in miniz's time conversion;
@@ -310,7 +292,7 @@ bool create_package(const std::string& src_dir, const std::string& out_path, std
     for (auto& rel : rels) {
         std::string full = (fs::path(src_dir) / rel).string();
         FILE* f = ttmod::file_io::open_read(full);
-        if (!f) return fail(std::string("cannot read: ") + rel);
+        if (!f) return fail_cleanup(std::string("cannot read: ") + rel, errcat::kIO);
         std::string data;
         char buf[65536];
         size_t r;
@@ -319,11 +301,11 @@ bool create_package(const std::string& src_dir, const std::string& out_path, std
         if (!mz_zip_writer_add_mem_ex_v2(&zip, rel.c_str(), data.data(), data.size(), nullptr, 0,
                                          MZ_DEFAULT_COMPRESSION, 0, 0, &fixed_t, nullptr, 0,
                                          nullptr, 0))
-            return fail(std::string("cannot add: ") + rel);
+            return fail_cleanup(std::string("cannot add: ") + rel, errcat::kIO);
     }
-    if (!mz_zip_writer_finalize_archive(&zip)) return fail("finalize failed");
+    if (!mz_zip_writer_finalize_archive(&zip)) return fail_cleanup("finalize failed", errcat::kIO);
     mz_zip_writer_end(&zip);
-    return true;
+    return Result<void>::success();
 }
 
 } // namespace ttmod

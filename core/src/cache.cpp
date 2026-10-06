@@ -45,15 +45,14 @@ std::string marker_for(const std::string& package_path) {
 
 } // namespace
 
-CacheSync sync_package_cache(const std::string& cache_dir,
-                             const std::vector<std::pair<std::string, std::string>>& packaged) {
+Result<CacheSync> sync_package_cache(const std::string& cache_dir,
+                                     const std::vector<std::pair<std::string, std::string>>& packaged) {
     CacheSync out;
     std::error_code ec;
     fs::create_directories(cache_dir, ec);
     if (ec) {
-        out.ok = false;
-        out.error = "cannot create cache dir";
-        return out;
+        return Result<CacheSync>::fail(Error{"sync-cache", cache_dir, errcat::kIO,
+                                             "cannot create cache dir"});
     }
     // Wanted ids (for stale cleanup).
     std::map<std::string, bool> wanted;
@@ -72,9 +71,10 @@ CacheSync sync_package_cache(const std::string& cache_dir,
         // place. A crash mid-extract leaves temp junk, never a partial cache.
         std::string tmp = dir + ".tmp-ttmod";
         fs::remove_all(tmp, ec);
-        std::string err;
-        if (!extract_package(pkg, tmp, err) || !write_file((fs::path(tmp) / ".ttmod-cache").string(),
-                                                           marker_for(pkg))) {
+        auto ex = extract_package(pkg, tmp);
+        if (!ex.ok() ||
+            !write_file((fs::path(tmp) / ".ttmod-cache").string(), marker_for(pkg))) {
+            std::string err = !ex.ok() ? ex.error().message : "";
             if (err.empty()) err = "cache marker unwritable";
             out.log.push_back(id + ": cache refresh failed: " + err);
             fs::remove_all(tmp, ec);
@@ -102,7 +102,7 @@ CacheSync sync_package_cache(const std::string& cache_dir,
             out.log.push_back(id + ": stale cache removed");
         }
     }
-    return out;
+    return Result<CacheSync>::ok(std::move(out));
 }
 
 } // namespace ttmod

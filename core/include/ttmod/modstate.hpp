@@ -1,6 +1,7 @@
 #pragma once
 #include <map>
 #include <string>
+#include "ttmod/result.hpp"
 
 namespace ttmod {
 
@@ -27,15 +28,9 @@ struct ModState {
 // Log lines render this answer, never re-derive it (no substring counting).
 bool effective_enabled(const ModManifest& manifest, const ModState& state);
 
-// Parses mods.json; tolerant: blank -> empty state; garbage -> ok=false.
+// Parses mods.json; tolerant: blank -> empty state; garbage -> error.
 // Entries without an "enabled" bool are ignored (unknown future fields in
 // other entries are skipped, keeping parse forward-compatible).
-struct StateFile {
-    bool ok = true;
-    std::string error;
-    ModState state;
-};
-
-StateFile parse_state(const std::string& text);
+Result<ModState> parse_state(const std::string& text);
 
 } // namespace ttmod

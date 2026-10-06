@@ -6,6 +6,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include "ttmod/result.hpp"
 
 namespace ttmod {
 
@@ -59,17 +60,17 @@ struct ConfigValue {
     }
 };
 
-// Parse one manifest "config" array (JSON). Returns false + error on any
-// malformed entry (strict: a broken schema disables config UI, not the mod).
-bool parse_config_schema(const std::string& json, std::vector<ConfigOption>& out, std::string& error);
+// Parse one manifest "config" array (JSON) into schema options.
+// Strict: a broken schema fails the manifest (a broken schema disables
+// config UI, not the mod — enforced by the caller).
+Result<std::vector<ConfigOption>> parse_config_schema(const std::string& json);
 
 // Parse a flat config file {"key": bool|int|float|string}. Unknown keys
-// kept (forward-compatible); malformed file -> ok=false (caller: defaults).
+// kept (forward-compatible); malformed file -> error (caller: defaults).
 struct ConfigFile {
-    bool ok = true;
     std::map<std::string, ConfigValue> values;
 };
-ConfigFile parse_config_file(const std::string& text);
+Result<ConfigFile> parse_config_file(const std::string& text);
 
 // Default value for an option.
 ConfigValue config_default(const ConfigOption& o);
@@ -90,13 +91,9 @@ std::string apply_enabled_change(const std::string& mods_json, const std::string
 // Config value: coerce valstr per the option type (bool: 1/0/true/false;
 // int/float: strict numeric; string/enum: raw, with "" resetting strings
 // to default), validate, merge over the existing file content.
-struct SetValueResult {
-    bool ok = false;
-    std::string file_text;
-};
-SetValueResult apply_config_value(const std::vector<ConfigOption>& schema,
-                                  const std::string& file_text, const std::string& key,
-                                  const std::string& valstr);
+Result<std::string> apply_config_value(const std::vector<ConfigOption>& schema,
+                                           const std::string& file_text, const std::string& key,
+                                           const std::string& valstr);
 
 // Deterministic serialization (schema order, then extras sorted).
 std::string serialize_config(const std::vector<ConfigOption>& schema,

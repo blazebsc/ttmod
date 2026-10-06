@@ -24,13 +24,14 @@ int main() {
     wfile(std::string(kD) + "/src/m/manifest.json",
           "{\"id\":\"c.mod\",\"version\":\"1.0.0\",\"api\":1,\"files\":{\"a.txt\":\"files/a.txt\"}}");
     wfile(std::string(kD) + "/src/m/files/a.txt", "v1");
-    std::string err;
-    assert(ttmod::create_package(std::string(kD) + "/src/m", std::string(kD) + "/m.ttmod", err));
+    assert(ttmod::create_package(std::string(kD) + "/src/m", std::string(kD) + "/m.ttmod").ok());
     std::string cache = std::string(kD) + "/cache";
 
     // First sync extracts.
-    auto s1 = ttmod::sync_package_cache(cache, {{"c.mod", std::string(kD) + "/m.ttmod"}});
-    assert(s1.ok && s1.effective.count("c.mod"));
+    auto s1r = ttmod::sync_package_cache(cache, {{"c.mod", std::string(kD) + "/m.ttmod"}});
+    assert(s1r.ok());
+    auto s1 = s1r.value();
+    assert(s1.effective.count("c.mod"));
     assert(s1.effective["c.mod"] == cache + "/c.mod");
     FILE* f = fopen((cache + std::string("/c.mod/files/a.txt")).c_str(), "rb");
     assert(f);
@@ -40,16 +41,17 @@ int main() {
     assert(std::string(b) == "v1");
 
     // Second sync: fresh, no re-extract (no "cached from package" line).
-    auto s2 = ttmod::sync_package_cache(cache, {{"c.mod", std::string(kD) + "/m.ttmod"}});
-    assert(s2.ok);
+    auto s2r = ttmod::sync_package_cache(cache, {{"c.mod", std::string(kD) + "/m.ttmod"}});
+    assert(s2r.ok());
+    auto s2 = s2r.value();
     for (auto& l : s2.log) assert(l.find("cached from package") == std::string::npos);
 
     // Stale cleanup: unknown dir without marker survives; ours without source dies.
     char cmd2[1024];
     snprintf(cmd2, sizeof cmd2, "mkdir -p %s/foreign && touch %s/foreign/x", cache.c_str(), cache.c_str());
     assert(system(cmd2) == 0);
-    auto s3 = ttmod::sync_package_cache(cache, {});
-    assert(s3.ok && s3.effective.empty());
+    auto s3r = ttmod::sync_package_cache(cache, {});
+    assert(s3r.ok() && s3r.value().effective.empty());
     FILE* ff = fopen((cache + std::string("/foreign/x")).c_str(), "rb");
     assert(ff); // untouched
     fclose(ff);
@@ -57,8 +59,8 @@ int main() {
     assert(!gone); // stale removed
 
     // Missing package file: skipped with log, ok stays true.
-    auto s4 = ttmod::sync_package_cache(cache, {{"ghost", std::string(kD) + "/nope.ttmod"}});
-    assert(s4.ok && s4.effective.empty());
+    auto s4r = ttmod::sync_package_cache(cache, {{"ghost", std::string(kD) + "/nope.ttmod"}});
+    assert(s4r.ok() && s4r.value().effective.empty());
     std::puts("cache: all asserts passed");
     return 0;
 }

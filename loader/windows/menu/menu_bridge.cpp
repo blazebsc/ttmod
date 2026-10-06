@@ -75,8 +75,8 @@ static bool write_file(const std::string& path, const std::string& text) {
 static std::vector<ttmod::MenuModSnapshot> snapshot() {
     std::vector<ttmod::MenuModSnapshot> out;
     ttmod::ModState st;
-    ttmod::StateFile sf = ttmod::parse_state(read_file(g_gamedir + "\\config\\mods.json"));
-    if (sf.ok) st = sf.state;
+    auto sf = ttmod::parse_state(read_file(g_gamedir + "\\config\\mods.json"));
+    if (sf.ok()) st = sf.value();
     int n = mods_menu_count();
     for (int i = 0; i < n; ++i) {
         ttmod::ModManifest m;

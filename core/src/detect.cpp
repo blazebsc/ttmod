@@ -27,45 +27,50 @@ uint64_t fnv1a_file(const std::string& path, uint64_t* out_size) {
     return h;
 }
 
-ExeInfo parse_pe(const std::string& path) {
+Result<ExeInfo> parse_pe(const std::string& path) {
     ExeInfo e;
     e.path = path;
+    auto fail = [&](const std::string& msg, const char* cat) {
+        return Result<ExeInfo>::fail(Error{"parse-pe", path, cat, msg});
+    };
     FILE* f = fopen(path.c_str(), "rb");
-    if (!f) { e.error = "open failed"; return e; }
+    if (!f) return fail("open failed", errcat::kIO);
     uint8_t hdr[512] = {};
-    if (fread(hdr, 1, sizeof hdr, f) != sizeof hdr) { e.error = "too small"; fclose(f); return e; }
+    if (fread(hdr, 1, sizeof hdr, f) != sizeof hdr) {
+        fclose(f);
+        return fail("too small", errcat::kRange);
+    }
     fclose(f);
     // Identity needs the whole file (hash); headers parse from the prefix.
     e.file_size = 0;
     e.fnv1a64 = fnv1a_file(path, &e.file_size);
-    ExeInfo h = parse_pe_bytes(std::span<const std::byte>((const std::byte*)hdr, sizeof hdr));
-    if (!h.ok) {
-        e.error = h.error;
-        return e;
-    }
-    e.machine = h.machine;
-    e.num_sections = h.num_sections;
-    e.timestamp = h.timestamp;
-    e.opt_magic = h.opt_magic;
-    e.ok = true;
-    return e;
+    auto h = parse_pe_bytes(std::span<const std::byte>((const std::byte*)hdr, sizeof hdr));
+    if (!h.ok()) return h;
+    e.machine = h.value().machine;
+    e.num_sections = h.value().num_sections;
+    e.timestamp = h.value().timestamp;
+    e.opt_magic = h.value().opt_magic;
+    return Result<ExeInfo>::ok(std::move(e));
 }
 
-ExeInfo parse_pe_bytes(std::span<const std::byte> bytes) {
+Result<ExeInfo> parse_pe_bytes(std::span<const std::byte> bytes) {
     ExeInfo e;
-    if (bytes.size() < 512) { e.error = "too small"; return e; }
+    auto fail = [&](const std::string& msg, const char* cat) {
+        return Result<ExeInfo>::fail(Error{"parse-pe", "", cat, msg});
+    };
+    if (bytes.size() < 512) return fail("too small", errcat::kRange);
     const uint8_t* hdr = (const uint8_t*)bytes.data();
-    if (hdr[0] != 'M' || hdr[1] != 'Z') { e.error = "no MZ"; return e; }
+    if (hdr[0] != 'M' || hdr[1] != 'Z') return fail("no MZ", errcat::kSyntax);
     uint32_t lfanew = rd32(hdr + 0x3C);
-    if (lfanew > 1024 || lfanew + 64 > bytes.size()) { e.error = "bad e_lfanew"; return e; }
+    if (lfanew > 1024 || lfanew + 64 > bytes.size()) return fail("bad e_lfanew", errcat::kSyntax);
     const uint8_t* pe = hdr + lfanew;
-    if (!(pe[0] == 'P' && pe[1] == 'E' && pe[2] == 0 && pe[3] == 0)) { e.error = "no PE sig"; return e; }
+    if (!(pe[0] == 'P' && pe[1] == 'E' && pe[2] == 0 && pe[3] == 0))
+        return fail("no PE sig", errcat::kSyntax);
     e.machine = rd16(pe + 4);
     e.num_sections = rd16(pe + 6);
     e.timestamp = rd32(pe + 8);
     e.opt_magic = rd16(pe + 24);
-    e.ok = true;
-    return e;
+    return Result<ExeInfo>::ok(std::move(e));
 }
 
 } // namespace ttmod
