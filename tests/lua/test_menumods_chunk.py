@@ -6,7 +6,7 @@ import os
 import subprocess
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Chunk text is extracted from loader/windows/menu/menu_bridge.hpp (single
 # source of truth, loader-owned), then executed for real.

@@ -6,7 +6,7 @@
   (`hook_scol` + a hand parser) - with only hover sessions covering the
   native half. Drift between the two is a wrong-color bug.
 - Decision: `core/theme_color.hpp` owns `parse_accent` +
-  `should_substitute`, covered by `tests/test_themecolor.cpp` golden
+  `should_substitute`, covered by `tests/unit/test_themecolor.cpp` golden
   vectors. The native hook calls core; the Lua suite asserts the same
   literals (pointer comment, kept in sync by review). The hook keeps only
   config-file reading + the mods.json gate (platform work core can't do).

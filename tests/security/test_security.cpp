@@ -61,6 +61,16 @@ int main() {
     assert(!ttmod::parse_manifest("{\"id\":\"../evil\",\"api\":1}").ok);
     assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1.5}").ok);
     assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":99999999999999999999}").ok);
+    // Malformed inputs: syntax, truncation, lone surrogates, non-finite.
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,}").ok); // trailing comma
+    assert(!ttmod::parse_manifest("{\"id\":\"x\" \"api\":1}").ok); // missing colon
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1").ok); // truncation
+    assert(!ttmod::parse_manifest("[{\"id\":\"x\",\"api\":1}]").ok); // top-level array
+    assert(!ttmod::parse_manifest("null").ok);
+    assert(!ttmod::parse_manifest(std::string("{\"id\":\"") + "\\ud800" + "\",\"api\":1}").ok); // lone surrogate
+    assert(ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"extra\":{\"deep\":[1,{\"k\":null}]}}").ok);
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"config\":[{\"key\":\"k\",\"type\":\"int\",\"label\":\"L\",\"default\":1e400}]}").ok);
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":-1}").ok);
     printf("security: validators OK\n");
     return 0;
 }

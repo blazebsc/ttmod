@@ -103,7 +103,7 @@ touches nothing else; raw lua_State* never leaves the framework.
 - Label honesty: ui_menu.dlog contains ZERO label_* strings (CRC-hashed
   nodes); no existing Mods node exists, so 'label_mods' renders NIL VALUE
   until the dlog/landb write path lands. Key identity is forward-correct.
-- Stock Lua 5.2 dynamic test (tests/test_menumods_chunk.py): exists, called
+- Stock Lua 5.2 dynamic test (tests/lua/test_menumods_chunk.py): exists, called
   twice (counter==2), returned, transition ran.
 - Live regression: bridge proof + registration + 2x override, exit 0.
 - VISUAL (button visible/navigable/clicked): BLOCKED on menu render (hunter

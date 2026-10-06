@@ -97,7 +97,7 @@ process at the first Menu.lua load (`menumods_button_enabled()`).
   global 'type'`), taking `Menu_Mods` and all painting with it. Lazy-install
   from `TTMOD_THEME_WIDGET` (runs during menu builds, libs present) instead.
 - Stock `lua5_1` and `lua5_2` BOTH provide `_G` and `setmetatable`, so a suite
-  run on either cannot catch either bug. `tests/test_menumods_ui.py` now nils
+  run on either cannot catch either bug. `tests/lua/test_menumods_ui.py` now nils
   `_G` in its stubs and runs the proof on BOTH interpreters, and it fails if
   `_G` reappears in the UI.
 - Click callbacks swallow errors: trace with `ttmod_menu_log(s)` →
@@ -127,7 +127,7 @@ probe-winner: Text Color (exists, value format differs)
   `0.87843102216721,…,1`: writing integers 0..255 gets CLAMPED and renders
   stock - that clamping masqueraded as "the engine overwrote us" for a day.
   Write `{ r = ri/255, g = gi/255, b = bi/255, a = 1 }`; positional arrays and
-  hex strings are silently ignored. `tests/test_menumods_ui.py` pins the
+  hex strings are silently ignored. `tests/lua/test_menumods_ui.py` pins the
   float form and the exact `#FF8000` value.
 - **Hover/press is an engine-owned limitation (2026-10-03 verdict).** After the
   float fix the write provably holds (`verify-ok (exact)` on every label), yet
@@ -149,7 +149,7 @@ kept for the method, which is still right: scan, never guess.
 `local` is a nil global at call time, and in a click callback that kills the
 process instead of raising an error (cost a crash on 2026-10-02 - then twice
 more, silently, in `theme_drain` and the retry queue). Declare above the use,
-or forward-declare explicitly. `tests/test_menumods_ui.py` runs the real file
+or forward-declare explicitly. `tests/lua/test_menumods_ui.py` runs the real file
 and catches this class.
 
 ## Colour-property probe (diagnostic)
@@ -172,7 +172,7 @@ work.
 Fix: `menumods_register()` replays `uiqueue_recent()` (history, not the drained
 queue) on the menu state, logging as `menu-plugin`. `uiqueue_take()` still
 drains, so script-thread semantics are unchanged; the history is bounded (64)
-and replayed per menu state. Unit semantics: `tests/test_uiqueue.cpp`.
+and replayed per menu state. Unit semantics: `tests/unit/test_uiqueue.cpp`.
 
 **General rule for mods:** a queued chunk that must affect the *menu* must not
 assume it ran on the engine state.
@@ -181,7 +181,7 @@ assume it ran on the engine state.
 `host->queue_ui_chunk(code)` (see plugins.md) executes plugin-authored
 Lua on the game's script thread; drained in the same LoadResource hook
 that offers the Menu_Add wrapper, via the one shared `bridge_run_chunk`
-(balanced-stack + error-sink). Unit queue semantics: `tests/test_uiqueue.cpp`.
+(balanced-stack + error-sink). Unit queue semantics: `tests/unit/test_uiqueue.cpp`.
 
 ## Toolchain: reading game scripts offline (PARTIAL - decrypt UNVERIFIED)
 > 2026-10-02 correction. The decrypt recipe below did NOT reproduce. It is kept

@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 UI = os.path.join(ROOT, "loader", "windows", "menu", "menumods_ui.lua")
 
 STUBS = r"""

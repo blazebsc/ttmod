@@ -8,7 +8,7 @@ import re
 import subprocess
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 HDR = os.path.join(ROOT, "loader", "windows", "menu", "menu_bridge.hpp")
 with open(HDR, encoding="utf-8") as f:
     hsrc = f.read()

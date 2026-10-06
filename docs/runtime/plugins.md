@@ -15,7 +15,7 @@ plugins/
 
 ## Loader (`loader/windows/plugins/plugins.cpp`)
 discovers `plugins/*` → parses manifest (portable `ttmod::parse_manifest`,
-unit-tested in `tests/test_manifest.cpp`) → rejects with reason on:
+unit-tested in `tests/unit/test_manifest.cpp`) → rejects with reason on:
 missing manifest, bad manifest, api mismatch, game mismatch, missing DLL,
 missing export → `LoadLibraryA` → calls init → logs `initialized (rc=N)`.
 A bad plugin never stops the game or other plugins. No unload in M3.

@@ -314,3 +314,15 @@ awk '/TTMod framework v/{buf=""} {buf=buf $0 "\n"} END{printf "%s",buf}' logs/tt
   exec is params-pure in menu_bridge, bridge is cohesive; splitting
   further is churn without a seam. Shared rules already unified
   (theme_color, Stage A/reorg).
+
+## 2026-10-05 refactor Stage I (testing)
+
+- tests/ layout: unit/, lua/, security/, fuzz/, fixtures/ (integration/
+  deferred - nothing there yet). ROOT depth fixed in lua harnesses.
+- Malformed-input vectors in test_security (syntax/truncation/lone
+  surrogate/non-finite/negative api); hostile zips already covered in
+  test_package. assert() kept (active in all test configs; helper adds
+  nothing - documented).
+- libFuzzer harnesses (manifest/config, validate/version) + linux-fuzz
+  preset + CI smoke job (60s each, zero crashes locally). ABI plugin
+  test deferred: needs a live game, cannot run in CI.

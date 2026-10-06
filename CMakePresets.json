@@ -46,6 +46,18 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "TTMOD_ENABLE_UBSAN": "ON"
       }
+    },
+    {
+      "name": "linux-fuzz",
+      "displayName": "libFuzzer harnesses (Clang)",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-fuzz",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_C_COMPILER": "clang",
+        "TTMOD_BUILD_FUZZ": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -53,7 +65,8 @@
     { "name": "linux-release", "configurePreset": "linux-release" },
     { "name": "win32-mingw", "configurePreset": "win32-mingw" },
     { "name": "linux-asan", "configurePreset": "linux-asan" },
-    { "name": "linux-ubsan", "configurePreset": "linux-ubsan" }
+    { "name": "linux-ubsan", "configurePreset": "linux-ubsan" },
+    { "name": "linux-fuzz", "configurePreset": "linux-fuzz" }
   ],
   "testPresets": [
     { "name": "linux-debug", "configurePreset": "linux-debug" },

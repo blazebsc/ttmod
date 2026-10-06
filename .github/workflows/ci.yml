@@ -47,6 +47,19 @@ jobs:
       - name: UBSan build and test
         run: cmake --preset linux-ubsan && cmake --build --preset linux-ubsan && ctest --preset linux-ubsan
 
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Clang
+        run: sudo apt-get update && sudo apt-get install -y clang cmake g++
+      - name: Build harnesses
+        run: cmake --preset linux-fuzz && cmake --build --preset linux-fuzz
+      - name: Smoke-fuzz parsers (60s each)
+        run: |
+          ./build-fuzz/fuzz_manifest -max_total_time=60 -print_final_stats=1
+          ./build-fuzz/fuzz_validate -max_total_time=60 -print_final_stats=1
+
   format:
     runs-on: ubuntu-latest
     steps:

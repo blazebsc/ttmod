@@ -70,52 +70,67 @@ target_link_libraries(ttmod PRIVATE ttmod_core)
 ttmod_apply_warnings(ttmod)
 ttmod_apply_sanitizers(ttmod)
 
-ttmod_add_unit_test(sigmatch tests/test_sigmatch.cpp)
+ttmod_add_unit_test(sigmatch tests/unit/test_sigmatch.cpp)
 
-ttmod_add_unit_test(profile tests/test_profile.cpp)
+ttmod_add_unit_test(profile tests/unit/test_profile.cpp)
 
-ttmod_add_unit_test(manifest tests/test_manifest.cpp)
+ttmod_add_unit_test(manifest tests/unit/test_manifest.cpp)
 
-ttmod_add_unit_test(pathnorm tests/test_pathnorm.cpp)
+ttmod_add_unit_test(pathnorm tests/unit/test_pathnorm.cpp)
 
-ttmod_add_unit_test(resolver tests/test_resolver.cpp)
+ttmod_add_unit_test(resolver tests/unit/test_resolver.cpp)
 
-ttmod_add_unit_test(events tests/test_events.cpp)
+ttmod_add_unit_test(events tests/unit/test_events.cpp)
 
-ttmod_add_unit_test(gamestate tests/test_gamestate.cpp)
+ttmod_add_unit_test(gamestate tests/unit/test_gamestate.cpp)
 
-ttmod_add_unit_test(package tests/test_package.cpp)
+ttmod_add_unit_test(package tests/unit/test_package.cpp)
 target_link_libraries(test_package PRIVATE miniz)
 
-ttmod_add_unit_test(modstate tests/test_modstate.cpp)
+ttmod_add_unit_test(modstate tests/unit/test_modstate.cpp)
 
-ttmod_add_unit_test(discovery tests/test_discovery.cpp)
+ttmod_add_unit_test(discovery tests/unit/test_discovery.cpp)
 
-ttmod_add_unit_test(cache tests/test_cache.cpp)
+ttmod_add_unit_test(cache tests/unit/test_cache.cpp)
 
-ttmod_add_unit_test(offline tests/test_offline.cpp)
+ttmod_add_unit_test(offline tests/unit/test_offline.cpp)
 
-ttmod_add_unit_test(lua_bridge tests/test_lua_bridge.cpp)
+ttmod_add_unit_test(lua_bridge tests/unit/test_lua_bridge.cpp)
 
-ttmod_add_unit_test(modconfig tests/test_modconfig.cpp)
+ttmod_add_unit_test(modconfig tests/unit/test_modconfig.cpp)
 
 enable_testing()
-ttmod_add_unit_test(uiqueue tests/test_uiqueue.cpp)
-ttmod_add_unit_test(themecolor tests/test_themecolor.cpp)
-ttmod_add_unit_test(security tests/test_security.cpp)
-ttmod_add_unit_test(runtime tests/test_runtime.cpp)
+ttmod_add_unit_test(uiqueue tests/unit/test_uiqueue.cpp)
+ttmod_add_unit_test(themecolor tests/unit/test_themecolor.cpp)
+ttmod_add_unit_test(security tests/security/test_security.cpp)
+ttmod_add_unit_test(runtime tests/unit/test_runtime.cpp)
 find_program(PYTHON3_BIN python3)
 if(PYTHON3_BIN)
-  add_test(NAME lua_dis COMMAND ${PYTHON3_BIN} ${CMAKE_SOURCE_DIR}/tests/test_lua_dis.py)
+  add_test(NAME lua_dis COMMAND ${PYTHON3_BIN} ${CMAKE_SOURCE_DIR}/tests/lua/test_lua_dis.py)
   set_tests_properties(lua_dis PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-  add_test(NAME modmenu_config COMMAND ${PYTHON3_BIN} ${CMAKE_SOURCE_DIR}/tests/test_modmenu_config.py)
+  add_test(NAME modmenu_config COMMAND ${PYTHON3_BIN} ${CMAKE_SOURCE_DIR}/tests/lua/test_modmenu_config.py)
   set_tests_properties(modmenu_config PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-  add_test(NAME menumods_chunk COMMAND ${PYTHON3_BIN} ${CMAKE_SOURCE_DIR}/tests/test_menumods_chunk.py)
+  add_test(NAME menumods_chunk COMMAND ${PYTHON3_BIN} ${CMAKE_SOURCE_DIR}/tests/lua/test_menumods_chunk.py)
   set_tests_properties(menumods_chunk PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-  add_test(NAME menumods_ui COMMAND ${PYTHON3_BIN} ${CMAKE_SOURCE_DIR}/tests/test_menumods_ui.py)
+  add_test(NAME menumods_ui COMMAND ${PYTHON3_BIN} ${CMAKE_SOURCE_DIR}/tests/lua/test_menumods_ui.py)
   set_tests_properties(menumods_ui PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-  add_test(NAME menuadd_wrap COMMAND ${PYTHON3_BIN} ${CMAKE_SOURCE_DIR}/tests/test_menuadd_wrap.py)
+  add_test(NAME menuadd_wrap COMMAND ${PYTHON3_BIN} ${CMAKE_SOURCE_DIR}/tests/lua/test_menuadd_wrap.py)
   set_tests_properties(menuadd_wrap PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endif()
+
+# Fuzz targets (Stage I): Clang + libFuzzer only, never default builds.
+# cmake --preset linux-fuzz (or -DTTMOD_BUILD_FUZZ=ON with clang).
+option(TTMOD_BUILD_FUZZ "Build libFuzzer harnesses (Clang only)" OFF)
+if(TTMOD_BUILD_FUZZ)
+  if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    message(FATAL_ERROR "TTMOD_BUILD_FUZZ requires Clang")
+  endif()
+  foreach(fuzz_target fuzz_manifest fuzz_validate)
+    add_executable(${fuzz_target} tests/fuzz/${fuzz_target}.cpp)
+    target_link_libraries(${fuzz_target} PRIVATE ttmod_core)
+    target_compile_options(${fuzz_target} PRIVATE -fsanitize=fuzzer,address -fno-omit-frame-pointer)
+    target_link_options(${fuzz_target} PRIVATE -fsanitize=fuzzer,address)
+  endforeach()
 endif()
 
 # M1 Windows runtime (proxy + framework DLLs). Windows x86 toolchain only;
