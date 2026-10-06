@@ -172,6 +172,16 @@ Result<RawManifest> read_raw_manifest(const std::string& text) {
         }
     }
 
+    // Entrypoints keep their JSON text like config: the validation is a
+    // separate layer's job and must not run twice.
+    if (auto it = j.find("entrypoints"); it != j.end()) {
+        if (!it->is_object()) {
+            notes.add("entrypoints: bad type");
+        } else {
+            raw.entrypoints_json = it->dump();
+        }
+    }
+
     // Unknown keys are recorded and ignored (additive forward compatibility).
     for (auto& [k, _] : j.items())
         if (!known_field(k)) raw.unknown_fields.push_back(k);
@@ -283,6 +293,67 @@ Result<ModManifest> validate_manifest(const RawManifest& raw) {
         }
     }
 
+    if (raw.entrypoints_json) {
+        auto parsed = parse_json_value(*raw.entrypoints_json);
+        if (!parsed.ok()) return fail("bad entrypoints", parsed.error().category);
+        const json& ep = parsed.value();
+        std::vector<Runtime> declared;
+        for (auto& [key, val] : ep.items()) {
+            // The native entry point lives in "plugin". Two sources of truth
+            // for one DLL is a silent no-op mod, so this is a hard error with
+            // a message that says where to put it instead.
+            if (key == "native")
+                return fail("native entrypoint is declared via \"plugin\", not \"entrypoints\"", errcat::kType);
+            auto rt = parse_runtime(key);
+            // A runtime name decides what code runs; a typo must not silently
+            // produce a mod that declares nothing.
+            if (!rt || *rt == Runtime::Native) return fail("unknown entrypoint runtime: " + key, errcat::kType);
+            if (!val.is_string()) return fail("entrypoint " + key + " must be a string", errcat::kType);
+            auto path = validate_mod_relative_path(val.get<std::string>());
+            if (!path.ok()) return fail("bad entrypoint " + key + ": " + path.error().message, path.error().category);
+            switch (*rt) {
+            case Runtime::Lua:
+                m.entrypoints.lua = path.value();
+                break;
+            case Runtime::Luau:
+                m.entrypoints.luau = path.value();
+                break;
+            case Runtime::TelltaleLua:
+                m.entrypoints.telltale_lua = path.value();
+                break;
+            default:
+                break;
+            }
+            declared.push_back(*rt);
+        }
+        // Every declared script runtime has exactly one entry point, and vice
+        // versa. Both halves matter: a runtime with no entry point is a mod
+        // that silently does nothing.
+        //
+        // This only runs when the "entrypoints" key is present at all. A
+        // manifest that declares runtimes but predates entrypoints is accepted
+        // as legacy: there was no script VM to run it until now, and refusing
+        // would break every shipped mod for no gain. Once a mod opts into
+        // entrypoints, the two fields must agree exactly.
+        for (auto rt : m.runtime.runtimes) {
+            if (rt == Runtime::Native) continue;
+            bool found = false;
+            for (auto d : declared)
+                if (d == rt) found = true;
+            if (!found)
+                return fail(std::string("runtime ") + to_string(rt) + " is declared but has no entrypoint",
+                            errcat::kMissing);
+        }
+        for (auto d : declared) {
+            bool in_runtimes = false;
+            for (auto rt : m.runtime.runtimes)
+                if (rt == d) in_runtimes = true;
+            if (!in_runtimes)
+                return fail(std::string("entrypoint for ") + to_string(d) + " but the runtime is not declared",
+                            errcat::kMissing);
+        }
+    }
+
     if (raw.config_json) {
         auto schema = parse_config_schema(*raw.config_json);
         if (!schema.ok()) return fail(std::string("bad config: ") + schema.error().message, errcat::kType);
@@ -290,6 +361,19 @@ Result<ModManifest> validate_manifest(const RawManifest& raw) {
     }
 
     return Result<ModManifest>::ok(std::move(m));
+}
+
+const std::string* Entrypoints::find(Runtime r) const noexcept {
+    switch (r) {
+    case Runtime::Lua:
+        return lua.empty() ? nullptr : &lua;
+    case Runtime::Luau:
+        return luau.empty() ? nullptr : &luau;
+    case Runtime::TelltaleLua:
+        return telltale_lua.empty() ? nullptr : &telltale_lua;
+    default:
+        return nullptr;
+    }
 }
 
 Result<ModManifest> parse_manifest(const std::string& text) {

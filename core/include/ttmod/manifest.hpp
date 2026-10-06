@@ -124,6 +124,32 @@ inline const char* to_string(Permission p) {
     }
 }
 
+// Per-runtime script entry points (doc §§18, 20, 65). Mod-relative paths,
+// already through validate_mod_relative_path(); empty = not declared for that
+// runtime. The native entry point is NOT here: it is the existing "plugin"
+// field, because two sources of truth for one DLL is how a mod ends up doing
+// nothing silently.
+//
+// Legacy tolerance: a manifest with no "entrypoints" key at all stays valid
+// even if it declares script runtimes - it predates the script VM, and
+// refusing would break shipped mods for no gain. Once the key IS present, the
+// two fields must agree exactly (a runtime with no entry point, or an entry
+// point for an undeclared runtime, is rejected).
+struct Entrypoints {
+    std::string lua;
+    std::string luau;
+    std::string telltale_lua;
+    [[nodiscard]] const std::string* find(Runtime r) const noexcept;
+    [[nodiscard]] bool empty() const noexcept {
+        return lua.empty() && luau.empty() && telltale_lua.empty();
+    }
+    // Native has no entry here by design: it is the manifest "plugin" field.
+    // Present so callers can ask the question without special-casing it.
+    [[nodiscard]] bool native_is_absent() const noexcept {
+        return true;
+    }
+};
+
 struct RuntimeSpec {
     // Empty runtimes = unspecified. Empty permissions = none requested.
     std::vector<Runtime> runtimes;
@@ -165,6 +191,7 @@ struct ModManifest {
     PluginSpec plugin;
     ModPresentation presentation;
     RuntimeSpec runtime;
+    Entrypoints entrypoints;
     bool enabled = true;
     // Package format version (default 1 when absent).
     int package_format = 1;
@@ -203,9 +230,10 @@ struct RawManifest {
     std::optional<std::vector<RawDep>> depends;
     // game path (as written) -> mod-relative replacement, both unvalidated
     std::optional<std::vector<std::pair<std::string, std::string>>> files;
-    // Config schema kept as JSON text; the schema has its own validation
-    // stage, so it is not decoded twice here.
+    // Config schema and entrypoints kept as JSON text; each has its own
+    // validation stage, so neither is decoded twice here.
     std::optional<std::string> config_json;
+    std::optional<std::string> entrypoints_json;
     std::vector<std::string> unknown_fields;
     std::vector<std::string> notes; // "files[0].to: bad type"
 };
