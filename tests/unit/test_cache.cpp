@@ -1,4 +1,5 @@
 #include "ttmod/cache.hpp"
+#include "ttmod/file_io.hpp"
 #include "ttmod/package.hpp"
 #include <cassert>
 #include <cstdio>
@@ -61,6 +62,66 @@ int main() {
     // Missing package file: skipped with log, ok stays true.
     auto s4r = ttmod::sync_package_cache(cache, {{"ghost", std::string(kD) + "/nope.ttmod"}});
     assert(s4r.ok() && s4r.value().effective.empty());
+
+    // Transactional replacement: a bad package must NOT destroy the live
+    // cache. Sync good content, then point a fresh sync at a corrupt
+    // package for the same id and verify the old tree survives.
+    {
+        auto good = ttmod::sync_package_cache(cache, {{"c.mod", std::string(kD) + "/m.ttmod"}});
+        assert(good.ok());
+        assert(good.value().effective.count("c.mod"));
+        FILE* f1 = fopen((cache + "/c.mod/files/a.txt").c_str(), "rb");
+        assert(f1);
+        fclose(f1);
+        // Corrupt package for the same id: extraction fails.
+        wfile(std::string(kD) + "/bad.ttmod", "not a zip at all");
+        auto bad = ttmod::sync_package_cache(cache, {{"c.mod", std::string(kD) + "/bad.ttmod"}});
+        assert(bad.ok());                      // per-mod failure is logged, not fatal
+        assert(bad.value().effective.empty()); // not usable this round
+        // The previous cache is still on disk and intact.
+        FILE* f2 = fopen((cache + "/c.mod/files/a.txt").c_str(), "rb");
+        assert(f2); // live cache survived the failed replacement
+        fclose(f2);
+        // And a later good sync brings it back.
+        auto again = ttmod::sync_package_cache(cache, {{"c.mod", std::string(kD) + "/m.ttmod"}});
+        assert(again.ok() && again.value().effective.count("c.mod"));
+    }
+
+    // Crash recovery: a crash between "retire old" and "install new" leaves
+    // <id>.ttmod-old as the only good copy. The next sync restores it.
+    {
+        std::string live = cache + "/rec.mod";
+        // Build a cache-shaped tree by hand (write_file_atomic will not
+        // create intermediate directories).
+        assert(system(("mkdir -p " + live + "/files").c_str()) == 0);
+        assert(ttmod::file_io::write_file_atomic(live + "/files/a.txt", "v1"));
+        assert(ttmod::file_io::write_file_atomic(live + "/.ttmod-cache", "v=1 test"));
+        std::string old = cache + "/rec.mod.ttmod-old";
+        assert(system(("rm -rf " + old).c_str()) == 0);
+        assert(system(("mv " + live + " " + old).c_str()) == 0);
+        assert(!ttmod::file_io::exists(live));
+        assert(ttmod::file_io::exists(old + "/files/a.txt"));
+        auto r = ttmod::sync_package_cache(cache, {});
+        assert(r.ok());
+        // The sweep restores the orphaned copy before anything else, and
+        // says so. (Stale cleanup then removes it again: it carries our
+        // marker but has no source package in this round.)
+        bool restored = false;
+        for (auto& l : r.value().log)
+            if (l.find("rec.mod: cache restored after crash") != std::string::npos) restored = true;
+        assert(restored);
+    }
+
+    // Staging leftovers from a killed process are swept, never trusted.
+    {
+        std::string stage = cache + "/sweep.mod.ttmod-new";
+        assert(
+            system(("rm -rf " + stage + " && mkdir -p " + stage + " && echo junk > " + stage + "/files.txt").c_str()) ==
+            0);
+        auto r = ttmod::sync_package_cache(cache, {});
+        assert(r.ok());
+        assert(!ttmod::file_io::exists(stage + "/files.txt"));
+    }
     std::puts("cache: all asserts passed");
     return 0;
 }

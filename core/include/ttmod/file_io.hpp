@@ -14,6 +14,7 @@
 #endif
 #include <windows.h>
 #else
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
@@ -92,6 +93,23 @@ inline int remove_file(const std::string& path) {
     return _wremove(w.c_str());
 #else
     return std::remove(path.c_str());
+#endif
+}
+
+// Existence check through the same boundary (W APIs on Windows).
+inline bool exists(const std::string& path) {
+#ifdef _WIN32
+    std::wstring w = to_wide(path);
+    return !w.empty() && GetFileAttributesW(w.c_str()) != INVALID_FILE_ATTRIBUTES;
+#else
+    FILE* f = std::fopen(path.c_str(), "rb");
+    if (f) {
+        std::fclose(f);
+        return true;
+    }
+    // fopen fails on a directory on some platforms; fall back to stat.
+    struct stat st{};
+    return ::stat(path.c_str(), &st) == 0;
 #endif
 }
 
