@@ -157,8 +157,10 @@ inline constexpr int kPackageFormat = 1;
 
 Result<ModManifest> parse_manifest(const std::string& text);
 
-// Dotted-numeric version compare: -1/0/+1. Non-numeric tails ignored
-// ("1.0.0-beta" == "1.0.0" for gating). Missing parts are 0 ("1.2" == "1.2.0").
+// Dotted-numeric version compare: -1/0/+1, using the bounded grammar in
+// version.hpp. Unparseable versions compare as equal to "0" on that side
+// (a malformed manifest version is rejected at parse time anyway); this
+// stays for callers that only need an ordering.
 int compare_versions(const std::string& a, const std::string& b);
 
 } // namespace ttmod

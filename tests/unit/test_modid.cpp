@@ -9,6 +9,7 @@
 #include "ttmod/manifest.hpp"
 #include "ttmod/modid.hpp"
 #include "ttmod/validate.hpp"
+#include "ttmod/version.hpp"
 
 int main() {
     using ttmod::ModId;
@@ -54,6 +55,37 @@ int main() {
     assert(a == a2 && a != b);
     assert(a < b && !(b < a));
     assert(!(a < a2));
+
+    // Versions: bounded grammar, no overflow, total order.
+    auto ver = [](const char* s) {
+        auto r = ttmod::Version::parse(s);
+        assert(r.ok());
+        return r.value();
+    };
+    assert(ver("1.2.0").compare(ver("1.2")) == 0);
+    assert(ver("1.10").compare(ver("1.9")) > 0);
+    assert(ver("").compare(ver("0")) == 0);               // omitted version == 0.0.0
+    assert(ver("1.0.0-beta").compare(ver("1.0.0")) == 0); // prerelease ignored for gating
+    // Malformed / overflowing versions never become a Version.
+    for (const char* bad : {" ", "1.", ".1", "1..0", "1.x", "v1.0", "-1.0", "1.0.0.0.0", "9999999999", "1 0", "1.0.0-",
+                            "1.0.0-beta!", "1.0+build", "-", "-1.0", "--"}) {
+        std::string b = bad;
+        assert(!ttmod::Version::parse(b).ok());
+    }
+    // Constraints.
+    auto con = [](const char* s) {
+        auto r = ttmod::VersionConstraint::parse(s);
+        assert(r.ok());
+        return r.value();
+    };
+    assert(con("").satisfied_by(ver("9.9")));
+    assert(con("2.0").satisfied_by(ver("2.1.0")));
+    assert(!con("3.0").satisfied_by(ver("2.1.0")));
+    assert(con("=2.1.0").satisfied_by(ver("2.1.0")));
+    assert(!con("=2.1.0").satisfied_by(ver("2.1.1")));
+    assert(con("<3.0").satisfied_by(ver("2.9.9")));
+    assert(!con(">2.0").satisfied_by(ver("2.0")));
+    assert(!ttmod::VersionConstraint::parse(">=x.y").ok());
 
     // Hashing matches equality (used as an unordered key elsewhere).
     std::unordered_set<ModId> set;

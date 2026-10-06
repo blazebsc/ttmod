@@ -10,3 +10,4 @@ would reopen it.
 - [004](004-theme-color-in-core.md) - theme color decisions live in core, tested once
 - [005](005-runtime-declarations.md) - manifest declares runtimes/permissions; execution mapping deferred
 - [006](006-state-registry.md) - game Lua states get identity, not just a count
+- [007](007-version-grammar.md) - bounded version grammar, prerelease ignored, not SemVer

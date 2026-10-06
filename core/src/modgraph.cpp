@@ -48,8 +48,10 @@ DepResolution resolve_dependencies(const std::vector<ModManifest>& mods) {
                     block("missing", "dependency blocked: " + dep.str());
                     break;
                 }
-                VersionConstraint need(spec);
-                if (!need.satisfied_by(Version(it->second->identity.version))) {
+                // Constraint was validated at the manifest boundary; parse again here so
+                // the graph depends on the type, not on a raw string.
+                auto need = VersionConstraint::parse(spec);
+                if (!need.ok() || !need.value().satisfied_by(Version::parse(it->second->identity.version).value())) {
                     block("version",
                           "dependency " + dep.str() + " version " + it->second->identity.version + " < " + spec);
                     break;
