@@ -54,7 +54,8 @@ int main() {
     assert(obj.find("alpha") && obj.find("alpha")->as_number() == 2.0);
     assert(obj.find("missing") == nullptr);
     // Deterministic rendering regardless of input order.
-    assert(obj.to_string() == "{alpha=2, zeta=1}");
+    std::string rendered = obj.to_string();
+    assert(rendered == "{alpha=2, zeta=1}");
 
     // Nested composites cross whole.
     auto nested = std::make_shared<Value::Fields>();
@@ -82,7 +83,8 @@ int main() {
     GameObjectHandle stale{7, 4}; // slot recycled
     GameObjectHandle none{};
     assert(h.valid() && !none.valid());
-    assert(h == GameObjectHandle{7, 3});
+    GameObjectHandle same{7, 3};
+    assert(h == same);
     assert(h != stale); // generation mismatch is a different object
     auto gv = Value::game_object(h);
     assert(gv.kind() == Value::Kind::GameObject && gv.handle() == h);

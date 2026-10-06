@@ -39,3 +39,16 @@ Names for the seams. Use these terms exactly; do not invent synonyms.
 - **mod id** — validated identity (`ModId`, parsed once at the manifest
   boundary; ADR-007 for the version grammar that rides alongside it).
   Everything downstream trusts it and never re-validates.
+- **TTMod VM** — the scripting VM TTMod owns and destroys (doc §2, §71).
+  Never the game's. Lua today; the same six-operation `ScriptVm` contract is
+  what a Luau backend implements later.
+- **Game Lua** — Lua states the game creates and owns. We observe them
+  (state registry) and never close one.
+- **value** — the only thing that crosses a VM boundary (`Value`). No
+  function, thread or userdata kind exists, so a VM handle cannot leak into a
+  mod script by accident; a game object crosses as an opaque
+  `GameObjectHandle`.
+- **dispatcher** — the one place a script thread may ask the game thread to
+  do something. Ops carry values, never Lua objects.
+- **callback token** — a registry token the VM stores instead of a plugin
+  function pointer, which is why revoking an API cannot dangle.
