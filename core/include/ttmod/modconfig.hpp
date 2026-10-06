@@ -102,8 +102,11 @@ SetValueResult apply_config_value(const std::vector<ConfigOption>& schema,
 std::string serialize_config(const std::vector<ConfigOption>& schema,
                              const std::map<std::string, ConfigValue>& values);
 
-// One mod's menu snapshot (assembled by the loader from discovery +
-// state + config files). The menu consumes ONLY this.
+// Menu model layering (Stage H):
+//   Config Schema -> Config Values -> Config Store -> MenuModSnapshot
+//   (this model, Lua-independent) -> build_menu_literal (Lua serializer).
+// Future UI frontends consume the model, never the literal. The menu
+// consumes ONLY snapshots below.
 struct MenuModSnapshot {
     std::string id;
     std::string name;

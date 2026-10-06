@@ -301,3 +301,16 @@ awk '/TTMod framework v/{buf=""} {buf=buf $0 "\n"} END{printf "%s",buf}' logs/tt
 - `platform/win32_path.hpp`: dynamic module path, W exists/load-library;
   A-APIs converted at path-carrying calls (dirs, DLL, config sentinels);
   env/system names stay A (ASCII domain). Async logger deferred (see G1).
+
+## 2026-10-05 refactor Stage H (Lua architecture)
+
+- `LuaDomain` (Engine/Menu) documented on the queue header; typed
+  `UiCommand` (ExecuteChunk live, RefreshMenu/SetValue reserved) with
+  string push/take/recent kept as the compat surface (same behavior,
+  extended uiqueue tests).
+- Menu model layering documented (Snapshot model + literal serializer
+  already existed; named, not moved).
+- lua/ micro-split (hook/exec/probe files) DECLINED: probes deleted,
+  exec is params-pure in menu_bridge, bridge is cohesive; splitting
+  further is churn without a seam. Shared rules already unified
+  (theme_color, Stage A/reorg).

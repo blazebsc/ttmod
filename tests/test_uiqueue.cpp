@@ -33,6 +33,13 @@ int main() {
     assert(std::string(h.back()).find("c15 = 15") == 0);
     assert(ttmod::uiqueue_recent().size() == h.size()); // repeatable, not drained
     assert(ttmod::uiqueue_take().empty());               // still drained
+    // Typed commands: ExecuteChunk round-trips; reserved types rejected.
+    assert(ttmod::uiqueue_push_cmd({ttmod::UiCommandType::ExecuteChunk, "t = 1"}));
+    assert(!ttmod::uiqueue_push_cmd({ttmod::UiCommandType::RefreshMenu, ""}));
+    assert(!ttmod::uiqueue_push_cmd({ttmod::UiCommandType::SetValue, "x"}));
+    auto tc = ttmod::uiqueue_take_cmd();
+    assert(tc.size() == 1 && tc[0].type == ttmod::UiCommandType::ExecuteChunk && tc[0].code == "t = 1");
+    assert(ttmod::uiqueue_take_cmd().empty());
     std::puts("uiqueue: all asserts passed");
     return 0;
 }
