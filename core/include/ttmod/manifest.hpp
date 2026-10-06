@@ -1,9 +1,12 @@
 #pragma once
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 #include "ttmod/modconfig.hpp"
 #include "ttmod/profile.hpp"
+#include "ttmod/result.hpp"
 
 namespace ttmod {
 
@@ -55,14 +58,84 @@ struct ModPresentation {
 // Parsed and validated here; enforcement belongs to the runtimes that
 // don't exist yet (TTMod VM) or the game boundary. Unknown names are
 // rejected: permissions are a security boundary, not a hint.
-struct RuntimeSpec {
-    // Subset of: "lua", "luau", "telltale-lua", "native". Empty = unspecified.
-    std::vector<std::string> runtimes;
-    // Subset of the §21 list (game.read, hooks, ...). Empty = none requested.
-    std::vector<std::string> permissions;
+//
+// Strongly typed past the manifest boundary (review: strings must not
+// spread inward). The JSON strings convert once, here, into these enums.
+enum class Runtime { Lua, Luau, TelltaleLua, Native };
+enum class Permission {
+    GameRead,
+    GameWrite,
+    GameEvents,
+    UI,
+    Resources,
+    FilesystemRead,
+    FilesystemWrite,
+    ModsRead,
+    ModsWrite,
+    GameLua,
+    GameMemory,
+    Hooks,
+    Native
 };
+
+inline const char* to_string(Runtime r) {
+    switch (r) {
+        case Runtime::Lua: return "lua";
+        case Runtime::Luau: return "luau";
+        case Runtime::TelltaleLua: return "telltale-lua";
+        default: return "native";
+    }
+}
+
+inline const char* to_string(Permission p) {
+    switch (p) {
+        case Permission::GameRead: return "game.read";
+        case Permission::GameWrite: return "game.write";
+        case Permission::GameEvents: return "game.events";
+        case Permission::UI: return "ui";
+        case Permission::Resources: return "resources";
+        case Permission::FilesystemRead: return "filesystem.read";
+        case Permission::FilesystemWrite: return "filesystem.write";
+        case Permission::ModsRead: return "mods.read";
+        case Permission::ModsWrite: return "mods.write";
+        case Permission::GameLua: return "game.lua";
+        case Permission::GameMemory: return "game.memory";
+        case Permission::Hooks: return "hooks";
+        default: return "native";
+    }
+}
+
+struct RuntimeSpec {
+    // Empty runtimes = unspecified. Empty permissions = none requested.
+    std::vector<Runtime> runtimes;
+    std::vector<Permission> permissions;
+};
+
+inline std::optional<Runtime> parse_runtime(std::string_view s) {
+    if (s == "lua") return Runtime::Lua;
+    if (s == "luau") return Runtime::Luau;
+    if (s == "telltale-lua") return Runtime::TelltaleLua;
+    if (s == "native") return Runtime::Native;
+    return std::nullopt;
+}
+
+inline std::optional<Permission> parse_permission(std::string_view s) {
+    if (s == "game.read") return Permission::GameRead;
+    if (s == "game.write") return Permission::GameWrite;
+    if (s == "game.events") return Permission::GameEvents;
+    if (s == "ui") return Permission::UI;
+    if (s == "resources") return Permission::Resources;
+    if (s == "filesystem.read") return Permission::FilesystemRead;
+    if (s == "filesystem.write") return Permission::FilesystemWrite;
+    if (s == "mods.read") return Permission::ModsRead;
+    if (s == "mods.write") return Permission::ModsWrite;
+    if (s == "game.lua") return Permission::GameLua;
+    if (s == "game.memory") return Permission::GameMemory;
+    if (s == "hooks") return Permission::Hooks;
+    if (s == "native") return Permission::Native;
+    return std::nullopt;
+}
 struct ModManifest {
-    bool ok = false;
     ModIdentity identity;
     ModCompatibility compat;
     DependencySpec deps;
@@ -73,13 +146,15 @@ struct ModManifest {
     bool enabled = true;
     // Package format version (default 1 when absent).
     int package_format = 1;
-    std::string error;
 };
 
+// Parse + validate. Success carries the manifest; failure carries a
+// structured Error (operation "parse-manifest", object = id parsed so
+// far, message text kept byte-stable for existing log lines).
 // Package format version we write and accept (M11).
 inline constexpr int kPackageFormat = 1;
 
-ModManifest parse_manifest(const std::string& text);
+Result<ModManifest> parse_manifest(const std::string& text);
 
 // Dotted-numeric version compare: -1/0/+1. Non-numeric tails ignored
 // ("1.0.0-beta" == "1.0.0" for gating). Missing parts are 0 ("1.2" == "1.2.0").

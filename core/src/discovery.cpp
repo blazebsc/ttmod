@@ -72,11 +72,12 @@ Discovery discover_mods(const std::string& mods_dir, const ModState& state, cons
         if (src.kind == ModSourceKind::Directory) {
             std::string mt = read_file(src.path + "/manifest.json");
             if (mt.empty()) continue; // not a mod dir, ignore silently
-            ModManifest m = parse_manifest(mt);
-            if (!m.ok) {
-                d.invalid.push_back({src.path, src.name + ": invalid manifest: " + m.error});
+            Result<ModManifest> pm = parse_manifest(mt);
+            if (!pm.ok()) {
+                d.invalid.push_back({src.path, src.name + ": invalid manifest: " + pm.error().message});
                 continue;
             }
+            ModManifest m = pm.value();
             cands.push_back({m.identity.id, src.path, mt, false});
         } else {
             PackView v = inspect_package(src.path);
@@ -84,11 +85,12 @@ Discovery discover_mods(const std::string& mods_dir, const ModState& state, cons
                 d.skipped.push_back(src.name + ": invalid package: " + v.error);
                 continue;
             }
-            ModManifest m = parse_manifest(v.manifest_text);
-            if (!m.ok) { // inspect already validated; defensive
-                d.invalid.push_back({src.path, src.name + ": invalid manifest: " + m.error});
+            Result<ModManifest> pm = parse_manifest(v.manifest_text);
+            if (!pm.ok()) { // inspect already validated; defensive
+                d.invalid.push_back({src.path, src.name + ": invalid manifest: " + pm.error().message});
                 continue;
             }
+            ModManifest m = pm.value();
             cands.push_back({m.identity.id, src.path, v.manifest_text, true});
         }
     }
@@ -99,7 +101,7 @@ Discovery discover_mods(const std::string& mods_dir, const ModState& state, cons
     };
     std::vector<Item> items;
     for (auto& c : cands) {
-        ModManifest m = parse_manifest(c.manifest_text);
+        ModManifest m = parse_manifest(c.manifest_text).value();
         if (m.compat.api < 1 || m.compat.api > TTMOD_PLUGIN_API_VERSION) {
             d.skipped.push_back(c.id + ": unsupported API " + std::to_string(m.compat.api));
             continue;

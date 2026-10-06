@@ -78,29 +78,38 @@ static std::vector<LuaStateInfo> g_states;
 
 static void note_script_on_state(lua_State* L, const char* filename) {
     if (!L || !filename) return;
-    std::lock_guard<std::mutex> lock(g_states_mtx);
-    for (auto& s : g_states) {
-        if (s.L != L) continue;
-        ++s.scripts_seen;
-        if (s.role != "unknown") return;
-        const char* role = nullptr;
-        if (tail_matches(filename, "Menu.lua")) role = "menu";
-        else {
-            for (auto* t : {"_engine.lua", "EngineTypes.lua", "StoryBoardTracker.lua"}) {
-                size_t n = strlen(t), m = strlen(filename);
-                if (m >= n && strcmp(filename + m - n, t) == 0) {
-                    role = "engine";
-                    break;
+    // Lock strictly around registry state: build the log line inside,
+    // emit AFTER unlock (file I/O under the mutex would serialize
+    // unrelated LoadResource threads behind logging).
+    int order = 0;
+    const char* role = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_states_mtx);
+        for (auto& s : g_states) {
+            if (s.L != L) continue;
+            ++s.scripts_seen;
+            if (s.role != "unknown") return;
+            if (tail_matches(filename, "Menu.lua")) role = "menu";
+            else {
+                for (auto* t : {"_engine.lua", "EngineTypes.lua", "StoryBoardTracker.lua"}) {
+                    size_t n = strlen(t), m = strlen(filename);
+                    if (m >= n && strcmp(filename + m - n, t) == 0) {
+                        role = "engine";
+                        break;
+                    }
                 }
             }
+            if (role) {
+                s.role = role;
+                order = s.order;
+            }
+            return;
         }
-        if (role) {
-            s.role = role;
-            char m[128];
-            snprintf(m, sizeof m, "lua: state #%d identified as %s (%s)", s.order, role, filename);
-            emit(m);
-        }
-        return;
+    }
+    if (role) {
+        char m[128];
+        snprintf(m, sizeof m, "lua: state #%d identified as %s (%s)", order, role, filename);
+        emit(m);
     }
 }
 

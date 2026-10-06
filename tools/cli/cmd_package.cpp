@@ -12,7 +12,12 @@ static void print_packinfo(const std::string& path) {
         std::printf("INVALID: %s\n", v.error.c_str());
         return;
     }
-    auto m = ttmod::parse_manifest(v.manifest_text);
+    auto pm = ttmod::parse_manifest(v.manifest_text);
+    if (!pm.ok()) {
+        std::printf("INVALID: %s\n", pm.error().message.c_str());
+        return;
+    }
+    auto m = pm.value();
     std::printf("id: %s\nname: %s\nversion: %s\napi: %d\npackage_format: %d\ngames:",
                 m.identity.id.c_str(), "(see manifest)", m.identity.version.c_str(), m.compat.api,
                 m.package_format);
@@ -38,12 +43,12 @@ static void print_packinfo(const std::string& path) {
     }
     if (!m.runtime.runtimes.empty()) {
         std::printf("runtimes:");
-        for (auto& r : m.runtime.runtimes) std::printf(" %s", r.c_str());
+        for (auto& r : m.runtime.runtimes) std::printf(" %s", ttmod::to_string(r));
         std::printf("\n");
     }
     if (!m.runtime.permissions.empty()) {
         std::printf("permissions:");
-        for (auto& r : m.runtime.permissions) std::printf(" %s", r.c_str());
+        for (auto& r : m.runtime.permissions) std::printf(" %s", ttmod::to_string(r));
         std::printf("\n");
     }
     for (auto& f : v.files)
@@ -68,7 +73,12 @@ int cmd_package(int argc, char** argv) {
             std::printf("INVALID: %s\n", v.error.c_str());
             return 1;
         }
-        auto m = ttmod::parse_manifest(v.manifest_text);
+        auto pm = ttmod::parse_manifest(v.manifest_text);
+        if (!pm.ok()) {
+            std::printf("INVALID: %s\n", pm.error().message.c_str());
+            return 1;
+        }
+        auto m = pm.value();
         std::printf("valid: %s %s (%u files)\n", m.identity.id.c_str(),
                     m.identity.version.c_str(), (unsigned)v.files.size());
         return 0;

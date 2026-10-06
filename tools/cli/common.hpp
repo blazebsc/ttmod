@@ -11,6 +11,7 @@
 struct Listed {
     std::string id, version, src, note;
     ttmod::ModManifest m;
+    bool ok = true; // false for entries whose manifest failed to parse
 };
 
 // <gamedir>/mods: *.ttmod (inspect) + */manifest.json, id-sorted.

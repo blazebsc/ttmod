@@ -357,3 +357,13 @@ awk '/TTMod framework v/{buf=""} {buf=buf $0 "\n"} END{printf "%s",buf}' logs/tt
 - Deferred with ADRs: TTMod-owned VM/Luau + enforcement + mod-to-mod
   services (ADR-005, no demanding mod); destroyed-state tracking.
   The doc stays Proposed; this ships its pluggable subset.
+
+## 2026-10-06 review follow-ups (enums, mutex, Result, boundary)
+
+- Runtime/Permission are strong enums (`parse_runtime/parse_permission`
+  + `to_string`); JSON strings convert once at the manifest boundary.
+- Registry lock covers state only; the log line builds after unlock.
+- `parse_manifest` returns `Result<ModManifest>` (ok/error fields
+  removed; messages byte-stable); all callers + tests migrated.
+- Declared files[]/plugin paths validated at parse (universal
+  boundary); Lua-write ID guard already existed. Test asserts added.

@@ -7,7 +7,7 @@
 #include <string>
 
 static ttmod::ModManifest with_config() {
-    return ttmod::parse_manifest(
+    auto r = ttmod::parse_manifest(
         "{\"id\":\"demo.config\",\"version\":\"1.2.0\",\"api\":1,"
         "\"name\":\"Demo Config\",\"description\":\"Proof mod\","
         "\"games\":[\"minecraft-story-mode:s1\"],"
@@ -17,12 +17,14 @@ static ttmod::ModManifest with_config() {
         "{\"key\":\"fancy\",\"type\":\"bool\",\"label\":\"Fancy\",\"default\":true},"
         "{\"key\":\"mode\",\"type\":\"enum\",\"label\":\"Mode\",\"options\":[\"a\",\"b\"]}"
         "]}");
+    assert(r.ok());
+    return r.value();
 }
 
 int main() {
     // schema via manifest
     auto m = with_config();
-    assert(m.ok && m.presentation.name == "Demo Config" && m.presentation.description == "Proof mod");
+    assert(m.presentation.name == "Demo Config" && m.presentation.description == "Proof mod");
     assert(m.presentation.config.size() == 4);
     assert(m.presentation.config[0].type == "string" && m.presentation.config[0].def_str == "Hi");
     assert(m.presentation.config[1].type == "int" && m.presentation.config[1].def_int == 3);
@@ -32,26 +34,26 @@ int main() {
            m.presentation.config[3].def_str == "a"); // enum defaults to first option
     // strict schema rejections (manifest fails, mod still loadable? no:
     // manifest must stay valid -> schema errors fail the manifest)
-    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"config\":{}}").ok);
-    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"config\":[{\"key\":\"a\"}]}").ok);
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"config\":{}}").ok());
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"config\":[{\"key\":\"a\"}]}").ok());
     assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"config\":["
                                   "{\"key\":\"a\",\"type\":\"nope\",\"label\":\"A\"}]}")
-                .ok);
+                .ok());
     assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"config\":["
                                   "{\"key\":\"a\",\"type\":\"enum\",\"label\":\"A\"}]}")
-                .ok); // enum w/o options
+                .ok()); // enum w/o options
     // color type: #RRGGBB only, at schema and at value level
     assert(ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"config\":["
                                  "{\"key\":\"c\",\"type\":\"color\",\"label\":\"C\","
                                  "\"default\":\"#E0A040\"}]}")
-               .ok);
+               .ok());
     assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"config\":["
                                   "{\"key\":\"c\",\"type\":\"color\",\"label\":\"C\","
                                   "\"default\":\"orange\"}]}")
-                 .ok);
+                 .ok());
     // old manifests unaffected
-    auto plain = ttmod::parse_manifest("{\"id\":\"p\",\"api\":1}");
-    assert(plain.ok && plain.presentation.config.empty() && plain.presentation.name.empty());
+    auto plain = ttmod::parse_manifest("{\"id\":\"p\",\"api\":1}").value();
+    assert(plain.presentation.config.empty() && plain.presentation.name.empty());
 
     // file values + effective merge
     auto f = ttmod::parse_config_file("{\"greeting\":\"Yo\",\"level\":7,\"fancy\":false,"
@@ -77,8 +79,8 @@ int main() {
     // color values: accepted only as #RRGGBB, rejected values fall back
     auto cm = ttmod::parse_manifest("{\"id\":\"c\",\"api\":1,\"config\":["
                                     "{\"key\":\"accent\",\"type\":\"color\",\"label\":\"A\","
-                                    "\"default\":\"#E0A040\"}]}");
-    assert(cm.ok && cm.presentation.config[0].type == "color");
+                                    "\"default\":\"#E0A040\"}]}").value();
+    assert(cm.presentation.config[0].type == "color");
     auto cok = ttmod::config_effective(cm.presentation.config, ttmod::parse_config_file("{\"accent\":\"#00FF80\"}"));
     assert(cok["accent"].s == "#00FF80");
     auto cbad = ttmod::config_effective(cm.presentation.config, ttmod::parse_config_file("{\"accent\":\"lime\"}"));

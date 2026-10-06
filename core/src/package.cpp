@@ -152,11 +152,12 @@ PackView inspect_package(const std::string& path) {
     }
     v.manifest_text = manifest;
     // Manifest must parse; every declared file + plugin path must be present.
-    ModManifest m = parse_manifest(manifest);
-    if (!m.ok) {
-        v.error = std::string("manifest invalid: ") + m.error;
+    Result<ModManifest> pm = parse_manifest(manifest);
+    if (!pm.ok()) {
+        v.error = std::string("manifest invalid: ") + pm.error().message;
         return v;
     }
+    ModManifest m = pm.value();
     auto has = [&](const std::string& rel) {
         std::string k = safe_entry(rel);
         if (k.empty()) return false;
@@ -236,7 +237,7 @@ bool extract_package(const std::string& path, const std::string& dest_dir, std::
         while ((r = fread(buf, 1, sizeof buf, f)) > 0) mt.append(buf, r);
         fclose(f);
     }
-    if (!parse_manifest(mt).ok) return fail("extracted manifest invalid");
+    if (!parse_manifest(mt).ok()) return fail("extracted manifest invalid");
     return true;
 }
 

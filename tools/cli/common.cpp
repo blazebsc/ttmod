@@ -18,17 +18,25 @@ std::vector<Listed> scan_mods_dir(const std::string& gamedir) {
             auto v = ttmod::inspect_package(src.path);
             if (!v.ok) {
                 ttmod::ModManifest bad;
-                bad.error = v.error;
-                out.push_back({"?", "?", src.name + " [INVALID: " + v.error + "]", "", bad});
+                out.push_back({"?", "?", src.name + " [INVALID: " + v.error + "]", "", bad, false});
                 continue;
             }
-            auto m = ttmod::parse_manifest(v.manifest_text);
+            auto pm = ttmod::parse_manifest(v.manifest_text);
+            if (!pm.ok()) continue; // inspect validated; defensive
+            auto m = pm.value();
             out.push_back({m.identity.id, m.identity.version, src.name, "", m});
         } else {
             std::string mf = (fs::path(src.path) / "manifest.json").string();
             std::error_code ec;
             if (!fs::exists(mf, ec)) continue; // not a mod dir
-            auto m = ttmod::parse_manifest(ttmod::file_io::read_all(mf));
+            auto pm = ttmod::parse_manifest(ttmod::file_io::read_all(mf));
+            if (!pm.ok()) {
+                ttmod::ModManifest bad;
+                out.push_back({"?", "?", src.name + "/ [INVALID: " + pm.error().message + "]", "", bad,
+                               false});
+                continue;
+            }
+            auto m = pm.value();
             out.push_back({m.identity.id, m.identity.version, src.name + "/", "", m});
         }
     }

@@ -7,44 +7,44 @@
 int main() {
     auto good = ttmod::parse_manifest(
         "{ \"id\": \"hello.mcsm\", \"version\": \"1.0.0\", \"api\": 1, "
-        "\"games\": [\"minecraft-story-mode:s1\"], \"extra\": {\"a\":1} }");
-    assert(good.ok && good.identity.id == "hello.mcsm" && good.identity.version == "1.0.0");
+        "\"games\": [\"minecraft-story-mode:s1\"], \"extra\": {\"a\":1} }").value();
+    assert(good.identity.id == "hello.mcsm" && good.identity.version == "1.0.0");
     assert(good.compat.api == 1 && good.compat.games.size() == 1 && good.compat.games[0] == "minecraft-story-mode:s1");
     assert(good.overrides.priority == 100 && good.enabled && good.overrides.files.empty()); // defaults
 
-    auto multi = ttmod::parse_manifest("{\"id\":\"x\",\"api\":2,\"games\":[\"a\",\"b\"]}");
-    assert(multi.ok && multi.compat.games.size() == 2 && multi.identity.version.empty());
+    auto multi = ttmod::parse_manifest("{\"id\":\"x\",\"api\":2,\"games\":[\"a\",\"b\"]}").value();
+    assert(multi.compat.games.size() == 2 && multi.identity.version.empty());
 
     auto res = ttmod::parse_manifest(
         "{\"id\":\"r.mod\",\"api\":1,\"priority\":200,\"enabled\":false,"
-        "\"files\":{\"archives/x.lua\":\"files/archives/x.lua\",\"a/b\":\"c/d\"}}");
-    assert(res.ok && res.overrides.priority == 200 && !res.enabled && res.overrides.files.size() == 2);
+        "\"files\":{\"archives/x.lua\":\"files/archives/x.lua\",\"a/b\":\"c/d\"}}").value();
+    assert(res.overrides.priority == 200 && !res.enabled && res.overrides.files.size() == 2);
     assert(res.overrides.files[0].first == "archives/x.lua" && res.overrides.files[0].second == "files/archives/x.lua");
 
-    assert(!ttmod::parse_manifest("").ok);
-    assert(!ttmod::parse_manifest("{\"id\":\"x\"}").ok);            // missing api
-    assert(!ttmod::parse_manifest("{\"api\":1}").ok);               // missing id
-    assert(!ttmod::parse_manifest("{\"id\":1,\"api\":1}").ok);      // id not string
-    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":\"1\"}").ok); // api not int
-    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"priority\":\"hi\"}").ok);
-    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"enabled\":\"yes\"}").ok);
-    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"files\":[]}").ok); // files not object
-    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"files\":{\"a\":1}}").ok);
+    assert(!ttmod::parse_manifest("").ok());
+    assert(!ttmod::parse_manifest("{\"id\":\"x\"}").ok());            // missing api
+    assert(!ttmod::parse_manifest("{\"api\":1}").ok());               // missing id
+    assert(!ttmod::parse_manifest("{\"id\":1,\"api\":1}").ok());      // id not string
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":\"1\"}").ok()); // api not int
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"priority\":\"hi\"}").ok());
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"enabled\":\"yes\"}").ok());
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"files\":[]}").ok()); // files not object
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"files\":{\"a\":1}}").ok());
 
     auto plug = ttmod::parse_manifest(
-        "{\"id\":\"p\",\"api\":1,\"plugin\":\"plugins/p.dll\",\"arch\":\"x86\",\"package_format\":1}");
-    assert(plug.ok && plug.plugin.path == "plugins/p.dll" && plug.compat.arch == ttmod::Architecture::X86 && plug.package_format == 1);
-    auto plugdef = ttmod::parse_manifest("{\"id\":\"p\",\"api\":1}");
-    assert(plugdef.ok && plugdef.plugin.path.empty() && plugdef.compat.arch == ttmod::Architecture::Any && plugdef.package_format == 1);
+        "{\"id\":\"p\",\"api\":1,\"plugin\":\"plugins/p.dll\",\"arch\":\"x86\",\"package_format\":1}").value();
+    assert(plug.plugin.path == "plugins/p.dll" && plug.compat.arch == ttmod::Architecture::X86 && plug.package_format == 1);
+    auto plugdef = ttmod::parse_manifest("{\"id\":\"p\",\"api\":1}").value();
+    assert(plugdef.plugin.path.empty() && plugdef.compat.arch == ttmod::Architecture::Any && plugdef.package_format == 1);
 
     auto dep = ttmod::parse_manifest(
         "{\"id\":\"m\",\"api\":1,\"depends\":[{\"id\":\"base\",\"version\":\"2.0\"},{\"id\":\"opt\"}],"
-        "\"conflicts\":[\"rival\"]}");
-    assert(dep.ok && dep.deps.depends.size() == 2 && dep.deps.conflicts.size() == 1);
+        "\"conflicts\":[\"rival\"]}").value();
+    assert(dep.deps.depends.size() == 2 && dep.deps.conflicts.size() == 1);
     assert(dep.deps.depends[0].first == "base" && dep.deps.depends[0].second == "2.0");
     assert(dep.deps.depends[1].first == "opt" && dep.deps.depends[1].second.empty());
-    assert(!ttmod::parse_manifest("{\"id\":\"m\",\"api\":1,\"depends\":[{\"version\":\"1\"}]}").ok);
-    assert(!ttmod::parse_manifest("{\"id\":\"m\",\"api\":1,\"conflicts\":\"x\"}").ok);
+    assert(!ttmod::parse_manifest("{\"id\":\"m\",\"api\":1,\"depends\":[{\"version\":\"1\"}]}").ok());
+    assert(!ttmod::parse_manifest("{\"id\":\"m\",\"api\":1,\"conflicts\":\"x\"}").ok());
 
     assert(ttmod::compare_versions("1.0.0", "1.0.0") == 0);
     assert(ttmod::compare_versions("1.2", "1.2.0") == 0);

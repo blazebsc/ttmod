@@ -17,9 +17,9 @@ int cmd_mods(int argc, char** argv) {
             return 0;
         }
         for (auto& m : mods) {
-            bool en = m.m.ok ? ttmod::effective_enabled(m.m, st) : st.enabled_for(m.id, true);
+            bool en = m.ok ? ttmod::effective_enabled(m.m, st) : st.enabled_for(m.id, true);
             std::printf("[%c] %-28s %-10s %s%s\n", en ? 'x' : ' ', m.id.c_str(), m.version.c_str(),
-                    m.src.c_str(), m.m.ok ? "" : "  INVALID");
+                    m.src.c_str(), m.ok ? "" : "  INVALID");
         }
         return 0;
     }

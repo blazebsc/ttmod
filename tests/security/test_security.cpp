@@ -56,32 +56,42 @@ int main() {
     bad("~/evil", "absolute");
     bad("a/b:c", "absolute");
     // Manifest-level: duplicates and trailing garbage rejected.
-    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"id\":\"y\",\"api\":1}").ok);
-    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1} trailing").ok);
-    assert(!ttmod::parse_manifest("{\"id\":\"../evil\",\"api\":1}").ok);
-    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1.5}").ok);
-    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":99999999999999999999}").ok);
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"id\":\"y\",\"api\":1}").ok());
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1} trailing").ok());
+    assert(!ttmod::parse_manifest("{\"id\":\"../evil\",\"api\":1}").ok());
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1.5}").ok());
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":99999999999999999999}").ok());
     // Malformed inputs: syntax, truncation, lone surrogates, non-finite.
-    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,}").ok); // trailing comma
-    assert(!ttmod::parse_manifest("{\"id\":\"x\" \"api\":1}").ok); // missing colon
-    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1").ok); // truncation
-    assert(!ttmod::parse_manifest("[{\"id\":\"x\",\"api\":1}]").ok); // top-level array
-    assert(!ttmod::parse_manifest("null").ok);
-    assert(!ttmod::parse_manifest(std::string("{\"id\":\"") + "\\ud800" + "\",\"api\":1}").ok); // lone surrogate
-    assert(ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"extra\":{\"deep\":[1,{\"k\":null}]}}").ok);
-    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"config\":[{\"key\":\"k\",\"type\":\"int\",\"label\":\"L\",\"default\":1e400}]}").ok);
-    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":-1}").ok);
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,}").ok()); // trailing comma
+    assert(!ttmod::parse_manifest("{\"id\":\"x\" \"api\":1}").ok()); // missing colon
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1").ok()); // truncation
+    assert(!ttmod::parse_manifest("[{\"id\":\"x\",\"api\":1}]").ok()); // top-level array
+    assert(!ttmod::parse_manifest("null").ok());
+    assert(!ttmod::parse_manifest(std::string("{\"id\":\"") + "\\ud800" + "\",\"api\":1}").ok()); // lone surrogate
+    assert(ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"extra\":{\"deep\":[1,{\"k\":null}]}}").ok());
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"config\":[{\"key\":\"k\",\"type\":\"int\",\"label\":\"L\",\"default\":1e400}]}").ok());
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":-1}").ok());
     // Runtime declarations (doc §§19-21): parsed, validated, surfaced.
     {
         auto mr = ttmod::parse_manifest("{\"id\":\"u\",\"api\":1,\"runtimes\":[\"native\",\"luau\",\"telltale-lua\"],"
                                         "\"permissions\":[\"game.read\",\"hooks\"]}");
-        assert(mr.ok && mr.runtime.runtimes.size() == 3 && mr.runtime.permissions.size() == 2);
-        assert(!ttmod::parse_manifest("{\"id\":\"u\",\"api\":1,\"runtimes\":[\"ps5\"]}").ok);
-        assert(!ttmod::parse_manifest("{\"id\":\"u\",\"api\":1,\"runtimes\":\"native\"}").ok);
-        assert(!ttmod::parse_manifest("{\"id\":\"u\",\"api\":1,\"permissions\":[\"sudo\"]}").ok);
-        assert(ttmod::parse_manifest("{\"id\":\"u\",\"api\":1}").ok &&
-               ttmod::parse_manifest("{\"id\":\"u\",\"api\":1}").runtime.runtimes.empty());
+        assert(mr.ok());
+        auto mrv = mr.value();
+        assert(mrv.runtime.runtimes.size() == 3 && mrv.runtime.permissions.size() == 2);
+        assert(mrv.runtime.runtimes[0] == ttmod::Runtime::Native);
+        assert(mrv.runtime.permissions[1] == ttmod::Permission::Hooks);
+        assert(!ttmod::parse_manifest("{\"id\":\"u\",\"api\":1,\"runtimes\":[\"ps5\"]}").ok());
+        assert(!ttmod::parse_manifest("{\"id\":\"u\",\"api\":1,\"runtimes\":\"native\"}").ok());
+        assert(!ttmod::parse_manifest("{\"id\":\"u\",\"api\":1,\"permissions\":[\"sudo\"]}").ok());
+        assert(ttmod::parse_manifest("{\"id\":\"u\",\"api\":1}").ok() &&
+               ttmod::parse_manifest("{\"id\":\"u\",\"api\":1}").value().runtime.runtimes.empty());
     }
+    // Validators are the universal boundary: manifest-declared paths go
+    // through the same canonical check as packages and the write path.
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"files\":{\"a\":\"../evil\"}}").ok());
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"files\":{\"a\":\"C:/evil\"}}").ok());
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"plugin\":\"..\\\\evil.dll\"}").ok());
+    assert(ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"plugin\":\"plugins/p.dll\"}").ok());
     printf("security: validators OK\n");
     return 0;
 }
