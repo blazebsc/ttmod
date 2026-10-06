@@ -1,8 +1,45 @@
 # TTMod Multi-Runtime Modding Architecture
 
-**Status:** Proposed / Architecture Specification  
-**Scope:** TTMod runtime and modding model  
+**Status:** Proposed / Architecture Specification — **partially implemented**
+**Scope:** TTMod runtime and modding model
 **Primary goal:** Define exactly how TTMod supports native mods, TTMod-managed scripting, and direct game/Telltale scripting.
+
+## Implementation status (2026-10-06)
+
+This document is a specification, not a description of shipped code. Read the
+markers below before assuming anything is done.
+
+**Implemented**
+
+| Area | Where | Notes |
+|---|---|---|
+| Mod ID as a validated strong type | `core/modid.hpp` | `ModId::parse()` only; nothing re-validates |
+| Bounded version grammar | `core/version.hpp`, ADR-007 | not strict SemVer, deliberately |
+| Manifest split: syntax vs semantics | `core/manifest.cpp` | `read_raw_manifest` → `validate_manifest` |
+| Per-runtime entry points | `core/manifest.hpp` §65 | `entrypoints`; native stays `plugin` |
+| Cross-VM value, no VM handles | `core/script_value.hpp` §11/58/59 | no Function/Userdata kind exists |
+| Game-thread dispatcher | `core/game_dispatch.hpp` §12/42 | injected game-thread id, timeout, drops counted |
+| Scheduler (Now/Next/At) | `core/scheduler.hpp` §62 | cascade-bounded; no coroutines/promises |
+| Mod run lifecycle | `core/mod_lifecycle.hpp` §36 | Failed/Unloaded are terminal |
+| Versioned API registry, tombstones | `core/script_api.hpp` §34/75 | VM stores tokens, never function pointers |
+| Backend contract | `core/script_vm.hpp` | six ops; Lua-free by construction |
+| **Lua 5.4.7 backend** | `core/script/lua/`, vendored | real VM: executes, marshals, sandboxes, budget |
+| Game Lua state registry | `core/game_lua.hpp` §30/57 | observes only; never closes a game state |
+| Native C ABI + plugin loading | `core/plugin_api.h` §15/16 | pre-existing |
+| Dependency-first load order | `core/modplan.hpp` §37 | one resolution, one plan |
+
+**Planned**
+
+Luau backend (§55) · TTMod `ttmod.*` binding surface beyond the registry
+(§13, §34) · script thread + `ScriptHost` owner (§4.1, §70) · native plugin
+script-API registration through the host ABI (§75) · cross-VM command
+semantics beyond marshaled values (§11) · game-thread dispatch into real game
+Lua (§12) · telltale-lua mod execution (§11/§47) · mod-to-mod services (§35).
+
+**Experimental**
+
+The sandbox (denied globals + instruction budget) is a first cut, not a
+security boundary. Native mods remain trusted process code (§22).
 
 ---
 
