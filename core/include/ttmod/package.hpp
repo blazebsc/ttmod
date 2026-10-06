@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include "ttmod/manifest.hpp" // kPackageFormat
+#include "ttmod/package_policy.hpp"
 #include "ttmod/result.hpp"
 
 namespace ttmod {

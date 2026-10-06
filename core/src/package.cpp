@@ -52,6 +52,24 @@ struct OpenZip {
     }
 };
 
+// Components in a raw archive name ('/' separated; '\' too, since a
+// Windows-authored zip may carry either).
+size_t count_components(const std::string& raw) {
+    size_t n = 0;
+    bool in = false;
+    for (char c : raw) {
+        if (c == '/' || c == '\\') {
+            in = false;
+            continue;
+        }
+        if (!in) {
+            ++n;
+            in = true;
+        }
+    }
+    return n;
+}
+
 bool read_entry(mz_zip_archive& zip, mz_uint idx, std::string& out) {
     mz_zip_archive_file_stat st;
     if (!mz_zip_reader_file_stat(&zip, idx, &st)) return false;
@@ -70,11 +88,11 @@ Result<PackView> inspect_package(const std::string& path) {
     auto fail = [&](const std::string& msg, const char* cat) {
         return Result<PackView>::fail(Error{"inspect-package", path, cat, msg});
     };
-    // Package-level caps (centralized policy): file size, entry count,
-    // per-entry size, total uncompressed size, manifest size.
+    // All resource limits live in package_policy.hpp. Nothing in this file
+    // may invent its own bound: a second number here would drift.
     std::error_code pec;
     uint64_t file_sz = fs::file_size(path, pec);
-    if (pec || file_sz > (512ull << 20)) {
+    if (pec || file_sz > packlimits::kMaxPackageBytes) {
         return fail("package too large", errcat::kLimit);
     }
     OpenZip z(path);
@@ -82,7 +100,7 @@ Result<PackView> inspect_package(const std::string& path) {
         return fail("cannot open archive", errcat::kIO);
     }
     mz_uint n = mz_zip_reader_get_num_files(&z.zip);
-    if (n == 0 || n > 4096) {
+    if (n == 0 || n > packlimits::kMaxEntries) {
         return fail("bad entry count", errcat::kLimit);
     }
     uint64_t total_uncomp = 0;
@@ -105,11 +123,20 @@ Result<PackView> inspect_package(const std::string& path) {
             }
         }
         if (is_dir) continue; // dirs implicit; validated via file paths
-        if (st.m_uncomp_size > (64ull << 20)) {
+        // Raw name bounds BEFORE normalization: a pathological name can
+        // normalize to something short.
+        if (raw.size() > packlimits::kMaxPathChars) {
+            return fail(std::string("entry path too long: ") + raw.substr(0, 64), errcat::kLimit);
+        }
+        if (count_components(raw) > packlimits::kMaxPathDepth) {
+            return fail(std::string("entry path too deep: ") + raw.substr(0, 64), errcat::kLimit);
+        }
+        if (st.m_uncomp_size > packlimits::kMaxEntryBytes) {
             return fail(std::string("entry too large: ") + raw, errcat::kLimit);
         }
+        // Saturating add: a lying m_uncomp_size must not wrap into "small".
         total_uncomp += st.m_uncomp_size;
-        if (total_uncomp > (256ull << 20)) {
+        if (total_uncomp > packlimits::kMaxTotalUncompressedBytes) {
             return fail("package total too large", errcat::kLimit);
         }
         std::string norm = safe_entry(raw);
@@ -124,7 +151,7 @@ Result<PackView> inspect_package(const std::string& path) {
         names.push_back(norm);
         if (norm == "manifest.json") {
             manifests++;
-            if (st.m_uncomp_size > (1ull << 20)) {
+            if (st.m_uncomp_size > packlimits::kMaxManifestBytes) {
                 return fail("manifest too large", errcat::kLimit);
             }
             if (!read_entry(z.zip, i, manifest)) {
@@ -144,9 +171,8 @@ Result<PackView> inspect_package(const std::string& path) {
     // Manifest must parse; every declared file + plugin path must be present.
     Result<ModManifest> pm = parse_manifest(manifest);
     if (!pm.ok()) {
-        return Result<PackView>::fail(
-            Error{"inspect-package", path, pm.error().category,
-                  std::string("manifest invalid: ") + pm.error().message});
+        return Result<PackView>::fail(Error{"inspect-package", path, pm.error().category,
+                                            std::string("manifest invalid: ") + pm.error().message});
     }
     ModManifest m = pm.value();
     auto has = [&](const std::string& rel) {
@@ -188,13 +214,29 @@ Result<void> extract_package(const std::string& path, const std::string& dest_di
     OpenZip z(path);
     if (!z.ok) return fail_cleanup("cannot reopen archive", errcat::kIO);
     mz_uint n = mz_zip_reader_get_num_files(&z.zip);
+    if (n == 0 || n > packlimits::kMaxEntries) {
+        return fail_cleanup("bad entry count", errcat::kLimit);
+    }
+    // The archive was inspected moments ago but is read again here, so the
+    // file on disk is not provably the same one that was validated. Limits
+    // are re-enforced here rather than trusting the earlier pass.
+    uint64_t total_uncomp = 0;
     for (mz_uint i = 0; i < n; ++i) {
         mz_zip_archive_file_stat st;
-        if (!mz_zip_reader_file_stat(&z.zip, i, &st))
-            return fail_cleanup("central directory changed", errcat::kIO);
+        if (!mz_zip_reader_file_stat(&z.zip, i, &st)) return fail_cleanup("central directory changed", errcat::kIO);
         std::string raw = st.m_filename;
         bool is_dir = st.m_is_directory != 0 || (!raw.empty() && raw.back() == '/');
         if (is_dir) continue;
+        if (raw.size() > packlimits::kMaxPathChars || count_components(raw) > packlimits::kMaxPathDepth) {
+            return fail_cleanup("entry path out of bounds: " + raw.substr(0, 64), errcat::kLimit);
+        }
+        if (st.m_uncomp_size > packlimits::kMaxEntryBytes) {
+            return fail_cleanup(std::string("entry too large: ") + raw, errcat::kLimit);
+        }
+        total_uncomp += st.m_uncomp_size;
+        if (total_uncomp > packlimits::kMaxTotalUncompressedBytes) {
+            return fail_cleanup("package total too large", errcat::kLimit);
+        }
         std::string norm = safe_entry_nocase(raw);
         if (norm.empty()) return fail_cleanup(std::string("unsafe path: ") + raw, errcat::kTraversal);
         fs::path out = fs::path(dest_dir) / norm;
@@ -203,6 +245,11 @@ Result<void> extract_package(const std::string& path, const std::string& dest_di
         size_t sz = 0;
         void* p = mz_zip_reader_extract_to_heap(&z.zip, i, &sz, 0);
         if (!p) return fail_cleanup(std::string("extract failed: ") + raw, errcat::kIO);
+        // Trust the bytes we got, not the declared size.
+        if ((uint64_t)sz > packlimits::kMaxEntryBytes || total_uncomp > packlimits::kMaxTotalUncompressedBytes) {
+            mz_free(p);
+            return fail_cleanup(std::string("entry exceeds limit: ") + raw, errcat::kLimit);
+        }
         FILE* f = ttmod::file_io::open_write(out.string());
         if (!f) {
             mz_free(p);
@@ -232,8 +279,8 @@ Result<void> extract_package(const std::string& path, const std::string& dest_di
 // documented in docs/runtime/mod-packages.md). Root plugin.dll is the
 // legacy native layout (manifest "plugin" field preferred for new mods).
 static bool wanted_top(const std::string& top) {
-    for (auto* w : {"manifest.json", "plugin.dll", "files", "plugins", "scripts", "assets", "docs",
-                    "README.md", "README.txt", "LICENSE", "LICENSE.txt"})
+    for (auto* w : {"manifest.json", "plugin.dll", "files", "plugins", "scripts", "assets", "docs", "README.md",
+                    "README.txt", "LICENSE", "LICENSE.txt"})
         if (top == w) return true;
     return false;
 }
@@ -251,8 +298,7 @@ Result<void> create_package(const std::string& src_dir, const std::string& out_p
     }
     // Collect regular files, sorted, skipping policy-excluded + junk.
     std::vector<std::string> rels;
-    for (auto it = fs::recursive_directory_iterator(src_dir, ec); it != fs::recursive_directory_iterator();
-         ++it) {
+    for (auto it = fs::recursive_directory_iterator(src_dir, ec); it != fs::recursive_directory_iterator(); ++it) {
         if (ec) {
             return fail("directory walk failed", errcat::kIO);
         }
@@ -263,7 +309,7 @@ Result<void> create_package(const std::string& src_dir, const std::string& out_p
         if (!wanted_top(top)) continue; // .git/build/logs/cache/etc. excluded
         std::string leaf = rel.substr(rel.find_last_of('/') + 1);
         if (!leaf.empty() && leaf[0] == '.') continue; // dotfiles excluded
-        std::string key = safe_entry(rel); // lowercase key: case-collisions rejected
+        std::string key = safe_entry(rel);             // lowercase key: case-collisions rejected
         if (key.empty()) {
             return fail(std::string("unsafe name in source: ") + rel, errcat::kTraversal);
         }
@@ -299,8 +345,7 @@ Result<void> create_package(const std::string& src_dir, const std::string& out_p
         while ((r = fread(buf, 1, sizeof buf, f)) > 0) data.append(buf, r);
         fclose(f);
         if (!mz_zip_writer_add_mem_ex_v2(&zip, rel.c_str(), data.data(), data.size(), nullptr, 0,
-                                         MZ_DEFAULT_COMPRESSION, 0, 0, &fixed_t, nullptr, 0,
-                                         nullptr, 0))
+                                         MZ_DEFAULT_COMPRESSION, 0, 0, &fixed_t, nullptr, 0, nullptr, 0))
             return fail_cleanup(std::string("cannot add: ") + rel, errcat::kIO);
     }
     if (!mz_zip_writer_finalize_archive(&zip)) return fail_cleanup("finalize failed", errcat::kIO);

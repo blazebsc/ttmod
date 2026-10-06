@@ -62,14 +62,17 @@ int main() {
     assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1.5}").ok());
     assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":99999999999999999999}").ok());
     // Malformed inputs: syntax, truncation, lone surrogates, non-finite.
-    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,}").ok()); // trailing comma
-    assert(!ttmod::parse_manifest("{\"id\":\"x\" \"api\":1}").ok()); // missing colon
-    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1").ok()); // truncation
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,}").ok());  // trailing comma
+    assert(!ttmod::parse_manifest("{\"id\":\"x\" \"api\":1}").ok());   // missing colon
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1").ok());    // truncation
     assert(!ttmod::parse_manifest("[{\"id\":\"x\",\"api\":1}]").ok()); // top-level array
     assert(!ttmod::parse_manifest("null").ok());
     assert(!ttmod::parse_manifest(std::string("{\"id\":\"") + "\\ud800" + "\",\"api\":1}").ok()); // lone surrogate
     assert(ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"extra\":{\"deep\":[1,{\"k\":null}]}}").ok());
-    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"config\":[{\"key\":\"k\",\"type\":\"int\",\"label\":\"L\",\"default\":1e400}]}").ok());
+    assert(
+        !ttmod::parse_manifest(
+             "{\"id\":\"x\",\"api\":1,\"config\":[{\"key\":\"k\",\"type\":\"int\",\"label\":\"L\",\"default\":1e400}]}")
+             .ok());
     assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":-1}").ok());
     // Runtime declarations (doc §§19-21): parsed, validated, surfaced.
     {
@@ -92,6 +95,30 @@ int main() {
     assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"files\":{\"a\":\"C:/evil\"}}").ok());
     assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"plugin\":\"..\\\\evil.dll\"}").ok());
     assert(ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"plugin\":\"plugins/p.dll\"}").ok());
+
+    // ".." policy, both halves (documented in validate.hpp):
+    // safe normalization is allowed, escaping is refused.
+    // ---- ".." policy: safe normalization allowed, escape refused ------------
+    // Safe: ".." that stays inside the mod root normalizes lexically.
+    ok("a/../b", "b");
+    ok("a/b/../c", "a/c");
+    ok("a\\..\\b", "b");
+    ok("files/x/../y.lua", "files/y.lua");
+    ok("files/./x.lua", "files/x.lua");
+    // Escaping: popping past the root is an error, never a silent clamp.
+    bad("../evil", "traversal");
+    bad("a/../../evil", "traversal");
+    bad("..\\..\\evil", "traversal");
+    bad("a/../..", "traversal");
+    bad("a/b/../../../c", "traversal");
+    // Extended-prefix and UNC shapes must not sneak past the p[1]==':' check.
+    bad("\\\\?\\C:\\evil", "absolute");
+    bad("\\\\server\\share", "absolute");
+    bad("\\\\?\\UNC\\server\\share", "absolute");
+    // Every traversal form is refused at the manifest boundary too.
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"files\":{\"g\":\"..\\\\..\\\\evil\"}}").ok());
+    assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"plugin\":\"a/../../evil.dll\"}").ok());
+    assert(ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"files\":{\"g\":\"a/../b.lua\"}}").ok());
     printf("security: validators OK\n");
     return 0;
 }
