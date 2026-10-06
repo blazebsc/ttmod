@@ -89,7 +89,12 @@ int main() {
     bool pkg = false;
     assert(has_id(d, "dev.mod") && has_id(d, "pkg.mod", &pkg) && pkg);
     assert(!has_id(d, "g.mod") && !has_id(d, "a.mod"));
-    assert(skipped_has(d, "bad: invalid manifest"));
+    auto invalid_has = [&](const std::string& sub) {
+        for (auto& e : d.invalid)
+            if (e.reason.find(sub) != std::string::npos) return true;
+        return false;
+    };
+    assert(invalid_has("bad: invalid manifest"));
     assert(skipped_has(d, "broken.ttmod: invalid package"));
     assert(skipped_has(d, "g.mod: game not supported"));
     assert(skipped_has(d, "unsupported API"));

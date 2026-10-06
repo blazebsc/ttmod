@@ -13,16 +13,37 @@ namespace ttmod {
 // Applies ModState (disabled -> skipped, recorded) and validates api/game.
 // Duplicate IDs: unpacked dir wins over .ttmod (dev override), rest rejected;
 // all decisions recorded in skipped[] as user-friendly reasons.
+enum class ModSourceKind { Directory, Package };
+
+// One directory walk, shared by runtime discovery and the CLI: every
+// *.ttmod file and every subdirectory (hidden/OS-metadata skipped), sorted
+// by name. Junk (README, DLLs, zips) never enters. Callers validate.
+struct ModSource {
+    std::string name; // filename/dirname
+    std::string path; // absolute path
+    ModSourceKind kind;
+};
+
+std::vector<ModSource> scan_mod_sources(const std::string& mods_dir, int* entries_seen = nullptr);
+
 struct Discovered {
     std::string id;
     std::string source; // absolute path: .ttmod file or unpacked dir
     bool packaged = false;
+    ModSourceKind kind = ModSourceKind::Directory;
     ModManifest manifest;
+};
+
+// Invalid entries stay visible (CLI lists them) instead of vanishing.
+struct InvalidEntry {
+    std::string source; // absolute path
+    std::string reason;
 };
 
 struct Discovery {
     std::vector<Discovered> mods; // id-sorted, deduplicated, enabled only
     std::vector<Discovered> disabled; // valid but disabled (for menus)
+    std::vector<InvalidEntry> invalid; // unparseable (for CLI display)
     std::vector<std::string> skipped; // "id: reason" (or filename when id unknown)
     int entries_seen = 0;
 };

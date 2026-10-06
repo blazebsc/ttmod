@@ -10,7 +10,7 @@
 #include "ttmod/log.hpp"
 #include "ttmod/detect.hpp"
 #include "ttmod/manifest.hpp"
-#include "ttmod/moddeps.hpp"
+#include "ttmod/modgraph.hpp"
 #include "ttmod/plugin_api.h"
 #include "events.hpp"
 #include "menu_bridge.hpp"
@@ -42,6 +42,12 @@ void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, co
     }
     std::vector<ttmod::ModManifest> present;
     for (auto& s : all) present.push_back(s.manifest);
+    ttmod::DepResolution dep = ttmod::resolve_dependencies(present);
+    auto blocked_reason = [&](const std::string& id) -> const std::string* {
+        for (auto& pr : dep.problems)
+            if (pr.mod == id) return &pr.message;
+        return nullptr;
+    };
 
     // Static lifetime: plugins retain this pointer for async callbacks
     // (a stack instance would dangle after plugins_init returns).
@@ -52,9 +58,8 @@ void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, co
                       ttmod_win::mods_menu_info, ttmod_win::menumods_queue_ui_chunk};
     for (auto& s : all) {
         const ttmod::ModManifest& m = s.manifest;
-        std::string req = ttmod::check_requirements(m, present);
-        if (!req.empty()) {
-            emit("plugins: " + m.identity.id + " rejected (" + req + ")");
+        if (const std::string* why = blocked_reason(m.identity.id)) {
+            emit("plugins: " + m.identity.id + " rejected (" + *why + ")");
             continue;
         }
         if (!s.has_dll) continue; // resource-only; mods loader owns it

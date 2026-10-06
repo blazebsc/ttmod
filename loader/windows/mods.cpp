@@ -10,7 +10,7 @@
 
 #include "ttmod/log.hpp"
 #include "ttmod/manifest.hpp"
-#include "ttmod/moddeps.hpp"
+#include "ttmod/modgraph.hpp"
 #include "ttmod/pathnorm.hpp"
 #include "ttmod/resolver.hpp"
 #include "mods.hpp"
@@ -49,11 +49,16 @@ void mods_init(const std::vector<ScannedMod>& all, const char* game_root, const 
     g_resolver.set_game_root(game_root ? game_root : "");
     std::vector<ttmod::ModManifest> present;
     for (auto& s : all) present.push_back(s.manifest);
+    ttmod::DepResolution dep = ttmod::resolve_dependencies(present);
+    auto blocked_reason = [&](const std::string& id) -> const std::string* {
+        for (auto& pr : dep.problems)
+            if (pr.mod == id) return &pr.message;
+        return nullptr;
+    };
     for (auto& s : all) {
         const ttmod::ModManifest& m = s.manifest;
-        std::string req = ttmod::check_requirements(m, present);
-        if (!req.empty()) {
-            emit("mods: " + m.identity.id + " skipped (" + req + ")");
+        if (const std::string* why = blocked_reason(m.identity.id)) {
+            emit("mods: " + m.identity.id + " skipped (" + *why + ")");
             continue;
         }
         if (m.overrides.files.empty()) continue; // native-only; plugins loader owns it

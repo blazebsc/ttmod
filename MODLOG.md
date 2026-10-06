@@ -246,3 +246,15 @@ awk '/TTMod framework v/{buf=""} {buf=buf $0 "\n"} END{printf "%s",buf}' logs/tt
   (absent = Any, garbage rejected); profile status is `ProfileStatus`.
 - `RuntimeMode`/`LuaDomain` deferred to Stages E/H (unused enums would
   be speculative; recorded here instead).
+
+## 2026-10-05 refactor Stage D (discovery + dependencies)
+
+- `ModSource{path, kind}` + `scan_mod_sources()`: one walk shared by
+  runtime discovery and the CLI (CLI keeps unfiltered display incl.
+  invalid entries). `Discovery` gains `invalid[]` (visible) + source
+  kinds; unparseable manifests no longer vanish.
+- `modgraph`: explicit `DependencyGraph` (missing/version/conflict/
+  duplicate/cycle + topo load order, deterministic). Replaces
+  per-mod `check_requirements` (deleted with moddeps.*); loaders
+  resolve once and skip from the result. Plugin init order unchanged
+  (discovery id-sorted; graph order available for a later pass).

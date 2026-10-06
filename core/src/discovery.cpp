@@ -33,6 +33,30 @@ bool game_ok(const ModManifest& m, const char* game, int season) {
 
 } // namespace
 
+std::vector<ModSource> scan_mod_sources(const std::string& mods_dir, int* entries_seen) {
+    std::vector<ModSource> out;
+    std::error_code ec;
+    if (!fs::is_directory(mods_dir, ec)) return out;
+    for (auto& e : fs::directory_iterator(mods_dir, ec)) {
+        if (ec) break;
+        if (entries_seen) ++*entries_seen;
+        std::string name = e.path().filename().string();
+        if (name.empty() || name[0] == '.') continue; // hidden/OS metadata
+        if (e.is_regular_file(ec)) {
+            if (e.path().extension() == ".ttmod")
+                out.push_back({name, e.path().string(), ModSourceKind::Package});
+            // else: README/screenshots/random DLLs/zips ignored silently
+        } else if (e.is_directory(ec)) {
+            out.push_back({name, e.path().string(), ModSourceKind::Directory});
+        }
+    }
+    std::sort(out.begin(), out.end(), [](const ModSource& a, const ModSource& b) {
+        if (a.kind != b.kind) return a.kind == ModSourceKind::Directory;
+        return a.name < b.name;
+    });
+    return out;
+}
+
 Discovery discover_mods(const std::string& mods_dir, const ModState& state, const char* game,
                         int season) {
     Discovery d;
@@ -43,45 +67,29 @@ Discovery discover_mods(const std::string& mods_dir, const ModState& state, cons
         bool packaged = false;
     };
     std::vector<Cand> cands;
-    std::vector<std::pair<std::string, std::string>> dir_entries; // (name, path) sorted
-    std::vector<std::string> pack_entries;
-    for (auto& e : fs::directory_iterator(mods_dir, ec)) {
-        if (ec) break;
-        d.entries_seen++;
-        std::string name = e.path().filename().string();
-        if (name.empty() || name[0] == '.') continue; // hidden/OS metadata
-        if (e.is_regular_file(ec)) {
-            if (e.path().extension() == ".ttmod") pack_entries.push_back(e.path().string());
-            // else: README/screenshots/random DLLs/zips ignored silently
-        } else if (e.is_directory(ec)) {
-            dir_entries.emplace_back(name, e.path().string());
+    for (auto& src : scan_mod_sources(mods_dir, &d.entries_seen)) {
+        if (src.kind == ModSourceKind::Directory) {
+            std::string mt = read_file(src.path + "/manifest.json");
+            if (mt.empty()) continue; // not a mod dir, ignore silently
+            ModManifest m = parse_manifest(mt);
+            if (!m.ok) {
+                d.invalid.push_back({src.path, src.name + ": invalid manifest: " + m.error});
+                continue;
+            }
+            cands.push_back({m.identity.id, src.path, mt, false});
+        } else {
+            PackView v = inspect_package(src.path);
+            if (!v.ok) {
+                d.skipped.push_back(src.name + ": invalid package: " + v.error);
+                continue;
+            }
+            ModManifest m = parse_manifest(v.manifest_text);
+            if (!m.ok) { // inspect already validated; defensive
+                d.invalid.push_back({src.path, src.name + ": invalid manifest: " + m.error});
+                continue;
+            }
+            cands.push_back({m.identity.id, src.path, v.manifest_text, true});
         }
-    }
-    std::sort(dir_entries.begin(), dir_entries.end());
-    std::sort(pack_entries.begin(), pack_entries.end());
-    for (auto& [name, path] : dir_entries) {
-        std::string mt = read_file(path + "/manifest.json");
-        if (mt.empty()) continue; // not a mod dir, ignore silently
-        ModManifest m = parse_manifest(mt);
-        if (!m.ok) {
-            d.skipped.push_back(name + ": invalid manifest: " + m.error);
-            continue;
-        }
-        cands.push_back({m.identity.id, path, mt, false});
-    }
-    for (auto& path : pack_entries) {
-        std::string base = fs::path(path).filename().string();
-        PackView v = inspect_package(path);
-        if (!v.ok) {
-            d.skipped.push_back(base + ": invalid package: " + v.error);
-            continue;
-        }
-        ModManifest m = parse_manifest(v.manifest_text);
-        if (!m.ok) { // inspect already validated; defensive
-            d.skipped.push_back(base + ": invalid manifest: " + m.error);
-            continue;
-        }
-        cands.push_back({m.identity.id, path, v.manifest_text, true});
     }
     // Validate api/game, apply state, dedupe (unpacked dir beats package).
     struct Item {
@@ -101,10 +109,10 @@ Discovery discover_mods(const std::string& mods_dir, const ModState& state, cons
         }
         if (!effective_enabled(m, state)) {
             d.skipped.push_back(c.id + ": disabled");
-            d.disabled.push_back({c.id, c.source, c.packaged, m}); // menu-visible
+            d.disabled.push_back({c.id, c.source, c.packaged, ModSourceKind::Directory, m}); // menu-visible
             continue;
         }
-        items.push_back({{c.id, c.source, c.packaged, m}, !c.packaged});
+        items.push_back({{c.id, c.source, c.packaged, c.packaged ? ModSourceKind::Package : ModSourceKind::Directory, m}, !c.packaged});
     }
     std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) {
         if (a.disc.id != b.disc.id) return a.disc.id < b.disc.id;

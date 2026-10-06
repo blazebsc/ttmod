@@ -28,7 +28,7 @@ set(TTMOD_CORE_SRCS
   core/src/resolver.cpp
   core/src/events.cpp
   core/src/gamestate.cpp
-  core/src/moddeps.cpp
+  core/src/modgraph.cpp
   core/src/package.cpp
   core/src/modstate.cpp
   core/src/discovery.cpp
@@ -40,6 +40,7 @@ set(TTMOD_CORE_SRCS
   core/src/uiqueue.cpp
   core/src/theme_color.cpp
   core/src/validate.cpp
+  core/src/version.cpp
 )
 
 add_library(ttmod_core ${TTMOD_CORE_SRCS})

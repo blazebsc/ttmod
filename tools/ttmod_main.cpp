@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "ttmod/detect.hpp"
+#include "ttmod/discovery.hpp"
 #include "ttmod/logmap.hpp"
 #include "ttmod/manifest.hpp"
 #include "ttmod/modstate.hpp"
@@ -59,29 +60,28 @@ bool write_file(const std::string& p, const std::string& s) {
 }
 
 // Scan <gamedir>/mods: *.ttmod (inspect) + */manifest.json. Sorted by id.
+// Single walk implementation lives in core (scan_mod_sources); this only
+// shapes entries for display (invalid stays visible, no game filter).
 std::vector<Listed> scan_mods_dir(const std::string& gamedir) {
     std::vector<Listed> out;
-    std::error_code ec;
-    fs::path mods = fs::path(gamedir) / "mods";
-    if (!fs::is_directory(mods, ec)) return out;
-    for (auto& e : fs::directory_iterator(mods, ec)) {
-        if (ec) break;
-        if (e.is_regular_file()) {
-            if (e.path().extension() != ".ttmod") continue; // ignore junk
-            auto v = ttmod::inspect_package(e.path().string());
+    std::string mods = (fs::path(gamedir) / "mods").string();
+    for (auto& src : ttmod::scan_mod_sources(mods)) {
+        if (src.kind == ttmod::ModSourceKind::Package) {
+            auto v = ttmod::inspect_package(src.path);
             if (!v.ok) {
                 ttmod::ModManifest bad;
                 bad.error = v.error;
-                out.push_back({"?", "?", e.path().filename().string() + " [INVALID: " + v.error + "]", "", bad});
+                out.push_back({"?", "?", src.name + " [INVALID: " + v.error + "]", "", bad});
                 continue;
             }
             auto m = ttmod::parse_manifest(v.manifest_text);
-            out.push_back({m.identity.id, m.identity.version, e.path().filename().string(), "", m});
-        } else if (e.is_directory()) {
-            std::string mf = (e.path() / "manifest.json").string();
-            if (!fs::exists(mf, ec)) continue; // not a mod dir
+            out.push_back({m.identity.id, m.identity.version, src.name, "", m});
+        } else {
+            std::string mf = (fs::path(src.path) / "manifest.json").string();
+            std::error_code ec2;
+            if (!fs::exists(mf, ec2)) continue; // not a mod dir
             auto m = ttmod::parse_manifest(read_file(mf));
-            out.push_back({m.identity.id, m.identity.version, std::string(e.path().filename().string()) + "/", "", m});
+            out.push_back({m.identity.id, m.identity.version, src.name + "/", "", m});
         }
     }
     std::sort(out.begin(), out.end(), [](const Listed& a, const Listed& b) { return a.id < b.id; });

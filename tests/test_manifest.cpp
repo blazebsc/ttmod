@@ -1,5 +1,5 @@
 #include "ttmod/manifest.hpp"
-#include "ttmod/moddeps.hpp"
+#include "ttmod/modgraph.hpp"
 #include "ttmod/version.hpp"
 #include <cassert>
 #include <cstdio>
@@ -64,24 +64,58 @@ int main() {
     assert(ttmod::VersionConstraint("<3.0").satisfied_by(ttmod::Version("2.9.9")));
     assert(ttmod::VersionConstraint(">2.0").satisfied_by(ttmod::Version("2.0.1")));
 
-    // check_requirements over a present set
-    ttmod::ModManifest base, addon, rival;
-    base.identity.id = "base";
-    base.identity.version = "2.1.0";
-    addon.identity.id = "addon";
-    addon.deps.depends = {{"base", "2.0"}, {"opt", ""}};
-    rival.identity.id = "rival";
-    std::vector<ttmod::ModManifest> set1{base};
-    assert(ttmod::check_requirements(addon, set1) == "missing dependency: opt");
-    ttmod::ModManifest opt;
-    opt.identity.id = "opt";
-    std::vector<ttmod::ModManifest> set2{base, opt, rival};
-    assert(ttmod::check_requirements(addon, set2).empty());
-    addon.deps.conflicts = {"rival"};
-    assert(ttmod::check_requirements(addon, set2) == "conflicts with present mod: rival");
-    addon.deps.conflicts.clear();
-    addon.deps.depends = {{"base", "3.0"}};
-    assert(ttmod::check_requirements(addon, set2) == "dependency base version 2.1.0 < 3.0");
+    // Dependency graph over a present set (replaces per-mod string checks).
+    auto mk = [](const char* id, const char* ver) {
+        ttmod::ModManifest m;
+        m.identity.id = id;
+        m.identity.version = ver;
+        return m;
+    };
+    {
+        ttmod::ModManifest base = mk("base", "2.1.0"), addon = mk("addon", "1.0"), opt = mk("opt", "1.0"),
+                           rival = mk("rival", "1.0");
+        addon.deps.depends = {{"base", "2.0"}, {"opt", ""}};
+        auto r = ttmod::resolve_dependencies({base, addon, opt, rival});
+        assert(r.blocked("addon") == false);
+        assert(r.load_order.front() == "base"); // deps first
+    }
+    {
+        // missing dependency blocks the dependent only
+        ttmod::ModManifest a = mk("a", "1.0");
+        a.deps.depends = {{"ghost", ""}};
+        auto r = ttmod::resolve_dependencies({a, mk("b", "1.0")});
+        assert(r.blocked("a") && !r.blocked("b"));
+        bool found = false;
+        for (auto& p : r.problems)
+            if (p.mod == "a" && p.category == "missing") found = true;
+        assert(found);
+    }
+    {
+        // version mismatch + conflict + cycle + duplicate
+        ttmod::ModManifest a = mk("a", "1.0"), b = mk("b", "2.1.0"), c = mk("c", "1.0");
+        b.deps.depends = {{"a", "3.0"}};
+        auto r1 = ttmod::resolve_dependencies({a, b});
+        assert(r1.blocked("b"));
+        bool ver = false;
+        for (auto& p : r1.problems)
+            if (p.mod == "b" && p.category == "version") ver = true;
+        assert(ver);
+        c.deps.conflicts = {"a"};
+        auto r2 = ttmod::resolve_dependencies({a, c});
+        assert(r2.blocked("c"));
+        ttmod::ModManifest x = mk("x", "1.0"), y = mk("y", "1.0");
+        x.deps.depends = {{"y", ""}};
+        y.deps.depends = {{"x", ""}};
+        auto r3 = ttmod::resolve_dependencies({x, y});
+        assert(r3.blocked("x") && r3.blocked("y"));
+        auto r4 = ttmod::resolve_dependencies({mk("d", "1.0"), mk("d", "2.0")});
+        assert(r4.blocked("d"));
+        // duplicates keep going exactly once in load order
+        int dcount = 0;
+        for (auto& id : r4.load_order)
+            if (id == "d") ++dcount;
+        assert(dcount == 1);
+    }
     std::puts("manifest: all asserts passed");
     return 0;
 }
