@@ -50,9 +50,16 @@ void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, co
     };
 
     // Static lifetime: plugins retain this pointer for async callbacks
-    // (a stack instance would dangle after plugins_init returns).
+    // (a stack instance would dangle after plugins_init returns). The
+    // pointed-to STRINGS are static-owned too: callers pass c_str() views
+    // into short-lived init state (Stage E: use-after-free proven by
+    // inspection - InitCtx dies with the init thread).
     static ttmod_host host;
-    host = ttmod_host{TTMOD_PLUGIN_API_VERSION, profile_id, game, season, host_log,
+    static std::string owned_profile, owned_game;
+    owned_profile = profile_id ? profile_id : "";
+    owned_game = game ? game : "";
+    host = ttmod_host{TTMOD_PLUGIN_API_VERSION, owned_profile.c_str(), owned_game.c_str(), season,
+                      host_log,
                       ttmod_win::events_subscribe, ttmod_win::events_unsubscribe,
                       ttmod_win::events_get_state, ttmod_win::mods_menu_count,
                       ttmod_win::mods_menu_info, ttmod_win::menumods_queue_ui_chunk};

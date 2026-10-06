@@ -140,8 +140,9 @@ static void module_survey(const InitCtx& ctx) {
 }
 
 static void detect_profile(InitCtx& ctx) {
-    ctx.prof = ttmod::init_from_exe(ctx.exepath.empty() ? "unknown" : ctx.exepath.c_str(),
-                                    ctx.logpath);
+    ttmod::GameProfile prof =
+        ttmod::init_from_exe(ctx.exepath.empty() ? "unknown" : ctx.exepath.c_str(), ctx.logpath);
+    ctx.prof = prof.id;
     if (!ctx.exe_base.empty()) {
         ttmod::Logger log;
         if (log.open(ctx.logpath)) log.info(ctx.exe_base);

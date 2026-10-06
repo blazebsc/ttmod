@@ -26,6 +26,7 @@
 #include "ttmod/events.hpp"
 #include "ttmod/log.hpp"
 #include "ttmod/pathnorm.hpp"
+#include "ttmod/runtime.hpp"
 #include "ttmod/sigmatch.hpp"
 #include "hooks.hpp"
 #include "win32_path.hpp"
@@ -253,7 +254,7 @@ static void maybe_dump_text(BYTE* text, DWORD text_size) {
 
 void hooks_init(const char* profile_id, const char* log_path) {
     g_logpath = log_path ? log_path : "";
-    if (!profile_id || strcmp(profile_id, "mcsm1_pc_x86") != 0) {
+    if (!ttmod::profile_has(profile_id, ttmod::Capability::FileOverrides)) {
         emit(std::string("hooks: profile ") + (profile_id ? profile_id : "?") +
              " not hookable, skipping");
         return;

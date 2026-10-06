@@ -46,7 +46,8 @@ struct GameProfile {
 GameProfile select_profile(const ExeInfo& e);
 
 // Shared init path used by both the offline tool and the Windows framework DLL.
-// Returns selected profile id; never throws.
-std::string init_from_exe(const std::string& exe_path, const std::string& log_path);
+// Returns the selected profile (id + status); never throws.
+// (runtime.hpp, not included here to avoid a cycle, maps status -> mode.)
+GameProfile init_from_exe(const std::string& exe_path, const std::string& log_path);
 
 } // namespace ttmod

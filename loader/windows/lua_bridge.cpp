@@ -7,6 +7,7 @@
 
 #include "MinHook.h"
 #include "ttmod/log.hpp"
+#include "ttmod/runtime.hpp"
 #include "ttmod/theme_color.hpp"
 #include "ttmod/lua_bridge.hpp"
 #include "ttmod/uiqueue.hpp"
@@ -519,7 +520,7 @@ static DWORD WINAPI late_hook_thread(LPVOID p) {
 
 void lua_bridge_init(const char* profile_id, const char* log_path) {
     g_logpath = log_path ? log_path : "";
-    if (!profile_id || strcmp(profile_id, "mcsm1_pc_x86") != 0) return;
+    if (!ttmod::profile_has(profile_id, ttmod::Capability::LuaBridge)) return;
     HMODULE exe = GetModuleHandleA(nullptr);
     if (!exe) {
         emit("lua: no exe module, skipping");

@@ -258,3 +258,16 @@ awk '/TTMod framework v/{buf=""} {buf=buf $0 "\n"} END{printf "%s",buf}' logs/tt
   per-mod `check_requirements` (deleted with moddeps.*); loaders
   resolve once and skip from the result. Plugin init order unchanged
   (discovery id-sorted; graph order available for a later pass).
+
+## 2026-10-05 refactor Stage E (runtime ownership, partial)
+
+- Fixed real use-after-free: plugin host `profile_id` pointed into the
+  stack `InitCtx` that dies with the init thread; host strings are now
+  static-owned copies.
+- `Capability` + `profile_has()` replace hardcoded profile-ID gates in
+  hooks/lua bridge (identical behavior: mcsm1 has all, rest none).
+- `RuntimeMode` + `mode_for_status` (Active/Vanilla) logged at init;
+  `init_from_exe` returns the profile instead of an id string.
+- Full Runtime object owning cross-file statics DEFERRED (threads +
+  Wine: reorganization without a behavioral need; recorded, not
+  forgotten). Same for RuntimeMode::Degraded wiring.

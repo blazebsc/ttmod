@@ -1,6 +1,7 @@
 #include "ttmod/profile.hpp"
 #include "ttmod/detect.hpp"
 #include "ttmod/log.hpp"
+#include "ttmod/runtime.hpp"
 #include "ttmod/version.hpp"
 
 namespace ttmod {
@@ -61,14 +62,15 @@ GameProfile select_profile(const ExeInfo& e) {
     return p;
 }
 
-std::string init_from_exe(const std::string& exe_path, const std::string& log_path) {
+GameProfile init_from_exe(const std::string& exe_path, const std::string& log_path) {
     Logger log;
-    if (!log.open(log_path)) return "unknown";
+    GameProfile unknown;
+    if (!log.open(log_path)) return unknown;
     log.info(std::string("TTMod framework v") + kVersion + " starting");
     ExeInfo e = parse_pe(exe_path);
     if (!e.ok) {
         log.error(std::string("detect failed: ") + e.error);
-        return "unknown";
+        return unknown;
     }
     GameProfile prof = select_profile(e);
     log.info(std::string("Detected executable: ") + exe_path);
@@ -80,11 +82,13 @@ std::string init_from_exe(const std::string& exe_path, const std::string& log_pa
     snprintf(season, sizeof season, "Season: %d", prof.season);
     log.info(season);
     log.info(std::string("Profile: ") + prof.id + " status=" + to_string(prof.status));
+    RuntimeMode mode = mode_for_status(prof.status);
+    log.info(std::string("Runtime mode: ") + to_string(mode));
     if (prof.status != ProfileStatus::Supported)
         log.warn("unsupported build: framework idle, game continues unmodified");
     else
         log.info("Framework initialization complete");
-    return prof.id;
+    return prof;
 }
 
 } // namespace ttmod
