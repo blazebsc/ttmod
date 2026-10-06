@@ -1,5 +1,6 @@
 // .ttmod package handling (portable, miniz). See package.hpp.
 #include "ttmod/package.hpp"
+#include "ttmod/file_io.hpp"
 #include "ttmod/pathnorm.hpp"
 #include "ttmod/validate.hpp"
 
@@ -215,7 +216,7 @@ bool extract_package(const std::string& path, const std::string& dest_dir, std::
         size_t sz = 0;
         void* p = mz_zip_reader_extract_to_heap(&z.zip, i, &sz, 0);
         if (!p) return fail(std::string("extract failed: ") + raw);
-        FILE* f = fopen(out.string().c_str(), "wb");
+        FILE* f = ttmod::file_io::open_write(out.string());
         if (!f) {
             mz_free(p);
             return fail(std::string("cannot write: ") + raw);
@@ -228,7 +229,7 @@ bool extract_package(const std::string& path, const std::string& dest_dir, std::
     // Re-validate the result: manifest present + parseable.
     std::string mt;
     {
-        FILE* f = fopen((fs::path(dest_dir) / "manifest.json").string().c_str(), "rb");
+        FILE* f = ttmod::file_io::open_read((fs::path(dest_dir) / "manifest.json").string());
         if (!f) return fail("extracted manifest missing");
         char buf[4096];
         size_t r;
@@ -307,7 +308,7 @@ bool create_package(const std::string& src_dir, const std::string& out_path, std
     MZ_TIME_T fixed_t = (MZ_TIME_T)315532800;
     for (auto& rel : rels) {
         std::string full = (fs::path(src_dir) / rel).string();
-        FILE* f = fopen(full.c_str(), "rb");
+        FILE* f = ttmod::file_io::open_read(full);
         if (!f) return fail(std::string("cannot read: ") + rel);
         std::string data;
         char buf[65536];

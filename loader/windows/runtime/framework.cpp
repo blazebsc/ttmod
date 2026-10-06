@@ -11,6 +11,7 @@
 #include <cstring>
 #include <string>
 #include "ttmod/profile.hpp"
+#include "ttmod/file_io.hpp"
 #include "ttmod/log.hpp"
 #include "ttmod/discovery.hpp"
 #include "ttmod/cache.hpp"
@@ -102,18 +103,14 @@ static void survey_exe_base(InitCtx& ctx) {
 }
 
 static void ensure_dirs(InitCtx& ctx) {
-    char dll[MAX_PATH] = {};
-    GetModuleFileNameA(ctx.self, dll, MAX_PATH);
-    char ep[MAX_PATH] = {};
-    GetModuleFileNameA(nullptr, ep, MAX_PATH);
-    ctx.exepath = ep;
+    ctx.exepath = ttmod_win::module_path(nullptr);
     ctx.gamedir = ttmod_win::dir_of(ctx.exepath.empty() ? "." : ctx.exepath.c_str());
     // M11 layout: user dirs are siblings; framework creates them on first run.
-    CreateDirectoryA(ttmod_win::join(ctx.gamedir, "mods").c_str(), nullptr);
-    CreateDirectoryA(ttmod_win::join(ctx.gamedir, "config").c_str(), nullptr);
-    CreateDirectoryA(ttmod_win::join(ctx.gamedir, "logs").c_str(), nullptr);
-    CreateDirectoryA(ttmod_win::join(ctx.gamedir, "ttmod").c_str(), nullptr);
-    CreateDirectoryA(ttmod_win::join(ctx.gamedir, "ttmod\\cache").c_str(), nullptr);
+    CreateDirectoryW(ttmod::file_io::to_wide(ttmod_win::join(ctx.gamedir, "mods")).c_str(), nullptr);
+    CreateDirectoryW(ttmod::file_io::to_wide(ttmod_win::join(ctx.gamedir, "config")).c_str(), nullptr);
+    CreateDirectoryW(ttmod::file_io::to_wide(ttmod_win::join(ctx.gamedir, "logs")).c_str(), nullptr);
+    CreateDirectoryW(ttmod::file_io::to_wide(ttmod_win::join(ctx.gamedir, "ttmod")).c_str(), nullptr);
+    CreateDirectoryW(ttmod::file_io::to_wide(ttmod_win::join(ctx.gamedir, "ttmod\\cache")).c_str(), nullptr);
     ctx.logpath = ttmod_win::join(ctx.gamedir, "logs\\ttmod.log");
     std::string exlog = ttmod_win::join(ctx.gamedir, "logs\\ttmod.exit.log");
     strncpy(g_exitlog, exlog.c_str(), sizeof g_exitlog - 1);
@@ -164,7 +161,7 @@ static void read_modstate(InitCtx& ctx) {
     // M11 canonical discovery: game-root/mods (.ttmod + unpacked dirs).
     {
         std::string sp = ttmod_win::join(ctx.gamedir, "config\\mods.json");
-        FILE* f = fopen(sp.c_str(), "rb");
+        FILE* f = ttmod::file_io::open_read(sp);
         if (f) {
             std::string t;
             char b[1024];

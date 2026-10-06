@@ -1,4 +1,5 @@
 #include "ttmod/log.hpp"
+#include "ttmod/file_io.hpp"
 #include <cstdio>
 #include <mutex>
 
@@ -9,7 +10,7 @@ static std::mutex& mtx() { static std::mutex m; return m; }
 bool Logger::open(const std::string& path) {
     std::lock_guard<std::mutex> l(mtx());
     close();
-    fp_ = fopen(path.c_str(), "a");
+    fp_ = ttmod::file_io::open_append(path);
     return fp_ != nullptr;
 }
 

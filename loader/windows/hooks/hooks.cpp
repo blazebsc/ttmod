@@ -23,6 +23,7 @@
 #include "events.hpp"
 #include "mods.hpp"
 #include "ttmod/lua_bridge.hpp"
+#include "ttmod/file_io.hpp"
 #include "stage.hpp"
 #include "ttmod/events.hpp"
 #include "ttmod/log.hpp"
@@ -80,7 +81,7 @@ static HANDLE WINAPI hook_CreateFileW(LPCWSTR name, DWORD access, DWORD share,
                                       LPSECURITY_ATTRIBUTES sa, DWORD disp,
                                       DWORD flags, HANDLE tmpl) {
     LPCWSTR use = name;
-    wchar_t replaced[MAX_PATH] = {};
+    std::wstring replaced; // dynamic: override paths are not MAX_PATH-bound
     std::string req, repl, winner;
     bool overridden = false;
     bool guarded = g_tls != TLS_OUT_OF_INDEXES && !TlsGetValue(g_tls);
@@ -89,9 +90,10 @@ static HANDLE WINAPI hook_CreateFileW(LPCWSTR name, DWORD access, DWORD share,
         // M5 resolver: game-root-relative override lookup (index built at init).
         // Only the filename may change; every other argument passes through.
         if (name && mods_try(name, req, repl, winner)) {
-            std::string win = to_win(repl);
-            if (widen(win, replaced)) {
-                use = replaced;
+            std::wstring wide = ttmod::file_io::to_wide(to_win(repl));
+            if (!wide.empty()) {
+                replaced = std::move(wide);
+                use = replaced.c_str();
                 overridden = true;
             }
         }
@@ -200,7 +202,7 @@ static void diagnose_loadresource(HMODULE exe, BYTE* text, DWORD text_size) {
 }
 
 static void dump_text(BYTE* text, DWORD text_size, const char* path, const char* tag) {
-    FILE* f = fopen(path, "wb");
+    FILE* f = ttmod::file_io::open_write(path);
     if (f) {
         size_t w = fwrite(text, 1, text_size, f);
         fclose(f);

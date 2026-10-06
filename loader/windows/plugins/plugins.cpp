@@ -84,7 +84,7 @@ void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, co
         emit("plugins: " + m.identity.id + " validated");
         emit("plugins: WARNING " + m.identity.id +
              " contains native code and can execute arbitrary code (manifest-declared)");
-        HMODULE dll = LoadLibraryA(dllpath.c_str());
+        HMODULE dll = ttmod_win::load_library(dllpath);
         if (!dll) {
             char r[160];
             snprintf(r, sizeof r, "plugins: %s failed to load (err %lu)", m.identity.id.c_str(), GetLastError());

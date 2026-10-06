@@ -6,7 +6,9 @@
 #include <string>
 
 #include "MinHook.h"
+#include "win32_path.hpp"
 #include "ttmod/log.hpp"
+#include "ttmod/file_io.hpp"
 #include "ttmod/runtime.hpp"
 #include "ttmod/theme_color.hpp"
 #include "ttmod/lua_bridge.hpp"
@@ -166,7 +168,7 @@ static void dump_module_image(const char* out_path) {
         return;
     }
     IMAGE_SECTION_HEADER* sec = IMAGE_FIRST_SECTION(nt);
-    FILE* f = fopen(out_path, "wb");
+    FILE* f = ttmod::file_io::open_write(out_path);
     if (!f) {
         emit("dump: cannot open output file");
         return;
@@ -209,8 +211,14 @@ static int __cdecl hook_loadresource(lua_State* L, char* filename) {
         // One-shot unpacked-image dump, at the moment the menu UI code is
         // certainly unpacked and about to run (see dump_module_image).
         if (InterlockedCompareExchange(&g_dump_done, 1, 0) == 0) {
-            char dpath[MAX_PATH] = {};
-            if (GetEnvironmentVariableA("TTMOD_DUMP_MEM", dpath, sizeof dpath) > 0) dump_module_image(dpath);
+            DWORD need =
+                GetEnvironmentVariableA("TTMOD_DUMP_MEM", nullptr, 0);
+            if (need > 1 && need < 32768) {
+                std::string dpath(need, '\0');
+                if (GetEnvironmentVariableA("TTMOD_DUMP_MEM", dpath.data(),
+                                            need) == need - 1)
+                    dump_module_image(dpath.c_str());
+            }
         }
     }
     if (filename && tail_matches(filename, "Menu.lua")) {
@@ -294,14 +302,12 @@ static bool scol_accent(float* out) {
         return true;
     }
     cached = true;
-    char path[MAX_PATH] = {};
-    if (!GetModuleFileNameA(nullptr, path, sizeof path)) return false;
-    char* s = strrchr(path, '\\');
-    if (!s) return false;
-    *s = '\0';
-    if (strlen(path) + 28 >= sizeof path) return false;
-    strcat(path, "\\config\\menu.theme.json");
-    FILE* f = fopen(path, "rb");
+    std::string exe = ttmod_win::module_path(nullptr);
+    if (exe.empty()) return false;
+    size_t slash = exe.find_last_of("\\/");
+    std::string root = slash == std::string::npos ? "." : exe.substr(0, slash);
+    std::string path = root + "\\config\\menu.theme.json";
+    FILE* f = ttmod::file_io::open_read(path);
     if (!f) return false;
     char t[256] = {};
     size_t r = fread(t, 1, sizeof t - 1, f);
@@ -325,14 +331,8 @@ static bool scol_accent(float* out) {
     // in config/mods.json (2026-10-05: it fired with the mod disabled,
     // contaminating a stock-behavior test). Missing/unparseable = off.
     {
-        char mp[MAX_PATH] = {};
-        strncpy(mp, path, sizeof mp - 1);
-        char* c = strrchr(mp, '\\');
-        if (!c) return false;
-        *c = '\0';
-        if (strlen(mp) + 16 >= sizeof mp) return false;
-        strcat(mp, "\\mods.json");
-        FILE* mf = fopen(mp, "rb");
+        std::string mp = root + "\\config\\mods.json";
+        FILE* mf = ttmod::file_io::open_read(mp);
         if (!mf) return false;
         char mt[512] = {};
         size_t mr = fread(mt, 1, sizeof mt - 1, mf);

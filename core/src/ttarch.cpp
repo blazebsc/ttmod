@@ -1,5 +1,6 @@
 // TTARCH2 header probe. See ttarch.hpp.
 #include "ttmod/ttarch.hpp"
+#include "ttmod/file_io.hpp"
 #include <cstdio>
 #include <cstring>
 
@@ -7,7 +8,7 @@ namespace ttmod {
 
 Ttarch2Header inspect_ttarch2(const std::string& path) {
     Ttarch2Header h;
-    FILE* f = fopen(path.c_str(), "rb");
+    FILE* f = ttmod::file_io::open_read(path);
     if (!f) {
         h.error = "cannot open";
         return h;
@@ -16,7 +17,7 @@ Ttarch2Header inspect_ttarch2(const std::string& path) {
     size_t n = fread(buf, 1, sizeof buf, f);
     fclose(f);
     // file_size via second open (keep it simple/portable)
-    f = fopen(path.c_str(), "rb");
+    f = ttmod::file_io::open_read(path);
     if (f) {
         fseek(f, 0, SEEK_END);
         h.file_size = (uint64_t)ftell(f);

@@ -1,5 +1,6 @@
 // Canonical mods/ discovery. See discovery.hpp.
 #include "ttmod/discovery.hpp"
+#include "ttmod/file_io.hpp"
 #include "ttmod/package.hpp"
 #include "ttmod/plugin_api.h"
 
@@ -13,7 +14,7 @@ namespace {
 namespace fs = std::filesystem;
 
 std::string read_file(const std::string& p) {
-    FILE* f = fopen(p.c_str(), "rb");
+    FILE* f = ttmod::file_io::open_read(p);
     if (!f) return "";
     std::string s;
     char b[4096];

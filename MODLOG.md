@@ -291,3 +291,13 @@ awk '/TTMod framework v/{buf=""} {buf=buf $0 "\n"} END{printf "%s",buf}' logs/tt
   I/O/allocs beyond small strings) - deliberately NOT micro-optimized
   without measured need. Async/background logger deferred: per-message
   open/close is the thread-safe pattern under game threading.
+
+## 2026-10-05 refactor Stage G2 (Unicode/long-path file boundary)
+
+- `core/file_io.hpp`: UTF-8 in, correct API per platform (POSIX bytes;
+  Win32 UTF-16 + extended-length prefix). All core+loader fopen/rename/
+  remove call sites migrated. Hot path (CreateFileW override) allocates
+  only on override.
+- `platform/win32_path.hpp`: dynamic module path, W exists/load-library;
+  A-APIs converted at path-carrying calls (dirs, DLL, config sentinels);
+  env/system names stay A (ASCII domain). Async logger deferred (see G1).

@@ -1,5 +1,6 @@
 // Package cache sync. See cache.hpp.
 #include "ttmod/cache.hpp"
+#include "ttmod/file_io.hpp"
 #include "ttmod/detect.hpp"
 #include "ttmod/package.hpp"
 
@@ -12,7 +13,7 @@ namespace {
 namespace fs = std::filesystem;
 
 std::string read_file(const std::string& p) {
-    FILE* f = fopen(p.c_str(), "rb");
+    FILE* f = ttmod::file_io::open_read(p);
     if (!f) return "";
     std::string s;
     char b[4096];
@@ -23,7 +24,7 @@ std::string read_file(const std::string& p) {
 }
 
 bool write_file(const std::string& p, const std::string& s) {
-    FILE* f = fopen(p.c_str(), "wb");
+    FILE* f = ttmod::file_io::open_write(p);
     if (!f) return false;
     size_t w = fwrite(s.data(), 1, s.size(), f);
     fclose(f);

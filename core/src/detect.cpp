@@ -1,4 +1,5 @@
 #include "ttmod/detect.hpp"
+#include "ttmod/file_io.hpp"
 #include <cstdio>
 #include <cstring>
 
@@ -8,7 +9,7 @@ static uint16_t rd16(const uint8_t* p) { uint16_t v; memcpy(&v, p, 2); return v;
 static uint32_t rd32(const uint8_t* p) { uint32_t v; memcpy(&v, p, 4); return v; }
 
 uint64_t fnv1a_file(const std::string& path, uint64_t* out_size) {
-    FILE* f = fopen(path.c_str(), "rb");
+    FILE* f = ttmod::file_io::open_read(path);
     if (!f) return 0;
     uint64_t h = 14695981039346656037ull;
     uint64_t n = 0;
@@ -29,7 +30,7 @@ uint64_t fnv1a_file(const std::string& path, uint64_t* out_size) {
 ExeInfo parse_pe(const std::string& path) {
     ExeInfo e;
     e.path = path;
-    FILE* f = fopen(path.c_str(), "rb");
+    FILE* f = ttmod::file_io::open_read(path);
     if (!f) { e.error = "open failed"; return e; }
     uint8_t hdr[512] = {};
     if (fread(hdr, 1, sizeof hdr, f) != sizeof hdr) { e.error = "too small"; fclose(f); return e; }
@@ -38,7 +39,7 @@ ExeInfo parse_pe(const std::string& path) {
     uint32_t lfanew = rd32(hdr + 0x3C);
     if (lfanew > 1024) { e.error = "bad e_lfanew"; return e; }
     // Re-read PE header at lfanew
-    f = fopen(path.c_str(), "rb");
+    f = ttmod::file_io::open_read(path);
     fseek(f, lfanew, SEEK_SET);
     uint8_t pe[64] = {};
     if (fread(pe, 1, sizeof pe, f) != sizeof pe) { e.error = "pe hdr short"; fclose(f); return e; }

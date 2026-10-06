@@ -8,6 +8,8 @@
 #include <vector>
 
 #include "ttmod/log.hpp"
+#include "win32_path.hpp"
+#include "ttmod/file_io.hpp"
 #include "ttmod/manifest.hpp"
 #include "ttmod/modconfig.hpp"
 #include "ttmod/validate.hpp"
@@ -38,7 +40,7 @@ static void emit(const std::string& msg) {
 }
 
 static std::string read_file(const std::string& path) {
-    FILE* f = fopen(path.c_str(), "rb");
+    FILE* f = ttmod::file_io::open_read(path);
     if (!f) return "";
     std::string t;
     char b[1024];
@@ -52,17 +54,17 @@ static bool write_file(const std::string& path, const std::string& text) {
     // Atomic: temp + flush + rename. A crash never leaves a half-written
     // config that the next launch would parse as corrupt-then-default.
     std::string tmp = path + ".tmp";
-    FILE* f = fopen(tmp.c_str(), "wb");
+    FILE* f = ttmod::file_io::open_write(tmp);
     if (!f) return false;
     size_t w = fwrite(text.data(), 1, text.size(), f);
     bool flushed = fflush(f) == 0;
     bool closed = fclose(f) == 0;
     if (!flushed || !closed || w != text.size()) {
-        remove(tmp.c_str());
+        ttmod::file_io::remove_file(tmp);
         return false;
     }
-    if (std::rename(tmp.c_str(), path.c_str()) != 0) {
-        remove(tmp.c_str());
+    if (ttmod::file_io::rename_file(tmp.c_str(), path.c_str()) != 0) {
+        ttmod::file_io::remove_file(tmp);
         return false;
     }
     return true;
@@ -247,8 +249,7 @@ bool menumods_button_enabled() {
         if (GetEnvironmentVariableA("TTMOD_MENU", env, sizeof env) > 0 && strcmp(env, "0") == 0) {
             enabled = false;
             emit("menumods: menu button disabled via TTMOD_MENU=0");
-        } else if (GetFileAttributesA((g_gamedir + "\\config\\menu-disabled").c_str()) !=
-                   INVALID_FILE_ATTRIBUTES) {
+        } else if (ttmod_win::exists(g_gamedir + "/config/menu-disabled")) {
             enabled = false;
             emit("menumods: menu button disabled via config/menu-disabled");
         }
@@ -285,9 +286,9 @@ void menumods_register(lua_State* L, LuaLoadstringFn loadstring, LuaPcallkFn pca
         char probe[8] = {};
         bool on = GetEnvironmentVariableA("TTMOD_PROBE", probe, sizeof probe) > 0 &&
                   strcmp(probe, "0") != 0;
-        if (!on && GetFileAttributesA((g_gamedir + "\\config\\probe-props").c_str()) !=
-                       INVALID_FILE_ATTRIBUTES)
+        if (!on && ttmod_win::exists(g_gamedir + "/config/probe-props")) {
             on = true;
+        }
         if (on) {
             emit("menumods: probe mode on, will dump colour properties to the log");
             bridge_run_chunk(L, g_loadstring, g_pcallk, g_gettop, g_setglobal, g_tolstring,
