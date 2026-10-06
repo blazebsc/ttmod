@@ -1,6 +1,7 @@
 #include "ttmod/manifest.hpp"
 #include "ttmod/json.hpp"
 #include "ttmod/validate.hpp"
+#include "ttmod/version.hpp"
 
 #include <climits>
 
@@ -77,33 +78,39 @@ ModManifest parse_manifest(const std::string& text) {
         m.error = e;
         return m;
     };
-    if (!req_str(j, "id", m.id, m.error)) return fail(m.error);
-    if (!is_valid_mod_id(m.id)) return fail("bad id");
+    if (!req_str(j, "id", m.identity.id, m.error)) return fail(m.error);
+    if (!is_valid_mod_id(m.identity.id)) return fail("bad id");
     auto vit = j.find("version");
     if (vit != j.end()) {
         if (!vit->is_string()) return fail("bad version");
-        m.version = vit->get<std::string>();
+        m.identity.version = vit->get<std::string>();
     }
-    if (!req_int(j, "api", m.api, m.error) || m.api <= 0) return fail(m.error);
-    if (j.contains("priority") && !req_int(j, "priority", m.priority, m.error)) return fail(m.error);
+    if (!req_int(j, "api", m.compat.api, m.error) || m.compat.api <= 0) return fail(m.error);
+    if (j.contains("priority") && !req_int(j, "priority", m.overrides.priority, m.error)) return fail(m.error);
     if (j.contains("enabled") && !req_bool(j, "enabled", m.enabled, m.error)) return fail(m.error);
     if (j.contains("package_format")) {
         if (!req_int(j, "package_format", m.package_format, m.error)) return fail(m.error);
         if (m.package_format > kPackageFormat) return fail("unsupported package_format");
     }
-    for (const char* k : {"name", "description", "plugin", "arch"}) {
+    {
+        auto it = j.find("arch");
+        if (it != j.end()) {
+            if (!it->is_string()) return fail("bad arch");
+            m.compat.arch = parse_architecture(it->get<std::string>());
+            if (m.compat.arch == Architecture::Unknown) return fail("bad arch");
+        }
+    }
+    for (const char* k : {"name", "description", "plugin"}) {
         auto it = j.find(k);
         if (it != j.end()) {
             if (!it->is_string()) return fail(std::string("bad ") + k);
-            std::string& dst = k[0] == 'n' && k[1] == 'a' ? m.name
-                             : k[0] == 'd'              ? m.description
-                             : k[0] == 'p'              ? m.plugin
-                                                        : m.arch;
-            dst = it->get<std::string>();
+            if (k[0] == 'n') m.presentation.name = it->get<std::string>();
+            else if (k[0] == 'd') m.presentation.description = it->get<std::string>();
+            else m.plugin.path = it->get<std::string>();
         }
     }
-    if (!str_array(j, "games", m.games, m.error)) return fail(m.error);
-    if (!str_array(j, "conflicts", m.conflicts, m.error)) return fail(m.error);
+    if (!str_array(j, "games", m.compat.games, m.error)) return fail(m.error);
+    if (!str_array(j, "conflicts", m.deps.conflicts, m.error)) return fail(m.error);
     auto dit = j.find("depends");
     if (dit != j.end()) {
         if (!dit->is_array()) return fail("bad depends");
@@ -116,7 +123,7 @@ ModManifest parse_manifest(const std::string& text) {
                 if (!vit2->is_string()) return fail("bad depends");
                 dver = vit2->get<std::string>();
             }
-            m.depends.emplace_back(did, dver);
+            m.deps.depends.emplace_back(did, dver);
         }
     }
     auto fit = j.find("files");
@@ -124,7 +131,7 @@ ModManifest parse_manifest(const std::string& text) {
         if (!fit->is_object()) return fail("bad files");
         for (auto& [from, to] : fit->items()) {
             if (!to.is_string()) return fail("bad files");
-            m.files.emplace_back(from, to.get<std::string>());
+            m.overrides.files.emplace_back(from, to.get<std::string>());
         }
     }
     auto cit = j.find("config");
@@ -132,36 +139,15 @@ ModManifest parse_manifest(const std::string& text) {
         if (!cit->is_array()) return fail("bad config");
         std::string raw = cit->dump();
         std::string cerr;
-        if (!parse_config_schema(raw, m.config, cerr)) return fail(std::string("bad config: ") + cerr);
+        if (!parse_config_schema(raw, m.presentation.config, cerr)) return fail(std::string("bad config: ") + cerr);
     }
     // Unknown fields are skipped (additive optional fields only).
     m.ok = true;
     return m;
 }
 
-static long num_prefix(const std::string& s) {
-    long v = 0;
-    for (char c : s) {
-        if (c < '0' || c > '9') break;
-        v = v * 10 + (c - '0');
-    }
-    return v;
-}
-
 int compare_versions(const std::string& a, const std::string& b) {
-    size_t i = 0, j = 0;
-    while (i < a.size() || j < b.size()) {
-        size_t i2 = a.find('.', i), j2 = b.find('.', j);
-        std::string pa = a.substr(i, i2 == std::string::npos ? i2 : i2 - i);
-        std::string pb = b.substr(j, j2 == std::string::npos ? j2 : j2 - j);
-        long va = num_prefix(pa), vb = num_prefix(pb);
-        if (va != vb) return va < vb ? -1 : 1;
-        // same numeric prefix: a part with extra non-numeric tail sorts equal
-        // (ignored for gating); continue.
-        i = i2 == std::string::npos ? a.size() : i2 + 1;
-        j = j2 == std::string::npos ? b.size() : j2 + 1;
-    }
-    return 0;
+    return Version(a).compare(Version(b));
 }
 
 } // namespace ttmod

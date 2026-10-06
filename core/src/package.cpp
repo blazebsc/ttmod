@@ -163,14 +163,14 @@ PackView inspect_package(const std::string& path) {
             if (e == k) return true;
         return false;
     };
-    for (auto& [from, to] : m.files) {
+    for (auto& [from, to] : m.overrides.files) {
         if (!has(to)) {
             v.error = std::string("declared file missing: ") + to;
             return v;
         }
     }
-    if (!m.plugin.empty() && !has(m.plugin)) {
-        v.error = std::string("declared plugin missing: ") + m.plugin;
+    if (!m.plugin.path.empty() && !has(m.plugin.path)) {
+        v.error = std::string("declared plugin missing: ") + m.plugin.path;
         return v;
     }
     v.ok = true;

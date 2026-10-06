@@ -80,19 +80,20 @@ static std::vector<ttmod::MenuModSnapshot> snapshot() {
         ttmod::ModManifest m;
         if (!mods_menu_manifest(i, &m)) continue;
         ttmod::MenuModSnapshot s;
-        s.id = m.id;
-        s.name = m.name;
-        s.version = m.version;
-        s.description = m.description;
+        s.id = m.identity.id;
+        s.name = m.presentation.name;
+        s.version = m.identity.version;
+        s.description = m.presentation.description;
         s.enabled = ttmod::effective_enabled(m, st);
         ttmod_modinfo mi{};
         if (mods_menu_info(i, &mi) == 0) {
             s.has_plugin = mi.has_plugin != 0;
             s.packaged = mi.packaged != 0;
         }
-        s.schema = m.config;
+        s.schema = m.presentation.config;
         s.values = ttmod::config_effective(
-            m.config, ttmod::parse_config_file(read_file(g_gamedir + "\\config\\" + m.id + ".json")));
+            m.presentation.config,
+            ttmod::parse_config_file(read_file(g_gamedir + "\\config\\" + m.identity.id + ".json")));
         out.push_back(s);
     }
     return out;
@@ -187,14 +188,14 @@ static int __cdecl fn_set_value(lua_State* L) {
     int n = mods_menu_count();
     bool found = false;
     for (int i = 0; i < n; ++i) {
-        if (mods_menu_manifest(i, &m) && m.id == id) {
+        if (mods_menu_manifest(i, &m) && m.identity.id == id) {
             found = true;
             break;
         }
     }
-    if (!found || m.config.empty()) return 0;
+    if (!found || m.presentation.config.empty()) return 0;
     std::string path = g_gamedir + "\\config\\" + std::string(id) + ".json";
-    ttmod::SetValueResult r = ttmod::apply_config_value(m.config, read_file(path), key, val);
+    ttmod::SetValueResult r = ttmod::apply_config_value(m.presentation.config, read_file(path), key, val);
     if (!r.ok) {
         char msg[256];
         snprintf(msg, sizeof msg, "menumods: value rejected %s.%s", id, key);

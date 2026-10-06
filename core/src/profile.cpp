@@ -18,44 +18,44 @@ GameProfile select_profile(const ExeInfo& e) {
         p.id = "mcsm1_pc_x86";
         p.game = "minecraft-story-mode";
         p.season = 1;
-        p.arch = "x86";
-        p.status = "supported";
+        p.arch = Architecture::X86;
+        p.status = ProfileStatus::Supported;
         return p;
     }
     if (mcsm1_shape && e.file_size == 11724800ull && e.fnv1a64 == 0xE507F1E444839F62ull) {
         p.id = "mcsm1_pc_x86_ali213"; // ALI213 NoDVD variant, 5 sections
         p.game = "minecraft-story-mode";
         p.season = 1;
-        p.arch = "x86";
-        p.status = "unrecognized-build";
+        p.arch = Architecture::X86;
+        p.status = ProfileStatus::UnrecognizedBuild;
         return p;
     }
     if (mcsm1_shape && e.file_size == 12179904ull && e.fnv1a64 == 0x26B0BE1D74787BCDull) {
         p.id = "mcsm1_pc_x86_codex"; // CODEX NoDVD (crack-patched, same size)
         p.game = "minecraft-story-mode";
         p.season = 1;
-        p.arch = "x86";
-        p.status = "unrecognized-build";
+        p.arch = Architecture::X86;
+        p.status = ProfileStatus::UnrecognizedBuild;
         return p;
     }
     if (mcsm1_shape) {
         p.id = "mcsm1_pc_x86_variant"; // same shape, unknown bytes: idle
         p.game = "minecraft-story-mode";
         p.season = 1;
-        p.arch = "x86";
-        p.status = "unrecognized-build";
+        p.arch = Architecture::X86;
+        p.status = ProfileStatus::UnrecognizedBuild;
         return p;
     }
     // x64 PE: likely MCSM2-era, but unproven — never claim support.
     if (e.machine == 0x8664) {
         p.id = "unknown-x64";
         p.game = "unknown";
-        p.arch = "x64";
-        p.status = "defined-not-implemented";
+        p.arch = Architecture::X64;
+        p.status = ProfileStatus::DefinedNotImplemented;
         return p;
     }
     if (e.machine == 0x014C) {
-        p.arch = "x86";
+        p.arch = Architecture::X86;
         return p;
     }
     return p;
@@ -79,8 +79,8 @@ std::string init_from_exe(const std::string& exe_path, const std::string& log_pa
     char season[64];
     snprintf(season, sizeof season, "Season: %d", prof.season);
     log.info(season);
-    log.info(std::string("Profile: ") + prof.id + " status=" + prof.status);
-    if (std::string(prof.status) != "supported")
+    log.info(std::string("Profile: ") + prof.id + " status=" + to_string(prof.status));
+    if (prof.status != ProfileStatus::Supported)
         log.warn("unsupported build: framework idle, game continues unmodified");
     else
         log.info("Framework initialization complete");

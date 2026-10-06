@@ -237,15 +237,15 @@ static void build_scanned(InitCtx& ctx) {
             if (it == ctx.cache.effective.end()) continue; // sync failed, logged
             dir = it->second;
         }
-        std::string prel = m.manifest.plugin.empty() ? "plugin.dll" : m.manifest.plugin;
+        std::string prel = m.manifest.plugin.path.empty() ? "plugin.dll" : m.manifest.plugin.path;
         std::string winrel = ttmod_win::to_win(prel);
         DWORD a = GetFileAttributesA(ttmod_win::join(dir, winrel).c_str());
         bool has_dll = a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY);
-        if (!m.manifest.plugin.empty() && !has_dll) {
+        if (!m.manifest.plugin.path.empty() && !has_dll) {
             ttmod::Logger lg;
             if (lg.open(ctx.logpath))
-                lg.info("[TTMod] " + m.id + ": declared plugin missing: " + m.manifest.plugin);
-        } else if (m.manifest.plugin.empty() && !has_dll) {
+                lg.info("[TTMod] " + m.id + ": declared plugin missing: " + m.manifest.plugin.path);
+        } else if (m.manifest.plugin.path.empty() && !has_dll) {
             // A DLL sitting in plugins/ (or anywhere else) that the manifest
             // does not point at is SILENTLY ignored: the mod loads as
             // resource-only and its plugin never runs. That cost a day of
@@ -262,7 +262,7 @@ static void build_scanned(InitCtx& ctx) {
         ctx.all.push_back({dir, has_dll, m.packaged, has_dll ? prel : "", m.manifest});
     }
     std::sort(ctx.all.begin(), ctx.all.end(), [](const ttmod_win::ScannedMod& a, const ttmod_win::ScannedMod& b) {
-        return a.manifest.id < b.manifest.id;
+        return a.manifest.identity.id < b.manifest.identity.id;
     });
 }
 

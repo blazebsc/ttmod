@@ -10,7 +10,7 @@ bool ModState::enabled_for(const std::string& id, bool manifest_default) const {
 }
 
 bool effective_enabled(const ModManifest& manifest, const ModState& state) {
-    return state.enabled_for(manifest.id, manifest.enabled);
+    return state.enabled_for(manifest.identity.id, manifest.enabled);
 }
 
 void ModState::set(const std::string& id, bool enabled) {

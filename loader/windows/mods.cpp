@@ -53,15 +53,15 @@ void mods_init(const std::vector<ScannedMod>& all, const char* game_root, const 
         const ttmod::ModManifest& m = s.manifest;
         std::string req = ttmod::check_requirements(m, present);
         if (!req.empty()) {
-            emit("mods: " + m.id + " skipped (" + req + ")");
+            emit("mods: " + m.identity.id + " skipped (" + req + ")");
             continue;
         }
-        if (m.files.empty()) continue; // native-only; plugins loader owns it
-        ttmod::ModDef def{m.id, s.dir, m.priority, true, m.files};
+        if (m.overrides.files.empty()) continue; // native-only; plugins loader owns it
+        ttmod::ModDef def{m.identity.id, s.dir, m.overrides.priority, true, m.overrides.files};
         size_t before = g_resolver.problems().size();
         bool used = g_resolver.add_mod(def, exists);
         char sum[192];
-        snprintf(sum, sizeof sum, "mods: %s indexed (priority %d, %s)", m.id.c_str(), m.priority,
+        snprintf(sum, sizeof sum, "mods: %s indexed (priority %d, %s)", m.identity.id.c_str(), m.overrides.priority,
                  used ? "overrides registered" : "no usable overrides");
         emit(sum);
         for (size_t i = before; i < g_resolver.problems().size(); ++i)
@@ -77,13 +77,14 @@ void mods_store_menu(const std::vector<ScannedMod>& enabled,
     std::lock_guard<std::mutex> l(g_menu_mtx);
     g_menu.clear();
     for (auto& s : enabled)
-        g_menu.push_back({s.manifest.id, s.manifest.version, true, s.has_dll, s.packaged,
-                          s.manifest.name, s.manifest.description, s.manifest.config,
-                          s.manifest});
+        g_menu.push_back({s.manifest.identity.id, s.manifest.identity.version, true, s.has_dll, s.packaged,
+                          s.manifest.presentation.name, s.manifest.presentation.description,
+                          s.manifest.presentation.config, s.manifest});
     for (auto& d : disabled)
-        g_menu.push_back({d.id, d.manifest.version, false, !d.manifest.plugin.empty(),
-                          d.packaged, d.manifest.name, d.manifest.description,
-                          d.manifest.config, d.manifest});
+        g_menu.push_back({d.id, d.manifest.identity.version, false, !d.manifest.plugin.path.empty(),
+                          d.packaged, d.manifest.presentation.name,
+                          d.manifest.presentation.description,
+                          d.manifest.presentation.config, d.manifest});
     std::sort(g_menu.begin(), g_menu.end(),
               [](const MenuEntry& a, const MenuEntry& b) { return a.id < b.id; });
 }

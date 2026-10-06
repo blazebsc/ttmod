@@ -76,12 +76,12 @@ std::vector<Listed> scan_mods_dir(const std::string& gamedir) {
                 continue;
             }
             auto m = ttmod::parse_manifest(v.manifest_text);
-            out.push_back({m.id, m.version, e.path().filename().string(), "", m});
+            out.push_back({m.identity.id, m.identity.version, e.path().filename().string(), "", m});
         } else if (e.is_directory()) {
             std::string mf = (e.path() / "manifest.json").string();
             if (!fs::exists(mf, ec)) continue; // not a mod dir
             auto m = ttmod::parse_manifest(read_file(mf));
-            out.push_back({m.id, m.version, std::string(e.path().filename().string()) + "/", "", m});
+            out.push_back({m.identity.id, m.identity.version, std::string(e.path().filename().string()) + "/", "", m});
         }
     }
     std::sort(out.begin(), out.end(), [](const Listed& a, const Listed& b) { return a.id < b.id; });
@@ -111,7 +111,7 @@ int cmd_detect(const char* exe) {
     std::printf("size: %llu\nmachine: 0x%04X (%s)\ntimestamp: %u\nfnv1a64: 0x%016llX\n"
                 "profile: %s game=%s season=%d status=%s\n",
                 (unsigned long long)e.file_size, e.machine, ttmod::arch_name(e.machine), e.timestamp,
-                (unsigned long long)e.fnv1a64, p.id, p.game, p.season, p.status);
+                (unsigned long long)e.fnv1a64, p.id, p.game, p.season, ttmod::to_string(p.status));
     return 0;
 }
 
@@ -123,24 +123,25 @@ void print_packinfo(const std::string& path) {
     }
     auto m = ttmod::parse_manifest(v.manifest_text);
     std::printf("id: %s\nname: %s\nversion: %s\napi: %d\npackage_format: %d\ngames:",
-                m.id.c_str(), "(see manifest)", m.version.c_str(), m.api, m.package_format);
-    for (auto& g : m.games) std::printf(" %s", g.c_str());
+                m.identity.id.c_str(), "(see manifest)", m.identity.version.c_str(), m.compat.api,
+                m.package_format);
+    for (auto& g : m.compat.games) std::printf(" %s", g.c_str());
     std::printf("\npriority: %d\nenabled-field: %s\nfiles: %u\nplugin: %s\narch: %s\nentries: %u\n",
-                m.priority, m.enabled ? "true" : "false", (unsigned)m.files.size(),
-                m.plugin.empty() ? "(none)" : m.plugin.c_str(),
-                m.arch.empty() ? "(any)" : m.arch.c_str(), (unsigned)v.files.size());
-    bool native = !m.plugin.empty();
+                m.overrides.priority, m.enabled ? "true" : "false", (unsigned)m.overrides.files.size(),
+                m.plugin.path.empty() ? "(none)" : m.plugin.path.c_str(),
+                ttmod::to_string(m.compat.arch), (unsigned)v.files.size());
+    bool native = !m.plugin.path.empty();
     for (auto& f : v.files)
         if (f.name.size() > 4 && f.name.compare(f.name.size() - 4, 4, ".dll") == 0) native = true;
     std::printf("contains native code: %s\n", native ? "YES - can execute arbitrary code" : "no");
-    if (!m.depends.empty()) {
+    if (!m.deps.depends.empty()) {
         std::printf("depends:");
-        for (auto& [id, ver] : m.depends) std::printf(" %s%s%s", id.c_str(), ver.empty() ? "" : ">=", ver.c_str());
+        for (auto& [id, ver] : m.deps.depends) std::printf(" %s%s%s", id.c_str(), ver.empty() ? "" : ">=", ver.c_str());
         std::printf("\n");
     }
-    if (!m.conflicts.empty()) {
+    if (!m.deps.conflicts.empty()) {
         std::printf("conflicts:");
-        for (auto& c : m.conflicts) std::printf(" %s", c.c_str());
+        for (auto& c : m.deps.conflicts) std::printf(" %s", c.c_str());
         std::printf("\n");
     }
 }
@@ -169,8 +170,8 @@ int main(int argc, char** argv) {
                 return 1;
             }
             auto m = ttmod::parse_manifest(v.manifest_text);
-            std::printf("valid: %s %s (%u files)\n", m.id.c_str(), m.version.c_str(),
-                        (unsigned)v.files.size());
+            std::printf("valid: %s %s (%u files)\n", m.identity.id.c_str(),
+                        m.identity.version.c_str(), (unsigned)v.files.size());
             return 0;
         }
         if (sub == "info" && argc == 4) {
@@ -230,9 +231,9 @@ int main(int argc, char** argv) {
                 auto st = load_state(dir);
                 std::printf("id: %s\nversion: %s\nsource: %s\nenabled: %s\napi: %d\ngames:",
                         m.id.c_str(), m.version.c_str(), m.src.c_str(),
-                        ttmod::effective_enabled(m.m, st) ? "true" : "false", m.m.api);
-                for (auto& g : m.m.games) std::printf(" %s", g.c_str());
-                std::printf("\nfiles: %u\n", (unsigned)m.m.files.size());
+                        ttmod::effective_enabled(m.m, st) ? "true" : "false", m.m.compat.api);
+                for (auto& g : m.m.compat.games) std::printf(" %s", g.c_str());
+                std::printf("\nfiles: %u\n", (unsigned)m.m.overrides.files.size());
                 return 0;
             }
             std::printf("unknown mod: %s\n", argv[4]);

@@ -234,3 +234,15 @@ awk '/TTMod framework v/{buf=""} {buf=buf $0 "\n"} END{printf "%s",buf}' logs/tt
   (tmp dir+rename, hash+size+schema identity, no mtime).
 - Package caps centralized: 512MB file, 4096 entries, 64MB/entry,
   256MB total, 1MB manifest. Lua->filesystem ID guard at write path.
+
+## 2026-10-05 refactor Stage C (domain model)
+
+- `Version`/`VersionConstraint` (simplified dotted-numeric scheme by
+  decision, documented in header); `compare_versions` delegates.
+  `moddeps` evaluates constraints instead of raw string compare.
+- Manifest split into nested structs (Identity/Compatibility/
+  Dependency/Override/Plugin/Presentation); ~50 call sites migrated,
+  Lua-visible shapes unchanged. `arch` is now `Architecture` enum
+  (absent = Any, garbage rejected); profile status is `ProfileStatus`.
+- `RuntimeMode`/`LuaDomain` deferred to Stages E/H (unused enums would
+  be speculative; recorded here instead).

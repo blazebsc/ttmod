@@ -26,7 +26,7 @@ std::string read_file(const std::string& p) {
 bool game_ok(const ModManifest& m, const char* game, int season) {
     char want[128];
     snprintf(want, sizeof want, "%s:s%d", game, season);
-    for (auto& g : m.games)
+    for (auto& g : m.compat.games)
         if (g == want || g == game) return true;
     return false;
 }
@@ -67,7 +67,7 @@ Discovery discover_mods(const std::string& mods_dir, const ModState& state, cons
             d.skipped.push_back(name + ": invalid manifest: " + m.error);
             continue;
         }
-        cands.push_back({m.id, path, mt, false});
+        cands.push_back({m.identity.id, path, mt, false});
     }
     for (auto& path : pack_entries) {
         std::string base = fs::path(path).filename().string();
@@ -81,7 +81,7 @@ Discovery discover_mods(const std::string& mods_dir, const ModState& state, cons
             d.skipped.push_back(base + ": invalid manifest: " + m.error);
             continue;
         }
-        cands.push_back({m.id, path, v.manifest_text, true});
+        cands.push_back({m.identity.id, path, v.manifest_text, true});
     }
     // Validate api/game, apply state, dedupe (unpacked dir beats package).
     struct Item {
@@ -91,8 +91,8 @@ Discovery discover_mods(const std::string& mods_dir, const ModState& state, cons
     std::vector<Item> items;
     for (auto& c : cands) {
         ModManifest m = parse_manifest(c.manifest_text);
-        if (m.api < 1 || m.api > TTMOD_PLUGIN_API_VERSION) {
-            d.skipped.push_back(c.id + ": unsupported API " + std::to_string(m.api));
+        if (m.compat.api < 1 || m.compat.api > TTMOD_PLUGIN_API_VERSION) {
+            d.skipped.push_back(c.id + ": unsupported API " + std::to_string(m.compat.api));
             continue;
         }
         if (!game_ok(m, game, season)) {

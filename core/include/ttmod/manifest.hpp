@@ -3,6 +3,7 @@
 #include <utility>
 #include <vector>
 #include "ttmod/modconfig.hpp"
+#include "ttmod/profile.hpp"
 
 namespace ttmod {
 
@@ -18,31 +19,49 @@ namespace ttmod {
 // }
 // Game paths may be root-relative ("archives/x") or absolute; replacements
 // must be relative subpaths of the mod dir (enforced by join_checked).
-struct ModManifest {
-    bool ok = false;
+// Responsibilities are split into nested structs (Stage C); storage lives
+// here, Lua-visible shapes are built field-by-field by callers.
+struct ModIdentity {
     std::string id;
     std::string version;
-    int api = 0;
+};
+struct ModCompatibility {
     std::vector<std::string> games;
-    int priority = 100;
-    bool enabled = true;
-    std::vector<std::pair<std::string, std::string>> files;
-    // M10: depends entries {mod id, minimum version ("" = any)},
-    // conflicts entries (mod ids that must NOT be present+enabled).
+    Architecture arch = Architecture::Any; // absent = any
+    int api = 0;
+};
+struct DependencySpec {
+    // depends entries {mod id, minimum version ("" = any)}.
     std::vector<std::pair<std::string, std::string>> depends;
+    // conflicts entries (mod ids that must NOT be present+enabled).
     std::vector<std::string> conflicts;
-    // M11: optional native plugin path relative to mod root
-    // (e.g. "plugins/foo.dll"); absent + no plugin.dll = resource-only.
-    std::string plugin;
-    // M11: optional CPU architecture for the plugin ("x86", "x64", "any").
-    std::string arch;
-    // M11: package format version (default 1 when absent).
-    int package_format = 1;
-    // Display/config (optional, additive): human name + description for the
-    // Mods screen, and a config schema consumed by the native config UI.
+};
+struct OverrideSpec {
+    // game path -> mod-rel replacement.
+    std::vector<std::pair<std::string, std::string>> files;
+    int priority = 100; // higher wins
+};
+struct PluginSpec {
+    // Native plugin path relative to mod root (e.g. "plugins/foo.dll");
+    // absent + no plugin.dll = resource-only.
+    std::string path;
+};
+struct ModPresentation {
     std::string name;
     std::string description;
     std::vector<ConfigOption> config;
+};
+struct ModManifest {
+    bool ok = false;
+    ModIdentity identity;
+    ModCompatibility compat;
+    DependencySpec deps;
+    OverrideSpec overrides;
+    PluginSpec plugin;
+    ModPresentation presentation;
+    bool enabled = true;
+    // Package format version (default 1 when absent).
+    int package_format = 1;
     std::string error;
 };
 

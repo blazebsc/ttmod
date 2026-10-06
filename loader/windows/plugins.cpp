@@ -54,40 +54,40 @@ void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, co
         const ttmod::ModManifest& m = s.manifest;
         std::string req = ttmod::check_requirements(m, present);
         if (!req.empty()) {
-            emit("plugins: " + m.id + " rejected (" + req + ")");
+            emit("plugins: " + m.identity.id + " rejected (" + req + ")");
             continue;
         }
         if (!s.has_dll) continue; // resource-only; mods loader owns it
         // M11: manifest-declared plugin path (or legacy plugin.dll), arch gate.
-        if (!m.arch.empty() && m.arch != "any" && m.arch != "x86") {
-            emit("plugins: " + m.id + " rejected (arch " + m.arch + " != x86)");
+        if (m.compat.arch != ttmod::Architecture::Any && m.compat.arch != ttmod::Architecture::X86) {
+            emit("plugins: " + m.identity.id + " rejected (arch " + ttmod::to_string(m.compat.arch) + " != x86)");
             continue;
         }
         std::string dllpath = join(s.dir, s.plugin_rel);
         ttmod::ExeInfo pe = ttmod::parse_pe(dllpath);
         if (!pe.ok || pe.machine != 0x014C) {
-            emit("plugins: " + m.id + " rejected (plugin is not x86 PE)");
+            emit("plugins: " + m.identity.id + " rejected (plugin is not x86 PE)");
             continue;
         }
-        emit("plugins: " + m.id + " validated");
-        emit("plugins: WARNING " + m.id +
+        emit("plugins: " + m.identity.id + " validated");
+        emit("plugins: WARNING " + m.identity.id +
              " contains native code and can execute arbitrary code (manifest-declared)");
         HMODULE dll = LoadLibraryA(dllpath.c_str());
         if (!dll) {
             char r[160];
-            snprintf(r, sizeof r, "plugins: %s failed to load (err %lu)", m.id.c_str(), GetLastError());
+            snprintf(r, sizeof r, "plugins: %s failed to load (err %lu)", m.identity.id.c_str(), GetLastError());
             emit(r);
             continue;
         }
         using InitFn = int (*)(const ttmod_host*);
         InitFn init = (InitFn)GetProcAddress(dll, "ttmod_plugin_init");
         if (!init) {
-            emit("plugins: " + m.id + " has no ttmod_plugin_init, kept loaded (no init)");
+            emit("plugins: " + m.identity.id + " has no ttmod_plugin_init, kept loaded (no init)");
             continue;
         }
         int rc = init(&host);
         char done[160];
-        snprintf(done, sizeof done, "plugins: %s initialized (rc=%d)", m.id.c_str(), rc);
+        snprintf(done, sizeof done, "plugins: %s initialized (rc=%d)", m.identity.id.c_str(), rc);
         emit(done);
     }
 }

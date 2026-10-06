@@ -22,14 +22,14 @@ static ttmod::ModManifest with_config() {
 int main() {
     // schema via manifest
     auto m = with_config();
-    assert(m.ok && m.name == "Demo Config" && m.description == "Proof mod");
-    assert(m.config.size() == 4);
-    assert(m.config[0].type == "string" && m.config[0].def_str == "Hi");
-    assert(m.config[1].type == "int" && m.config[1].def_int == 3);
-    assert(m.config[1].has_min && m.config[1].has_max);
-    assert(m.config[2].type == "bool" && m.config[2].def_bool);
-    assert(m.config[3].type == "enum" && m.config[3].options.size() == 2 &&
-           m.config[3].def_str == "a"); // enum defaults to first option
+    assert(m.ok && m.presentation.name == "Demo Config" && m.presentation.description == "Proof mod");
+    assert(m.presentation.config.size() == 4);
+    assert(m.presentation.config[0].type == "string" && m.presentation.config[0].def_str == "Hi");
+    assert(m.presentation.config[1].type == "int" && m.presentation.config[1].def_int == 3);
+    assert(m.presentation.config[1].has_min && m.presentation.config[1].has_max);
+    assert(m.presentation.config[2].type == "bool" && m.presentation.config[2].def_bool);
+    assert(m.presentation.config[3].type == "enum" && m.presentation.config[3].options.size() == 2 &&
+           m.presentation.config[3].def_str == "a"); // enum defaults to first option
     // strict schema rejections (manifest fails, mod still loadable? no:
     // manifest must stay valid -> schema errors fail the manifest)
     assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"config\":{}}").ok);
@@ -51,24 +51,24 @@ int main() {
                  .ok);
     // old manifests unaffected
     auto plain = ttmod::parse_manifest("{\"id\":\"p\",\"api\":1}");
-    assert(plain.ok && plain.config.empty() && plain.name.empty());
+    assert(plain.ok && plain.presentation.config.empty() && plain.presentation.name.empty());
 
     // file values + effective merge
     auto f = ttmod::parse_config_file("{\"greeting\":\"Yo\",\"level\":7,\"fancy\":false,"
                                       "\"mode\":\"b\",\"unknown\":1}");
     assert(f.ok);
-    auto eff = ttmod::config_effective(m.config, f);
+    auto eff = ttmod::config_effective(m.presentation.config, f);
     assert(eff["greeting"].s == "Yo" && eff["level"].i == 7 && !eff["fancy"].b &&
            eff["mode"].s == "b");
     // invalid file values fall back to defaults
     auto bad = ttmod::parse_config_file("{\"level\":99,\"mode\":\"zzz\",\"fancy\":\"yes\"}");
     assert(bad.ok); // parses; values rejected at merge
-    auto eff2 = ttmod::config_effective(m.config, bad);
+    auto eff2 = ttmod::config_effective(m.presentation.config, bad);
     assert(eff2["level"].i == 3 && eff2["mode"].s == "a" && eff2["fancy"].b);
     // garbage file -> all defaults
     auto junk = ttmod::parse_config_file("{oops");
     assert(!junk.ok);
-    auto eff3 = ttmod::config_effective(m.config, junk);
+    auto eff3 = ttmod::config_effective(m.presentation.config, junk);
     assert(eff3["greeting"].s == "Hi");
     // float + int tolerance
     auto ff = ttmod::parse_config_file("{\"level\":4.0}");
@@ -78,17 +78,17 @@ int main() {
     auto cm = ttmod::parse_manifest("{\"id\":\"c\",\"api\":1,\"config\":["
                                     "{\"key\":\"accent\",\"type\":\"color\",\"label\":\"A\","
                                     "\"default\":\"#E0A040\"}]}");
-    assert(cm.ok && cm.config[0].type == "color");
-    auto cok = ttmod::config_effective(cm.config, ttmod::parse_config_file("{\"accent\":\"#00FF80\"}"));
+    assert(cm.ok && cm.presentation.config[0].type == "color");
+    auto cok = ttmod::config_effective(cm.presentation.config, ttmod::parse_config_file("{\"accent\":\"#00FF80\"}"));
     assert(cok["accent"].s == "#00FF80");
-    auto cbad = ttmod::config_effective(cm.config, ttmod::parse_config_file("{\"accent\":\"lime\"}"));
+    auto cbad = ttmod::config_effective(cm.presentation.config, ttmod::parse_config_file("{\"accent\":\"lime\"}"));
     assert(cbad["accent"].s == "#E0A040"); // bad file value -> default
-    assert(ttmod::apply_config_value(cm.config, "{\"accent\":\"#E0A040\"}", "accent", "#123456").ok);
-    assert(!ttmod::apply_config_value(cm.config, "{\"accent\":\"#E0A040\"}", "accent", "123456").ok);
-    assert(!ttmod::apply_config_value(cm.config, "{\"accent\":\"#E0A040\"}", "accent", "#FFF").ok);
+    assert(ttmod::apply_config_value(cm.presentation.config, "{\"accent\":\"#E0A040\"}", "accent", "#123456").ok);
+    assert(!ttmod::apply_config_value(cm.presentation.config, "{\"accent\":\"#E0A040\"}", "accent", "123456").ok);
+    assert(!ttmod::apply_config_value(cm.presentation.config, "{\"accent\":\"#E0A040\"}", "accent", "#FFF").ok);
 
     // serialization round-trip (deterministic)
-    std::string s = ttmod::serialize_config(m.config, eff);
+    std::string s = ttmod::serialize_config(m.presentation.config, eff);
     assert(s == "{\"greeting\":\"Yo\",\"level\":7,\"fancy\":false,\"mode\":\"b\"}");
     auto f2 = ttmod::parse_config_file(s);
     assert(f2.ok && f2.values["level"].i == 7);
@@ -99,7 +99,7 @@ int main() {
     snap.name = "Demo \"Mod\"";
     snap.version = "1.2.0";
     snap.enabled = true;
-    snap.schema = m.config;
+    snap.schema = m.presentation.config;
     snap.values = eff;
     // hostile string: quotes, backslash, newline, control char
     snap.values["greeting"] = ttmod::ConfigValue::text(std::string("a\"b\\c\nd") + char(0x01) + "e");
@@ -137,22 +137,22 @@ int main() {
     assert(ttmod::parse_state(st3).ok);
 
     // config value transitions
-    auto sv = ttmod::apply_config_value(m.config, "", "fancy", "0");
+    auto sv = ttmod::apply_config_value(m.presentation.config, "", "fancy", "0");
     assert(sv.ok && sv.file_text.find("\"fancy\":false") != std::string::npos);
-    auto sv2 = ttmod::apply_config_value(m.config, sv.file_text, "level", "9");
+    auto sv2 = ttmod::apply_config_value(m.presentation.config, sv.file_text, "level", "9");
     assert(sv2.ok && sv2.file_text.find("\"level\":9") != std::string::npos);
     // rejects: out-of-range, bad enum, bad int, unknown key
-    assert(!ttmod::apply_config_value(m.config, "", "level", "99").ok);
-    assert(!ttmod::apply_config_value(m.config, "", "level", "x").ok);
-    assert(!ttmod::apply_config_value(m.config, "", "mode", "zzz").ok);
-    assert(!ttmod::apply_config_value(m.config, "", "nope", "1").ok);
-    assert(!ttmod::apply_config_value(m.config, "", "fancy", "maybe").ok);
+    assert(!ttmod::apply_config_value(m.presentation.config, "", "level", "99").ok);
+    assert(!ttmod::apply_config_value(m.presentation.config, "", "level", "x").ok);
+    assert(!ttmod::apply_config_value(m.presentation.config, "", "mode", "zzz").ok);
+    assert(!ttmod::apply_config_value(m.presentation.config, "", "nope", "1").ok);
+    assert(!ttmod::apply_config_value(m.presentation.config, "", "fancy", "maybe").ok);
     // empty string resets strings to default; unknown keys survive round-trip
-    auto sv3 = ttmod::apply_config_value(m.config, "{\"greeting\":\"Yo\",\"zz\":5}", "greeting", "");
+    auto sv3 = ttmod::apply_config_value(m.presentation.config, "{\"greeting\":\"Yo\",\"zz\":5}", "greeting", "");
     assert(sv3.ok && sv3.file_text.find("\"greeting\":\"Hi\"") != std::string::npos &&
            sv3.file_text.find("\"zz\":5") != std::string::npos);
     // float coercion accepts ints
-    auto sv4 = ttmod::apply_config_value(m.config, "", "level", "4");
+    auto sv4 = ttmod::apply_config_value(m.presentation.config, "", "level", "4");
     assert(sv4.ok);
 
     std::puts("modconfig: all asserts passed");
