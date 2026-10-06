@@ -3,6 +3,7 @@
 /build-release/
 /build-asan/
 /build-ubsan/
+/build-fuzz/
 /release/
 test-results/
 luac.out
