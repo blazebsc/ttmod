@@ -1,6 +1,7 @@
 #pragma once
 #include <optional>
 #include <string>
+#include <vector>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -81,28 +82,45 @@ enum class Permission {
 
 inline const char* to_string(Runtime r) {
     switch (r) {
-        case Runtime::Lua: return "lua";
-        case Runtime::Luau: return "luau";
-        case Runtime::TelltaleLua: return "telltale-lua";
-        default: return "native";
+    case Runtime::Lua:
+        return "lua";
+    case Runtime::Luau:
+        return "luau";
+    case Runtime::TelltaleLua:
+        return "telltale-lua";
+    default:
+        return "native";
     }
 }
 
 inline const char* to_string(Permission p) {
     switch (p) {
-        case Permission::GameRead: return "game.read";
-        case Permission::GameWrite: return "game.write";
-        case Permission::GameEvents: return "game.events";
-        case Permission::UI: return "ui";
-        case Permission::Resources: return "resources";
-        case Permission::FilesystemRead: return "filesystem.read";
-        case Permission::FilesystemWrite: return "filesystem.write";
-        case Permission::ModsRead: return "mods.read";
-        case Permission::ModsWrite: return "mods.write";
-        case Permission::GameLua: return "game.lua";
-        case Permission::GameMemory: return "game.memory";
-        case Permission::Hooks: return "hooks";
-        default: return "native";
+    case Permission::GameRead:
+        return "game.read";
+    case Permission::GameWrite:
+        return "game.write";
+    case Permission::GameEvents:
+        return "game.events";
+    case Permission::UI:
+        return "ui";
+    case Permission::Resources:
+        return "resources";
+    case Permission::FilesystemRead:
+        return "filesystem.read";
+    case Permission::FilesystemWrite:
+        return "filesystem.write";
+    case Permission::ModsRead:
+        return "mods.read";
+    case Permission::ModsWrite:
+        return "mods.write";
+    case Permission::GameLua:
+        return "game.lua";
+    case Permission::GameMemory:
+        return "game.memory";
+    case Permission::Hooks:
+        return "hooks";
+    default:
+        return "native";
     }
 }
 
@@ -136,6 +154,9 @@ inline std::optional<Permission> parse_permission(std::string_view s) {
     if (s == "native") return Permission::Native;
     return std::nullopt;
 }
+// A validated manifest. Every identity, path, version, runtime name and
+// permission here has already passed its canonical policy, so consumers
+// never re-check (Step 4: parse and validation are separate layers).
 struct ModManifest {
     ModIdentity identity;
     ModCompatibility compat;
@@ -149,12 +170,59 @@ struct ModManifest {
     int package_format = 1;
 };
 
-// Parse + validate. Success carries the manifest; failure carries a
-// structured Error (operation "parse-manifest", object = id parsed so
-// far, message text kept byte-stable for existing log lines).
 // Package format version we write and accept (M11).
 inline constexpr int kPackageFormat = 1;
 
+// Unknown fields: IGNORED, never rejected. An older TTMod must load a
+// manifest written by a newer one, which is the whole point of additive
+// optional fields ("priority", "enabled", "runtimes", "permissions" were
+// all added after v1 and old readers shipped). RawManifest records the
+// names in unknown_fields for tooling; a future package_format bump is
+// where strictness would be introduced.
+
+// ---- Layer 1: syntax (untrusted shape) ----------------------------------
+//
+// RawManifest is what the JSON bytes actually said: every field is an
+// optional<string> / raw value, with NO semantic validation. Type errors
+// are captured as field-level notes rather than aborting, so validation
+// can report the complete picture rather than the first problem.
+//
+// Unknown keys are recorded in unknown_fields and IGNORED (additive
+// compatibility: an older TTMod must load a manifest written by a newer
+// one). A future major format may reject them.
+struct RawManifest {
+    std::optional<std::string> id, version, name, description, plugin, arch;
+    std::optional<int> api, priority, package_format;
+    std::optional<bool> enabled;
+    std::optional<std::vector<std::string>> games, conflicts;
+    std::optional<std::vector<std::string>> runtimes, permissions;
+    struct RawDep {
+        std::string id;
+        std::string version; // "" = unconstrained
+    };
+    std::optional<std::vector<RawDep>> depends;
+    // game path (as written) -> mod-relative replacement, both unvalidated
+    std::optional<std::vector<std::pair<std::string, std::string>>> files;
+    // Config schema kept as JSON text; the schema has its own validation
+    // stage, so it is not decoded twice here.
+    std::optional<std::string> config_json;
+    std::vector<std::string> unknown_fields;
+    std::vector<std::string> notes; // "files[0].to: bad type"
+};
+
+// text -> JSON -> RawManifest. Syntax problems only (bad JSON, wrong JSON
+// types, oversize input); no id/path/version semantics.
+Result<RawManifest> read_raw_manifest(const std::string& text);
+
+// ---- Layer 2: semantics -------------------------------------------------
+
+// RawManifest -> validated ModManifest. Enforces required fields, ids,
+// paths, versions, runtimes, permissions, package format, and delegates
+// config-schema validation. Returns Result<ModManifest>: a partially
+// invalid manifest never escapes this function.
+Result<ModManifest> validate_manifest(const RawManifest& raw);
+
+// Convenience: both layers, in order. This is what every caller wants.
 Result<ModManifest> parse_manifest(const std::string& text);
 
 // Dotted-numeric version compare: -1/0/+1, using the bounded grammar in
