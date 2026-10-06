@@ -68,7 +68,8 @@ These are the remaining items that define whether the refactor has a stable core
 - Establish runtime ownership and lifecycle boundaries.
 - Establish game-thread dispatch rules for game-owned operations.
 - Formalize the multi-VM separation.
-- Do not skip these just because the current implementation can already load simple mods.
+
+Do not skip these just because the current implementation can already load simple mods.
 
 ### P1 — Build the runtime architecture
 
@@ -1073,16 +1074,19 @@ But each runtime keeps its own ownership, lifecycle, state, and object model.
 
 ## 26. Immediate Next Three PRs
 
-**After the current work, the strongest next sequence is:**
-- 1. refactor(result): finish Result/Error migration
-- 2. refactor(result): finalize Result access contract
-- 3. refactor(core): finish ModId migration
-**Then:**
-- 4. finish Version migration
-- 5. make validated Manifest authoritative
-- 6. ModSource
-- 7. discovery
-- 8. ModPlan integration
+After the current work, the strongest next sequence is:
+
+1. refactor(result): finish Result/Error migration
+2. refactor(result): finalize Result access contract
+3. refactor(core): finish ModId migration
+
+Then:
+
+4. finish Version migration
+5. make validated Manifest authoritative
+6. ModSource
+7. discovery
+8. ModPlan integration
 
 Only after that should the project move deeply into runtime ownership.
 
