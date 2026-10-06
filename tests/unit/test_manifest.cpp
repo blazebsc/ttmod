@@ -1,14 +1,22 @@
 #include "ttmod/manifest.hpp"
 #include "ttmod/modgraph.hpp"
+#include "ttmod/modid.hpp"
 #include "ttmod/version.hpp"
 #include <cassert>
 #include <cstdio>
+
+// Test helper: every id here is a literal we control, so parse must succeed.
+static ttmod::ModId mid(const char* s) {
+    auto r = ttmod::ModId::parse(s);
+    assert(r.ok());
+    return r.value();
+}
 
 int main() {
     auto good = ttmod::parse_manifest(
         "{ \"id\": \"hello.mcsm\", \"version\": \"1.0.0\", \"api\": 1, "
         "\"games\": [\"minecraft-story-mode:s1\"], \"extra\": {\"a\":1} }").value();
-    assert(good.identity.id == "hello.mcsm" && good.identity.version == "1.0.0");
+    assert(good.identity.id == mid("hello.mcsm") && good.identity.version == "1.0.0");
     assert(good.compat.api == 1 && good.compat.games.size() == 1 && good.compat.games[0] == "minecraft-story-mode:s1");
     assert(good.overrides.priority == 100 && good.enabled && good.overrides.files.empty()); // defaults
 
@@ -41,10 +49,14 @@ int main() {
         "{\"id\":\"m\",\"api\":1,\"depends\":[{\"id\":\"base\",\"version\":\"2.0\"},{\"id\":\"opt\"}],"
         "\"conflicts\":[\"rival\"]}").value();
     assert(dep.deps.depends.size() == 2 && dep.deps.conflicts.size() == 1);
-    assert(dep.deps.depends[0].first == "base" && dep.deps.depends[0].second == "2.0");
-    assert(dep.deps.depends[1].first == "opt" && dep.deps.depends[1].second.empty());
+    assert(dep.deps.depends[0].first == mid("base") && dep.deps.depends[0].second == "2.0");
+    assert(dep.deps.depends[1].first == mid("opt") && dep.deps.depends[1].second.empty());
+    assert(dep.deps.conflicts[0] == mid("rival"));
     assert(!ttmod::parse_manifest("{\"id\":\"m\",\"api\":1,\"depends\":[{\"version\":\"1\"}]}").ok());
     assert(!ttmod::parse_manifest("{\"id\":\"m\",\"api\":1,\"conflicts\":\"x\"}").ok());
+    // Dependency and conflict ids go through the same canonical validator.
+    assert(!ttmod::parse_manifest("{\"id\":\"m\",\"api\":1,\"depends\":[{\"id\":\"../evil\"}]}").ok());
+    assert(!ttmod::parse_manifest("{\"id\":\"m\",\"api\":1,\"conflicts\":[\"..\\\\evil\"]}").ok());
 
     assert(ttmod::compare_versions("1.0.0", "1.0.0") == 0);
     assert(ttmod::compare_versions("1.2", "1.2.0") == 0);
@@ -67,53 +79,53 @@ int main() {
     // Dependency graph over a present set (replaces per-mod string checks).
     auto mk = [](const char* id, const char* ver) {
         ttmod::ModManifest m;
-        m.identity.id = id;
+        m.identity.id = mid(id);
         m.identity.version = ver;
         return m;
     };
     {
         ttmod::ModManifest base = mk("base", "2.1.0"), addon = mk("addon", "1.0"), opt = mk("opt", "1.0"),
                            rival = mk("rival", "1.0");
-        addon.deps.depends = {{"base", "2.0"}, {"opt", ""}};
+        addon.deps.depends = {{mid("base"), "2.0"}, {mid("opt"), ""}};
         auto r = ttmod::resolve_dependencies({base, addon, opt, rival});
-        assert(r.blocked("addon") == false);
-        assert(r.load_order.front() == "base"); // deps first
+        assert(r.blocked(mid("addon")) == false);
+        assert(r.load_order.front() == mid("base")); // deps first
     }
     {
         // missing dependency blocks the dependent only
         ttmod::ModManifest a = mk("a", "1.0");
-        a.deps.depends = {{"ghost", ""}};
+        a.deps.depends = {{mid("ghost"), ""}};
         auto r = ttmod::resolve_dependencies({a, mk("b", "1.0")});
-        assert(r.blocked("a") && !r.blocked("b"));
+        assert(r.blocked(mid("a")) && !r.blocked(mid("b")));
         bool found = false;
         for (auto& p : r.problems)
-            if (p.mod == "a" && p.category == "missing") found = true;
+            if (p.mod == mid("a") && p.category == "missing") found = true;
         assert(found);
     }
     {
         // version mismatch + conflict + cycle + duplicate
         ttmod::ModManifest a = mk("a", "1.0"), b = mk("b", "2.1.0"), c = mk("c", "1.0");
-        b.deps.depends = {{"a", "3.0"}};
+        b.deps.depends = {{mid("a"), "3.0"}};
         auto r1 = ttmod::resolve_dependencies({a, b});
-        assert(r1.blocked("b"));
+        assert(r1.blocked(mid("b")));
         bool ver = false;
         for (auto& p : r1.problems)
-            if (p.mod == "b" && p.category == "version") ver = true;
+            if (p.mod == mid("b") && p.category == "version") ver = true;
         assert(ver);
-        c.deps.conflicts = {"a"};
+        c.deps.conflicts = {mid("a")};
         auto r2 = ttmod::resolve_dependencies({a, c});
-        assert(r2.blocked("c"));
+        assert(r2.blocked(mid("c")));
         ttmod::ModManifest x = mk("x", "1.0"), y = mk("y", "1.0");
-        x.deps.depends = {{"y", ""}};
-        y.deps.depends = {{"x", ""}};
+        x.deps.depends = {{mid("y"), ""}};
+        y.deps.depends = {{mid("x"), ""}};
         auto r3 = ttmod::resolve_dependencies({x, y});
-        assert(r3.blocked("x") && r3.blocked("y"));
+        assert(r3.blocked(mid("x")) && r3.blocked(mid("y")));
         auto r4 = ttmod::resolve_dependencies({mk("d", "1.0"), mk("d", "2.0")});
-        assert(r4.blocked("d"));
+        assert(r4.blocked(mid("d")));
         // duplicates keep going exactly once in load order
         int dcount = 0;
         for (auto& id : r4.load_order)
-            if (id == "d") ++dcount;
+            if (id == mid("d")) ++dcount;
         assert(dcount == 1);
     }
     std::puts("manifest: all asserts passed");

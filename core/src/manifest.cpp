@@ -66,16 +66,18 @@ Result<ModManifest> parse_manifest(const std::string& text) {
     ModManifest m;
     std::string error;
     auto fail = [&](const std::string& e, const char* cat = "manifest") -> Result<ModManifest> {
-        return Result<ModManifest>::fail(Error{"parse-manifest", m.identity.id, cat, e});
+        return Result<ModManifest>::fail(Error{"parse-manifest", m.identity.id.str(), cat, e});
     };
-    if (text.size() > 1024 * 1024)
-        return fail("manifest too large", "limit");
+    if (text.size() > 1024 * 1024) return fail("manifest too large", "limit");
     auto parsed = parse_json_value(text);
     if (!parsed.ok() || !parsed.value().is_object())
         return fail(!parsed.ok() ? parsed.error().message : "not an object", "syntax");
     json j = parsed.value();
-    if (!req_str(j, "id", m.identity.id, error)) return fail(error);
-    if (!is_valid_mod_id(m.identity.id)) return fail("bad id");
+    std::string id_text;
+    if (!req_str(j, "id", id_text, error)) return fail(error);
+    auto mid = ModId::parse(id_text);
+    if (!mid.ok()) return fail("bad id");
+    m.identity.id = mid.value();
     auto vit = j.find("version");
     if (vit != j.end()) {
         if (!vit->is_string()) return fail("bad version");
@@ -110,7 +112,15 @@ Result<ModManifest> parse_manifest(const std::string& text) {
         }
     }
     if (!str_array(j, "games", m.compat.games, error)) return fail(error);
-    if (!str_array(j, "conflicts", m.deps.conflicts, error)) return fail(error);
+    {
+        std::vector<std::string> conflicts;
+        if (!str_array(j, "conflicts", conflicts, error)) return fail(error);
+        for (auto& c : conflicts) {
+            auto cid = ModId::parse(c);
+            if (!cid.ok()) return fail("bad conflicts");
+            m.deps.conflicts.push_back(cid.value());
+        }
+    }
     auto rit = j.find("runtimes");
     if (rit != j.end()) {
         if (!rit->is_array()) return fail("bad runtimes");
@@ -138,12 +148,14 @@ Result<ModManifest> parse_manifest(const std::string& text) {
             if (!e.is_object()) return fail("bad depends");
             std::string did, dver;
             if (!req_str(e, "id", did, error)) return fail(error);
+            auto dep = ModId::parse(did);
+            if (!dep.ok()) return fail("bad depends");
             auto vit2 = e.find("version");
             if (vit2 != e.end()) {
                 if (!vit2->is_string()) return fail("bad depends");
                 dver = vit2->get<std::string>();
             }
-            m.deps.depends.emplace_back(did, dver);
+            m.deps.depends.emplace_back(dep.value(), dver);
         }
     }
     auto fit = j.find("files");

@@ -82,7 +82,7 @@ static std::vector<ttmod::MenuModSnapshot> snapshot() {
         ttmod::ModManifest m;
         if (!mods_menu_manifest(i, &m)) continue;
         ttmod::MenuModSnapshot s;
-        s.id = m.identity.id;
+        s.id = m.identity.id.str();
         s.name = m.presentation.name;
         s.version = m.identity.version;
         s.description = m.presentation.description;
@@ -95,7 +95,7 @@ static std::vector<ttmod::MenuModSnapshot> snapshot() {
         s.schema = m.presentation.config;
         s.values = ttmod::config_effective(
             m.presentation.config,
-            ttmod::parse_config_file(read_file(g_gamedir + "\\config\\" + m.identity.id + ".json")));
+            ttmod::parse_config_file(read_file(g_gamedir + "\\config\\" + m.identity.id.str() + ".json")));
         out.push_back(s);
     }
     return out;
@@ -190,7 +190,7 @@ static int __cdecl fn_set_value(lua_State* L) {
     int n = mods_menu_count();
     bool found = false;
     for (int i = 0; i < n; ++i) {
-        if (mods_menu_manifest(i, &m) && m.identity.id == id) {
+        if (mods_menu_manifest(i, &m) && m.identity.id.str() == id) {
             found = true;
             break;
         }

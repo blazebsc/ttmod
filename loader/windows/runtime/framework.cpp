@@ -218,7 +218,7 @@ static void sync_cache(InitCtx& ctx) {
     // Packaged mods extract to ttmod/cache/<id> (stale entries cleaned).
     std::vector<std::pair<std::string, std::string>> pkgs;
     for (auto& m : ctx.disc.mods)
-        if (m.packaged) pkgs.emplace_back(m.id, m.source);
+        if (m.packaged) pkgs.emplace_back(m.id.str(), m.source);
     auto synced =
         ttmod::sync_package_cache(ttmod_win::join(ctx.gamedir, "ttmod\\cache"), pkgs);
     if (synced.ok()) {
@@ -241,7 +241,7 @@ static void build_scanned(InitCtx& ctx) {
     for (auto& m : ctx.disc.mods) {
         std::string dir = m.source;
         if (m.packaged) {
-            auto it = ctx.cache.effective.find(m.id);
+            auto it = ctx.cache.effective.find(m.id.str());
             if (it == ctx.cache.effective.end()) continue; // sync failed, logged
             dir = it->second;
         }
@@ -252,7 +252,7 @@ static void build_scanned(InitCtx& ctx) {
         if (!m.manifest.plugin.path.empty() && !has_dll) {
             ttmod::Logger lg;
             if (lg.open(ctx.logpath))
-                lg.info("[TTMod] " + m.id + ": declared plugin missing: " + m.manifest.plugin.path);
+                lg.info("[TTMod] " + m.id.str() + ": declared plugin missing: " + m.manifest.plugin.path);
         } else if (m.manifest.plugin.path.empty() && !has_dll) {
             // A DLL sitting in plugins/ (or anywhere else) that the manifest
             // does not point at is SILENTLY ignored: the mod loads as
@@ -262,7 +262,7 @@ static void build_scanned(InitCtx& ctx) {
             if (sub != INVALID_FILE_ATTRIBUTES && (sub & FILE_ATTRIBUTE_DIRECTORY)) {
                 ttmod::Logger lg;
                 if (lg.open(ctx.logpath))
-                    lg.info("[TTMod] " + m.id +
+                    lg.info("[TTMod] " + m.id.str() +
                             ": plugins/ exists but the manifest declares no \"plugin\" "
                             "path, so it is ignored (add \"plugin\": \"plugins/<name>.dll\")");
             }

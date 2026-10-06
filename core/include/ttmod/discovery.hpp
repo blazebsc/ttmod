@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include "ttmod/manifest.hpp"
+#include "ttmod/modid.hpp"
 #include "ttmod/modstate.hpp"
 
 namespace ttmod {
@@ -27,7 +28,7 @@ struct ModSource {
 std::vector<ModSource> scan_mod_sources(const std::string& mods_dir, int* entries_seen = nullptr);
 
 struct Discovered {
-    std::string id;
+    ModId id;
     std::string source; // absolute path: .ttmod file or unpacked dir
     bool packaged = false;
     ModSourceKind kind = ModSourceKind::Directory;
@@ -41,14 +42,13 @@ struct InvalidEntry {
 };
 
 struct Discovery {
-    std::vector<Discovered> mods; // id-sorted, deduplicated, enabled only
-    std::vector<Discovered> disabled; // valid but disabled (for menus)
+    std::vector<Discovered> mods;      // id-sorted, deduplicated, enabled only
+    std::vector<Discovered> disabled;  // valid but disabled (for menus)
     std::vector<InvalidEntry> invalid; // unparseable (for CLI display)
-    std::vector<std::string> skipped; // "id: reason" (or filename when id unknown)
+    std::vector<std::string> skipped;  // "id: reason" (or filename when id unknown)
     int entries_seen = 0;
 };
 
-Discovery discover_mods(const std::string& mods_dir, const ModState& state, const char* game,
-                        int season);
+Discovery discover_mods(const std::string& mods_dir, const ModState& state, const char* game, int season);
 
 } // namespace ttmod

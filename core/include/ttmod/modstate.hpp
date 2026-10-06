@@ -17,6 +17,8 @@ struct ModState {
     // id -> enabled override present in the file
     std::map<std::string, bool> overrides;
     bool enabled_for(const std::string& id, bool manifest_default) const;
+    // Overrides are keyed by raw text from config/mods.json; validated ids
+    // resolve through the same map via id.str().
     void set(const std::string& id, bool enabled);
     std::string serialize() const; // deterministic (sorted keys)
 };

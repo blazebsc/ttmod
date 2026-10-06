@@ -6,7 +6,7 @@
 
 namespace ttmod {
 
-bool DepResolution::blocked(const std::string& id) const {
+bool DepResolution::blocked(const ModId& id) const {
     for (auto& p : problems)
         if (p.mod == id) return true;
     return false;
@@ -15,9 +15,9 @@ bool DepResolution::blocked(const std::string& id) const {
 DepResolution resolve_dependencies(const std::vector<ModManifest>& mods) {
     DepResolution out;
     // Index by id (input is id-sorted from discovery; first wins).
-    std::map<std::string, const ModManifest*> by_id;
+    std::map<ModId, const ModManifest*> by_id;
     for (auto& m : mods) {
-        const std::string& id = m.identity.id;
+        const ModId& id = m.identity.id;
         if (by_id.count(id)) {
             out.problems.push_back({id, "duplicate", "duplicate ID, kept first"});
             continue;
@@ -26,7 +26,7 @@ DepResolution resolve_dependencies(const std::vector<ModManifest>& mods) {
     }
     // Blocked set: missing/version/conflict/cycle. Iterate to a fixed point
     // so knock-on blocks (dep of a blocked mod) propagate.
-    std::map<std::string, bool> blocked;
+    std::map<ModId, bool> blocked;
     for (auto& [id, _] : by_id) blocked[id] = false;
     bool changed = true;
     while (changed) {
@@ -41,24 +41,24 @@ DepResolution resolve_dependencies(const std::vector<ModManifest>& mods) {
             for (auto& [dep, spec] : m->deps.depends) {
                 auto it = by_id.find(dep);
                 if (it == by_id.end()) {
-                    block("missing", "missing dependency: " + dep);
+                    block("missing", "missing dependency: " + dep.str());
                     break;
                 }
                 if (blocked[dep]) {
-                    block("missing", "dependency blocked: " + dep);
+                    block("missing", "dependency blocked: " + dep.str());
                     break;
                 }
                 VersionConstraint need(spec);
                 if (!need.satisfied_by(Version(it->second->identity.version))) {
-                    block("version", "dependency " + dep + " version " +
-                                             it->second->identity.version + " < " + spec);
+                    block("version",
+                          "dependency " + dep.str() + " version " + it->second->identity.version + " < " + spec);
                     break;
                 }
             }
             if (blocked[id]) continue;
             for (auto& c : m->deps.conflicts) {
                 if (by_id.count(c)) {
-                    block("conflict", "conflicts with present mod: " + c);
+                    block("conflict", "conflicts with present mod: " + c.str());
                     break;
                 }
             }
@@ -66,14 +66,14 @@ DepResolution resolve_dependencies(const std::vector<ModManifest>& mods) {
     }
     // Cycle detection over unblocked edges (iterative DFS, id-ordered).
     // Only the members of each cycle are blocked, not their ancestors.
-    std::map<std::string, int> color; // 0 unvisited, 1 in-stack, 2 done
-    std::vector<std::string> stack;
-    std::function<void(const std::string&)> visit = [&](const std::string& id) {
+    std::map<ModId, int> color; // 0 unvisited, 1 in-stack, 2 done
+    std::vector<ModId> stack;
+    std::function<void(const ModId&)> visit = [&](const ModId& id) {
         color[id] = 1;
         stack.push_back(id);
         auto it = by_id.find(id);
         if (it != by_id.end()) {
-            std::vector<std::string> deps;
+            std::vector<ModId> deps;
             for (auto& [dep, _] : it->second->deps.depends) deps.push_back(dep);
             std::sort(deps.begin(), deps.end());
             for (auto& dep : deps) {
@@ -98,13 +98,13 @@ DepResolution resolve_dependencies(const std::vector<ModManifest>& mods) {
     for (auto& [id, _] : by_id)
         if (color[id] == 0 && !blocked[id]) visit(id);
     // Topological load order (deps first), id-deterministic; blocked last.
-    std::map<std::string, bool> emitted;
-    std::function<void(const std::string&)> emit = [&](const std::string& id) {
+    std::map<ModId, bool> emitted;
+    std::function<void(const ModId&)> emit = [&](const ModId& id) {
         if (emitted[id]) return;
         emitted[id] = true;
         auto it = by_id.find(id);
         if (it != by_id.end() && !blocked[id]) {
-            std::vector<std::string> deps;
+            std::vector<ModId> deps;
             for (auto& [dep, _] : it->second->deps.depends) deps.push_back(dep);
             std::sort(deps.begin(), deps.end());
             for (auto& dep : deps)

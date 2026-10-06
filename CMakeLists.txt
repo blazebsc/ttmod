@@ -37,6 +37,7 @@ set(TTMOD_CORE_SRCS
   core/src/logmap.cpp
   core/src/lua_bridge.cpp
   core/src/modconfig.cpp
+  core/src/modid.cpp
   core/src/uiqueue.cpp
   core/src/theme_color.cpp
   core/src/validate.cpp
@@ -112,6 +113,7 @@ ttmod_add_unit_test(themecolor tests/unit/test_themecolor.cpp)
 ttmod_add_unit_test(security tests/security/test_security.cpp)
 ttmod_add_unit_test(runtime tests/unit/test_runtime.cpp)
 ttmod_add_unit_test(result tests/unit/test_result.cpp)
+ttmod_add_unit_test(modid tests/unit/test_modid.cpp)
 find_program(PYTHON3_BIN python3)
 if(PYTHON3_BIN)
   add_test(NAME lua_dis COMMAND ${PYTHON3_BIN} ${CMAKE_SOURCE_DIR}/tests/lua/test_lua_dis.py)
