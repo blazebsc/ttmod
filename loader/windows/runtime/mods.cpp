@@ -10,7 +10,7 @@
 
 #include "ttmod/log.hpp"
 #include "ttmod/manifest.hpp"
-#include "ttmod/modgraph.hpp"
+#include "ttmod/modplan.hpp"
 #include "ttmod/pathnorm.hpp"
 #include "ttmod/resolver.hpp"
 #include "mods.hpp"
@@ -47,27 +47,19 @@ void mods_init(const std::vector<ScannedMod>& all, const char* game_root, const 
     g_logpath = log_path ? log_path : "";
     g_verbose = GetEnvironmentVariableA("TTMOD_RESOLVE_VERBOSE", nullptr, 0) > 0;
     g_resolver.set_game_root(game_root ? game_root : "");
-    std::vector<ttmod::ModManifest> present;
-    for (auto& s : all) present.push_back(s.manifest);
-    ttmod::DepResolution dep = ttmod::resolve_dependencies(present);
-    auto blocked_reason = [&](const ttmod::ModId& id) -> const std::string* {
-        for (auto& pr : dep.problems)
-            if (pr.mod == id) return &pr.message;
-        return nullptr;
-    };
+    // Dependencies/conflicts were resolved ONCE into the ModPlan (see
+    // framework.cpp); `all` is already the surviving, load-ordered set.
+    // This function only indexes resource overrides - it loads nothing and
+    // re-decides nothing.
     for (auto& s : all) {
         const ttmod::ModManifest& m = s.manifest;
-        if (const std::string* why = blocked_reason(m.identity.id)) {
-            emit("mods: " + m.identity.id.str() + " skipped (" + *why + ")");
-            continue;
-        }
         if (m.overrides.files.empty()) continue; // native-only; plugins loader owns it
         ttmod::ModDef def{m.identity.id.str(), s.dir, m.overrides.priority, true, m.overrides.files};
         size_t before = g_resolver.problems().size();
         bool used = g_resolver.add_mod(def, exists);
         char sum[192];
-        snprintf(sum, sizeof sum, "mods: %s indexed (priority %d, %s)", m.identity.id.str().c_str(), m.overrides.priority,
-                 used ? "overrides registered" : "no usable overrides");
+        snprintf(sum, sizeof sum, "mods: %s indexed (priority %d, %s)", m.identity.id.str().c_str(),
+                 m.overrides.priority, used ? "overrides registered" : "no usable overrides");
         emit(sum);
         for (size_t i = before; i < g_resolver.problems().size(); ++i)
             emit("mods: problem: " + g_resolver.problems()[i]);
@@ -77,8 +69,7 @@ void mods_init(const std::vector<ScannedMod>& all, const char* game_root, const 
     emit(sum);
 }
 
-void mods_store_menu(const std::vector<ScannedMod>& enabled,
-                     const std::vector<ttmod::Discovered>& disabled) {
+void mods_store_menu(const std::vector<ScannedMod>& enabled, const std::vector<ttmod::Discovered>& disabled) {
     std::lock_guard<std::mutex> l(g_menu_mtx);
     g_menu.clear();
     for (auto& s : enabled)
@@ -86,12 +77,10 @@ void mods_store_menu(const std::vector<ScannedMod>& enabled,
                           s.manifest.presentation.name, s.manifest.presentation.description,
                           s.manifest.presentation.config, s.manifest});
     for (auto& d : disabled)
-        g_menu.push_back({d.id, d.manifest.identity.version, false, !d.manifest.plugin.path.empty(),
-                          d.packaged, d.manifest.presentation.name,
-                          d.manifest.presentation.description,
+        g_menu.push_back({d.id.str(), d.manifest.identity.version, false, !d.manifest.plugin.path.empty(), d.packaged,
+                          d.manifest.presentation.name, d.manifest.presentation.description,
                           d.manifest.presentation.config, d.manifest});
-    std::sort(g_menu.begin(), g_menu.end(),
-              [](const MenuEntry& a, const MenuEntry& b) { return a.id < b.id; });
+    std::sort(g_menu.begin(), g_menu.end(), [](const MenuEntry& a, const MenuEntry& b) { return a.id < b.id; });
 }
 
 int mods_menu_count() {
@@ -138,8 +127,8 @@ bool mods_try(const wchar_t* requested, std::string& out_requested, std::string&
     ttmod::ResolveResult r = g_resolver.resolve(out_requested);
     if (g_verbose) {
         char m[768];
-        snprintf(m, sizeof m, "resolve: found=%d reason=%s winner=%s shadowed=%u", (int)r.found,
-                 r.reason.c_str(), r.winner.c_str(), (unsigned)r.shadowed.size());
+        snprintf(m, sizeof m, "resolve: found=%d reason=%s winner=%s shadowed=%u", (int)r.found, r.reason.c_str(),
+                 r.winner.c_str(), (unsigned)r.shadowed.size());
         emit(m);
     }
     if (!r.found) return false;

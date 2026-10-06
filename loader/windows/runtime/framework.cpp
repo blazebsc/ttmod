@@ -16,6 +16,7 @@
 #include "ttmod/discovery.hpp"
 #include "ttmod/cache.hpp"
 #include "ttmod/modstate.hpp"
+#include "ttmod/modplan.hpp"
 #include "events.hpp"
 #include "hooks.hpp"
 #include "lua_bridge.hpp"
@@ -43,14 +44,13 @@ static void exit_dump() {
     if (exe) {
         // Image pages are committed in our own process; direct read is safe.
         const BYTE* t = (const BYTE*)exe + ttmod::kLoadResourceAnchor.rva;
-        n = snprintf(buf, sizeof buf,
-                     "exit: dt=%lums target=%02X %02X %02X %02X %02X %02X %02X %02X\r\n",
+        n = snprintf(buf, sizeof buf, "exit: dt=%lums target=%02X %02X %02X %02X %02X %02X %02X %02X\r\n",
                      (unsigned long)dt, t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7]);
     } else {
         n = snprintf(buf, sizeof buf, "exit: no exe module\r\n");
     }
-    HANDLE f = CreateFileA(g_exitlog, FILE_APPEND_DATA, FILE_SHARE_READ, nullptr, OPEN_ALWAYS,
-                           FILE_ATTRIBUTE_NORMAL, nullptr);
+    HANDLE f =
+        CreateFileA(g_exitlog, FILE_APPEND_DATA, FILE_SHARE_READ, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (f != INVALID_HANDLE_VALUE) {
         DWORD w = 0;
         WriteFile(f, buf, (DWORD)n, &w, nullptr);
@@ -70,16 +70,19 @@ static void exit_dump() {
 // below is a flat checklist. Blocks moved verbatim, order unchanged.
 struct InitCtx {
     HMODULE self = nullptr;
-    std::string exepath; // empty when GetModuleFileNameA returned nothing
+    std::string exepath;  // empty when GetModuleFileNameA returned nothing
     std::string exe_base; // empty when no exe module / headers unreadable
     std::string gamedir;
     std::string logpath;
     std::string prof;
     const char* game = "unknown";
     int season = 0;
+    bool safe_mode = false;
     ttmod::ModState state;
     ttmod::Discovery disc;
     ttmod::CacheSync cache;
+    // The single resolution result every loader reads.
+    ttmod::ModPlan plan;
     std::vector<ttmod_win::ScannedMod> all;
 };
 
@@ -90,14 +93,12 @@ static void survey_exe_base(InitCtx& ctx) {
     if (exe) {
         PIMAGE_DOS_HEADER dos = (PIMAGE_DOS_HEADER)exe;
         if (dos->e_magic == IMAGE_DOS_SIGNATURE) {
-            PIMAGE_NT_HEADERS nt =
-                (PIMAGE_NT_HEADERS)((BYTE*)exe + dos->e_lfanew);
+            PIMAGE_NT_HEADERS nt = (PIMAGE_NT_HEADERS)((BYTE*)exe + dos->e_lfanew);
             if (nt->Signature == IMAGE_NT_SIGNATURE)
-                snprintf(base, sizeof base, "exe_base=%p image_size=0x%08lX",
-                         (void*)exe, (unsigned long)nt->OptionalHeader.SizeOfImage);
+                snprintf(base, sizeof base, "exe_base=%p image_size=0x%08lX", (void*)exe,
+                         (unsigned long)nt->OptionalHeader.SizeOfImage);
         }
-        if (!base[0])
-            snprintf(base, sizeof base, "exe_base=%p (headers unreadable)", (void*)exe);
+        if (!base[0]) snprintf(base, sizeof base, "exe_base=%p (headers unreadable)", (void*)exe);
     }
     if (base[0]) ctx.exe_base = base;
 }
@@ -128,8 +129,8 @@ static void module_survey(const InitCtx& ctx) {
             if (lg.open(ctx.logpath) && Module32First(snap, &me)) {
                 do {
                     char m[300];
-                    snprintf(m, sizeof m, "modlist: %p size=0x%08X %s", me.modBaseAddr,
-                             (unsigned)me.modBaseSize, me.szModule);
+                    snprintf(m, sizeof m, "modlist: %p size=0x%08X %s", me.modBaseAddr, (unsigned)me.modBaseSize,
+                             me.szModule);
                     lg.info(m);
                 } while (Module32Next(snap, &me));
             }
@@ -139,8 +140,7 @@ static void module_survey(const InitCtx& ctx) {
 }
 
 static void detect_profile(InitCtx& ctx) {
-    ttmod::GameProfile prof =
-        ttmod::init_from_exe(ctx.exepath.empty() ? "unknown" : ctx.exepath.c_str(), ctx.logpath);
+    ttmod::GameProfile prof = ttmod::init_from_exe(ctx.exepath.empty() ? "unknown" : ctx.exepath.c_str(), ctx.logpath);
     ctx.prof = prof.id;
     if (!ctx.exe_base.empty()) {
         ttmod::Logger log;
@@ -156,7 +156,10 @@ static void init_events_hooks_lua(const InitCtx& ctx) {
 }
 
 static void read_modstate(InitCtx& ctx) {
-    if (ctx.prof == "mcsm1_pc_x86") { ctx.game = "minecraft-story-mode"; ctx.season = 1; }
+    if (ctx.prof == "mcsm1_pc_x86") {
+        ctx.game = "minecraft-story-mode";
+        ctx.season = 1;
+    }
 
     // M11 canonical discovery: game-root/mods (.ttmod + unpacked dirs).
     {
@@ -190,8 +193,10 @@ static void safe_mode_gate(InitCtx& ctx) {
     if (safe) {
         ttmod::Logger lg;
         if (lg.open(ctx.logpath)) lg.info("[TTMod] SAFE MODE: all third-party mods disabled");
-        ctx.disc.mods.clear();
-        ctx.disc.skipped.push_back("all: safe mode");
+        // Do NOT clear disc.mods: the plan blocks them through the same
+        // path a broken dependency takes, so the menu can still show what
+        // is installed. Discovery output stays intact for the summary.
+        ctx.safe_mode = true;
     }
     {
         ttmod::Logger lg;
@@ -207,8 +212,7 @@ static void safe_mode_gate(InitCtx& ctx) {
             // text: discovery populates disc.disabled via effective_enabled().
             size_t disabled = ctx.disc.disabled.size();
             snprintf(h, sizeof h, "[TTMod] Valid mods: %u (%d packaged) Disabled: %u Skipped: %u",
-                     (unsigned)ctx.disc.mods.size(), pkgs, (unsigned)disabled,
-                     (unsigned)ctx.disc.skipped.size());
+                     (unsigned)ctx.disc.mods.size(), pkgs, (unsigned)disabled, (unsigned)ctx.disc.skipped.size());
             lg.info(h);
         }
     }
@@ -219,14 +223,12 @@ static void sync_cache(InitCtx& ctx) {
     std::vector<std::pair<std::string, std::string>> pkgs;
     for (auto& m : ctx.disc.mods)
         if (m.packaged) pkgs.emplace_back(m.id.str(), m.source);
-    auto synced =
-        ttmod::sync_package_cache(ttmod_win::join(ctx.gamedir, "ttmod\\cache"), pkgs);
+    auto synced = ttmod::sync_package_cache(ttmod_win::join(ctx.gamedir, "ttmod\\cache"), pkgs);
     if (synced.ok()) {
         ctx.cache = synced.value();
     } else {
         ttmod::Logger lg;
-        if (lg.open(ctx.logpath))
-            lg.info(std::string("[TTMod] cache: sync failed: ") + synced.error().message);
+        if (lg.open(ctx.logpath)) lg.info(std::string("[TTMod] cache: sync failed: ") + synced.error().message);
         return;
     }
     {
@@ -236,15 +238,18 @@ static void sync_cache(InitCtx& ctx) {
     }
 }
 
+static void build_plan(InitCtx& ctx) {
+    // ONE resolution for the whole runtime: discovery + cache in, one
+    // dependency-first plan out. The resource index, the plugin loader and
+    // the menu all read this, so they cannot disagree about what loads.
+    ctx.plan = ttmod::build_plan(ctx.disc, ctx.cache, ttmod::ModPlanOptions{ctx.safe_mode});
+}
+
 static void build_scanned(InitCtx& ctx) {
-    // Uniform entries for both loaders (cache dirs for packages).
-    for (auto& m : ctx.disc.mods) {
-        std::string dir = m.source;
-        if (m.packaged) {
-            auto it = ctx.cache.effective.find(m.id.str());
-            if (it == ctx.cache.effective.end()) continue; // sync failed, logged
-            dir = it->second;
-        }
+    // Uniform entries for both loaders, in the plan's load order (already
+    // dependency-first and deterministic - no re-sorting by id here).
+    for (auto& m : ctx.plan.load_order) {
+        const std::string& dir = m.dir;
         std::string prel = m.manifest.plugin.path.empty() ? "plugin.dll" : m.manifest.plugin.path;
         std::string winrel = ttmod_win::to_win(prel);
         DWORD a = GetFileAttributesA(ttmod_win::join(dir, winrel).c_str());
@@ -269,9 +274,14 @@ static void build_scanned(InitCtx& ctx) {
         }
         ctx.all.push_back({dir, has_dll, m.packaged, has_dll ? prel : "", m.manifest});
     }
-    std::sort(ctx.all.begin(), ctx.all.end(), [](const ttmod_win::ScannedMod& a, const ttmod_win::ScannedMod& b) {
-        return a.manifest.identity.id < b.manifest.identity.id;
-    });
+    {
+        ttmod::Logger lg;
+        if (lg.open(ctx.logpath)) {
+            for (auto& m : ctx.plan.blocked_mods)
+                lg.info("[TTMod] " + m.id.str() + " blocked: " + ctx.plan.blocked_reason(m.id));
+            for (auto& s : ctx.plan.skipped) lg.info("[TTMod] Skipped: " + s);
+        }
+    }
 }
 
 static void init_plugins(const InitCtx& ctx) {
@@ -305,6 +315,7 @@ static DWORD WINAPI InitThread(LPVOID self) {
     discover_mods(ctx);
     safe_mode_gate(ctx);
     sync_cache(ctx);
+    build_plan(ctx);
     build_scanned(ctx);
     init_plugins(ctx);
     init_mods(ctx);

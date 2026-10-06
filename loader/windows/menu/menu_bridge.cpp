@@ -79,9 +79,10 @@ static std::vector<ttmod::MenuModSnapshot> snapshot() {
             s.packaged = mi.packaged != 0;
         }
         s.schema = m.presentation.config;
-        s.values = ttmod::config_effective(
-            m.presentation.config,
-            ttmod::parse_config_file(read_file(g_gamedir + "\\config\\" + m.identity.id.str() + ".json")));
+        // A missing or corrupt config file is not fatal: fall back to
+        // schema defaults (an empty ConfigFile means "no overrides").
+        auto cf = ttmod::parse_config_file(read_file(g_gamedir + "\\config\\" + m.identity.id.str() + ".json"));
+        s.values = ttmod::config_effective(m.presentation.config, cf.ok() ? cf.value() : ttmod::ConfigFile{});
         out.push_back(s);
     }
     return out;
@@ -181,14 +182,14 @@ static int __cdecl fn_set_value(lua_State* L) {
     }
     if (!found || m.presentation.config.empty()) return 0;
     std::string path = g_gamedir + "\\config\\" + std::string(id) + ".json";
-    ttmod::SetValueResult r = ttmod::apply_config_value(m.presentation.config, read_file(path), key, val);
-    if (!r.ok) {
+    auto r = ttmod::apply_config_value(m.presentation.config, read_file(path), key, val);
+    if (!r.ok()) {
         char msg[256];
         snprintf(msg, sizeof msg, "menumods: value rejected %s.%s", id, key);
         emit(msg);
         return 0;
     }
-    if (!write_file(path, r.file_text)) {
+    if (!write_file(path, r.value())) {
         emit(std::string("menumods: config write FAILED for ") + id);
         return 0;
     }
