@@ -40,6 +40,7 @@ set(TTMOD_CORE_SRCS
   core/src/modid.cpp
   core/src/modplan.cpp
   core/src/game_lua.cpp
+  core/src/script_value.cpp
   core/src/uiqueue.cpp
   core/src/theme_color.cpp
   core/src/validate.cpp
@@ -120,6 +121,7 @@ ttmod_add_unit_test(manifest_split tests/unit/test_manifest_split.cpp)
 ttmod_add_unit_test(atomic tests/unit/test_atomic.cpp)
 ttmod_add_unit_test(modplan tests/unit/test_modplan.cpp)
 ttmod_add_unit_test(game_lua tests/unit/test_game_lua.cpp)
+ttmod_add_unit_test(script_value tests/unit/test_script_value.cpp)
 find_program(PYTHON3_BIN python3)
 if(PYTHON3_BIN)
   add_test(NAME lua_dis COMMAND ${PYTHON3_BIN} ${CMAKE_SOURCE_DIR}/tests/lua/test_lua_dis.py)
