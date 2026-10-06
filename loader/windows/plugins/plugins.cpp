@@ -10,7 +10,6 @@
 #include "ttmod/log.hpp"
 #include "ttmod/detect.hpp"
 #include "ttmod/manifest.hpp"
-#include "ttmod/modgraph.hpp"
 #include "ttmod/plugin_api.h"
 #include "events.hpp"
 #include "menu_bridge.hpp"
@@ -29,25 +28,26 @@ static void emit(const std::string& msg) {
     if (log.open(g_logpath)) log.info(msg);
 }
 
-static void host_log(const char* msg) { emit(msg ? msg : "(null)"); }
+static void host_log(const char* msg) {
+    emit(msg ? msg : "(null)");
+}
 
 } // namespace
 
-void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, const char* game,
-                  int season, const char* log_path) {
+void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, const char* game, int season,
+                  const char* log_path) {
     g_logpath = log_path ? log_path : "";
     if (all.empty()) {
         emit("plugins: no mods discovered, skipping");
         return;
     }
-    std::vector<ttmod::ModManifest> present;
-    for (auto& s : all) present.push_back(s.manifest);
-    ttmod::DepResolution dep = ttmod::resolve_dependencies(present);
-    auto blocked_reason = [&](const ttmod::ModId& id) -> const std::string* {
-        for (auto& pr : dep.problems)
-            if (pr.mod == id) return &pr.message;
-        return nullptr;
-    };
+    // `all` is already the surviving, dependency-ordered set produced by the
+    // single ModPlan resolution in framework.cpp: blocked mods are excluded,
+    // order is dependency-first. This loader therefore re-resolves nothing -
+    // it loads what it is given, in the order it is given.
+    // (It used to call resolve_dependencies() itself, which meant the
+    // resource indexer and the plugin loader each decided independently
+    // which mods were loadable.)
 
     // Static lifetime: plugins retain this pointer for async callbacks
     // (a stack instance would dangle after plugins_init returns). The
@@ -58,18 +58,21 @@ void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, co
     static std::string owned_profile, owned_game;
     owned_profile = profile_id ? profile_id : "";
     owned_game = game ? game : "";
-    host = ttmod_host{TTMOD_PLUGIN_API_VERSION, owned_profile.c_str(), owned_game.c_str(), season,
+    host = ttmod_host{TTMOD_PLUGIN_API_VERSION,
+                      owned_profile.c_str(),
+                      owned_game.c_str(),
+                      season,
                       host_log,
-                      ttmod_win::events_subscribe, ttmod_win::events_unsubscribe,
-                      ttmod_win::events_get_state, ttmod_win::mods_menu_count,
-                      ttmod_win::mods_menu_info, ttmod_win::menumods_queue_ui_chunk,
-                      (uint32_t)sizeof(ttmod_host), 0};
+                      ttmod_win::events_subscribe,
+                      ttmod_win::events_unsubscribe,
+                      ttmod_win::events_get_state,
+                      ttmod_win::mods_menu_count,
+                      ttmod_win::mods_menu_info,
+                      ttmod_win::menumods_queue_ui_chunk,
+                      (uint32_t)sizeof(ttmod_host),
+                      0};
     for (auto& s : all) {
         const ttmod::ModManifest& m = s.manifest;
-        if (const std::string* why = blocked_reason(m.identity.id)) {
-            emit("plugins: " + m.identity.id.str() + " rejected (" + *why + ")");
-            continue;
-        }
         if (!s.has_dll) continue; // resource-only; mods loader owns it
         // M11: manifest-declared plugin path (or legacy plugin.dll), arch gate.
         if (m.compat.arch != ttmod::Architecture::Any && m.compat.arch != ttmod::Architecture::X86) {
