@@ -71,6 +71,17 @@ int main() {
     assert(ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"extra\":{\"deep\":[1,{\"k\":null}]}}").ok);
     assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"config\":[{\"key\":\"k\",\"type\":\"int\",\"label\":\"L\",\"default\":1e400}]}").ok);
     assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":-1}").ok);
+    // Runtime declarations (doc §§19-21): parsed, validated, surfaced.
+    {
+        auto mr = ttmod::parse_manifest("{\"id\":\"u\",\"api\":1,\"runtimes\":[\"native\",\"luau\",\"telltale-lua\"],"
+                                        "\"permissions\":[\"game.read\",\"hooks\"]}");
+        assert(mr.ok && mr.runtime.runtimes.size() == 3 && mr.runtime.permissions.size() == 2);
+        assert(!ttmod::parse_manifest("{\"id\":\"u\",\"api\":1,\"runtimes\":[\"ps5\"]}").ok);
+        assert(!ttmod::parse_manifest("{\"id\":\"u\",\"api\":1,\"runtimes\":\"native\"}").ok);
+        assert(!ttmod::parse_manifest("{\"id\":\"u\",\"api\":1,\"permissions\":[\"sudo\"]}").ok);
+        assert(ttmod::parse_manifest("{\"id\":\"u\",\"api\":1}").ok &&
+               ttmod::parse_manifest("{\"id\":\"u\",\"api\":1}").runtime.runtimes.empty());
+    }
     printf("security: validators OK\n");
     return 0;
 }

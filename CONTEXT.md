@@ -29,3 +29,10 @@ Names for the seams. Use these terms exactly; do not invent synonyms.
   MinHook installs. Mismatch installs nothing, game continues.
 - **chunk** — a Lua string the bridge runs on the game state
   (`bridge_run_chunk`: balanced-stack + error-sink).
+- **runtime** — a declared execution environment (`lua`, `luau`,
+  `telltale-lua`, `native`); see `RuntimeSpec`. Declaration only until a
+  TTMod-owned VM exists (ADR-005).
+- **permission** — a declared capability request (`game.read`, `hooks`,
+  …); validated against the §21 allowlist, not enforced (ADR-005).
+- **state registry** — observed identity + role per game Lua state
+  (ADR-006); the game owns every state.

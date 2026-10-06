@@ -111,6 +111,36 @@ ModManifest parse_manifest(const std::string& text) {
     }
     if (!str_array(j, "games", m.compat.games, m.error)) return fail(m.error);
     if (!str_array(j, "conflicts", m.deps.conflicts, m.error)) return fail(m.error);
+    auto rit = j.find("runtimes");
+    if (rit != j.end()) {
+        static const char* known[] = {"lua", "luau", "telltale-lua", "native"};
+        if (!rit->is_array()) return fail("bad runtimes");
+        for (auto& e : *rit) {
+            if (!e.is_string()) return fail("bad runtimes");
+            std::string r = e.get<std::string>();
+            bool okname = false;
+            for (auto* k : known)
+                if (r == k) okname = true;
+            if (!okname) return fail("bad runtimes");
+            m.runtime.runtimes.push_back(r);
+        }
+    }
+    auto pit = j.find("permissions");
+    if (pit != j.end()) {
+        static const char* known[] = {
+            "game.read", "game.write", "game.events", "ui",          "resources", "filesystem.read", "filesystem.write",
+            "mods.read", "mods.write", "game.lua",    "game.memory", "hooks",     "native"};
+        if (!pit->is_array()) return fail("bad permissions");
+        for (auto& e : *pit) {
+            if (!e.is_string()) return fail("bad permissions");
+            std::string r = e.get<std::string>();
+            bool okname = false;
+            for (auto* k : known)
+                if (r == k) okname = true;
+            if (!okname) return fail("bad permissions");
+            m.runtime.permissions.push_back(r);
+        }
+    }
     auto dit = j.find("depends");
     if (dit != j.end()) {
         if (!dit->is_array()) return fail("bad depends");

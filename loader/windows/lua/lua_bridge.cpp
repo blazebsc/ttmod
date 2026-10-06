@@ -3,7 +3,9 @@
 #include <windows.h>
 #include <cstdio>
 #include <cstring>
+#include <mutex>
 #include <string>
+#include <vector>
 
 #include "MinHook.h"
 #include "win32_path.hpp"
@@ -12,7 +14,6 @@
 #include "ttmod/runtime.hpp"
 #include "ttmod/theme_color.hpp"
 #include "ttmod/lua_bridge.hpp"
-#include "ttmod/mcsm1_addrs.hpp"
 #include "ttmod/mcsm1_addrs.hpp"
 #include "ttmod/uiqueue.hpp"
 #include "lua_abi.hpp"
@@ -40,8 +41,8 @@ static GettopFn g_fnGettop = nullptr;
 static TolstringFn g_fnTolstring = nullptr;
 static PushCClosureFn g_fnPushCClosure = nullptr;
 static SetglobalFn g_fnSetglobal = nullptr;
-static lua_State* volatile g_state = nullptr;
-static volatile LONG g_states_seen = 0;
+// Game Lua state registry (see LuaStateInfo below): the game owns every
+// state; g_state/g_states_seen removed in favor of identity + role.
 static volatile LONG g_test_done = 0;
 static volatile LONG g_dead = 0;
 
@@ -61,6 +62,46 @@ static bool tail_matches(const char* path, const char* tail) {
     if (!path || !tail) return false;
     size_t n = strlen(path), m = strlen(tail);
     return n >= m && strcmp(path + n - m, tail) == 0;
+}
+
+// Game Lua state registry (doc §57): identity + role + lifecycle. The game
+// owns every state; this only observes. Role is inferred from the scripts
+// a state loads (Menu.lua -> menu, engine boots -> engine) and logged once.
+struct LuaStateInfo {
+    lua_State* L = nullptr;
+    int order = 0;    // capture sequence, 1-based
+    std::string role; // "unknown" | "engine" | "menu"
+    int scripts_seen = 0;
+};
+static std::mutex g_states_mtx;
+static std::vector<LuaStateInfo> g_states;
+
+static void note_script_on_state(lua_State* L, const char* filename) {
+    if (!L || !filename) return;
+    std::lock_guard<std::mutex> lock(g_states_mtx);
+    for (auto& s : g_states) {
+        if (s.L != L) continue;
+        ++s.scripts_seen;
+        if (s.role != "unknown") return;
+        const char* role = nullptr;
+        if (tail_matches(filename, "Menu.lua")) role = "menu";
+        else {
+            for (auto* t : {"_engine.lua", "EngineTypes.lua", "StoryBoardTracker.lua"}) {
+                size_t n = strlen(t), m = strlen(filename);
+                if (m >= n && strcmp(filename + m - n, t) == 0) {
+                    role = "engine";
+                    break;
+                }
+            }
+        }
+        if (role) {
+            s.role = role;
+            char m[128];
+            snprintf(m, sizeof m, "lua: state #%d identified as %s (%s)", s.order, role, filename);
+            emit(m);
+        }
+        return;
+    }
 }
 
 // Native color-setter hook addresses. The UI region unpacks progressively,
@@ -198,6 +239,7 @@ static int __cdecl hook_loadresource(lua_State* L, char* filename) {
         snprintf(m, sizeof m, "lua: loadresource #%ld %s", (long)g_loadlog, filename ? filename : "?");
         emit(m);
     }
+    note_script_on_state(L, filename);
     // Plugin chunk queue (v5): drained on the game's script thread right
     // after the script load, on that state. Before the Menu.lua branch so
     // observe-only mode (TTMOD_LUA_LRCHUNK=0) still drains plugin chunks.
@@ -390,11 +432,17 @@ static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* col
 static lua_State* __cdecl hook_lua_newstate(lua_Alloc alloc, void* ud) {
     lua_State* L = g_origNewstate(alloc, ud);
     if (!L || g_dead) return L;
-    InterlockedExchangePointer((PVOID volatile*)&g_state, L);
-    LONG n = InterlockedIncrement(&g_states_seen);
-    if (n == 1) {
-        emit("lua: lua_newstate observed, live state captured");
-        stage(g_logpath.c_str(), "lua_newstate observed");
+    {
+        std::lock_guard<std::mutex> lock(g_states_mtx);
+        LuaStateInfo info;
+        info.L = L;
+        info.order = (int)g_states.size() + 1;
+        info.role = "unknown";
+        g_states.push_back(info);
+        if (g_states.size() == 1) {
+            emit("lua: lua_newstate observed, live state captured");
+            stage(g_logpath.c_str(), "lua_newstate observed");
+        }
     }
     // One-shot proof on the fresh state, on this same game thread.
     if (InterlockedCompareExchange(&g_test_done, 1, 0) == 0 && g_fnLoadstring && g_fnPcallk && g_fnGettop) {
@@ -537,7 +585,8 @@ void lua_bridge_init(const char* profile_id, const char* log_path) {
 
 void lua_bridge_shutdown() {
     InterlockedExchange(&g_dead, 1);
-    InterlockedExchangePointer((PVOID volatile*)&g_state, nullptr);
+    std::lock_guard<std::mutex> lock(g_states_mtx);
+    g_states.clear();
 }
 
 } // namespace ttmod_win

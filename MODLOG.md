@@ -347,3 +347,13 @@ awk '/TTMod framework v/{buf=""} {buf=buf $0 "\n"} END{printf "%s",buf}' logs/tt
   index. Compatibility matrix already existed (docs/games/).
   Deferred: ABI plugin live-game test, dual-state test, integration/
   dir, Runtime object, profiles/ dir, render white-datum hunt.
+
+## 2026-10-06 modding architecture doc (grounded slice)
+
+- Implemented from TTMOD_MODDING_ARCHITECTURE.md: manifest
+  `runtimes`+`permissions` declarations (strict allowlists, CLI
+  display, tests); game Lua state registry (identity/role/lifecycle
+  observation); fixed stray "d" runtime identifier in §20.
+- Deferred with ADRs: TTMod-owned VM/Luau + enforcement + mod-to-mod
+  services (ADR-005, no demanding mod); destroyed-state tracking.
+  The doc stays Proposed; this ships its pluggable subset.

@@ -36,6 +36,16 @@ static void print_packinfo(const std::string& path) {
         for (auto& c : m.deps.conflicts) std::printf(" %s", c.c_str());
         std::printf("\n");
     }
+    if (!m.runtime.runtimes.empty()) {
+        std::printf("runtimes:");
+        for (auto& r : m.runtime.runtimes) std::printf(" %s", r.c_str());
+        std::printf("\n");
+    }
+    if (!m.runtime.permissions.empty()) {
+        std::printf("permissions:");
+        for (auto& r : m.runtime.permissions) std::printf(" %s", r.c_str());
+        std::printf("\n");
+    }
     for (auto& f : v.files)
         std::printf("  %s (%llu)\n", f.name.c_str(), (unsigned long long)f.size);
 }

@@ -51,6 +51,16 @@ struct ModPresentation {
     std::string description;
     std::vector<ConfigOption> config;
 };
+// Declared execution environments + requested permissions (doc §§19-21).
+// Parsed and validated here; enforcement belongs to the runtimes that
+// don't exist yet (TTMod VM) or the game boundary. Unknown names are
+// rejected: permissions are a security boundary, not a hint.
+struct RuntimeSpec {
+    // Subset of: "lua", "luau", "telltale-lua", "native". Empty = unspecified.
+    std::vector<std::string> runtimes;
+    // Subset of the §21 list (game.read, hooks, ...). Empty = none requested.
+    std::vector<std::string> permissions;
+};
 struct ModManifest {
     bool ok = false;
     ModIdentity identity;
@@ -59,6 +69,7 @@ struct ModManifest {
     OverrideSpec overrides;
     PluginSpec plugin;
     ModPresentation presentation;
+    RuntimeSpec runtime;
     bool enabled = true;
     // Package format version (default 1 when absent).
     int package_format = 1;
