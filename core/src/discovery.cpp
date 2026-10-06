@@ -80,18 +80,18 @@ Discovery discover_mods(const std::string& mods_dir, const ModState& state, cons
             ModManifest m = pm.value();
             cands.push_back({m.identity.id, src.path, mt, false});
         } else {
-            PackView v = inspect_package(src.path);
-            if (!v.ok) {
-                d.skipped.push_back(src.name + ": invalid package: " + v.error);
+            auto insp = inspect_package(src.path);
+            if (!insp.ok()) {
+                d.skipped.push_back(src.name + ": invalid package: " + insp.error().message);
                 continue;
             }
-            Result<ModManifest> pm = parse_manifest(v.manifest_text);
+            Result<ModManifest> pm = parse_manifest(insp.value().manifest_text);
             if (!pm.ok()) { // inspect already validated; defensive
                 d.invalid.push_back({src.path, src.name + ": invalid manifest: " + pm.error().message});
                 continue;
             }
             ModManifest m = pm.value();
-            cands.push_back({m.identity.id, src.path, v.manifest_text, true});
+            cands.push_back({m.identity.id, src.path, insp.value().manifest_text, true});
         }
     }
     // Validate api/game, apply state, dedupe (unpacked dir beats package).

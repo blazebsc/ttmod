@@ -9,10 +9,6 @@
 int cmd_map(int argc, char** argv) {
     if (argc != 1) return cmd_usage();
     auto m = ttmod::map_boot_log(ttmod::file_io::read_all(argv[0]));
-    if (!m.ok) {
-        std::puts("cannot parse log");
-        return 1;
-    }
     std::printf("opens: %d\nby category:", m.total);
     for (auto& [k, v] : m.by_category) std::printf(" %s=%d", k.c_str(), v);
     std::printf("\nby ext:");

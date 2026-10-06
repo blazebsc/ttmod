@@ -168,8 +168,8 @@ static void read_modstate(InitCtx& ctx) {
             size_t r;
             while ((r = fread(b, 1, sizeof b, f)) > 0) t.append(b, r);
             fclose(f);
-            ttmod::StateFile sf = ttmod::parse_state(t);
-            if (sf.ok) ctx.state = sf.state;
+            auto sf = ttmod::parse_state(t);
+            if (sf.ok()) ctx.state = sf.value();
         }
     }
 }
@@ -219,8 +219,16 @@ static void sync_cache(InitCtx& ctx) {
     std::vector<std::pair<std::string, std::string>> pkgs;
     for (auto& m : ctx.disc.mods)
         if (m.packaged) pkgs.emplace_back(m.id, m.source);
-    ctx.cache =
+    auto synced =
         ttmod::sync_package_cache(ttmod_win::join(ctx.gamedir, "ttmod\\cache"), pkgs);
+    if (synced.ok()) {
+        ctx.cache = synced.value();
+    } else {
+        ttmod::Logger lg;
+        if (lg.open(ctx.logpath))
+            lg.info(std::string("[TTMod] cache: sync failed: ") + synced.error().message);
+        return;
+    }
     {
         ttmod::Logger lg;
         if (lg.open(ctx.logpath))

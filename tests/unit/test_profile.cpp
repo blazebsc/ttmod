@@ -21,16 +21,17 @@ int main() {
         img[0x48] = 0x5D;
         img[0x58] = 0x0B;
         img[0x59] = 0x01; // PE32
-        auto h = ttmod::parse_pe_bytes(
+        auto hr = ttmod::parse_pe_bytes(
             std::span<const std::byte>((const std::byte*)img, sizeof img));
-        assert(h.ok && h.machine == 0x014C && h.num_sections == 6 && h.opt_magic == 0x10B);
-        assert(!h.path.empty() == false); // bytes form carries no path/identity
+        assert(hr.ok());
+        auto h = hr.value();
+        assert(h.machine == 0x014C && h.num_sections == 6 && h.opt_magic == 0x10B);
+        assert(h.path.empty()); // bytes form carries no path/identity
         uint8_t bad[512] = {};
-        assert(!ttmod::parse_pe_bytes(std::span<const std::byte>((const std::byte*)bad, 10)).ok);
+        assert(!ttmod::parse_pe_bytes(std::span<const std::byte>((const std::byte*)bad, 10)).ok());
     }
     // Known MCSM1 build selects supported profile (identity incl. FNV)
     ttmod::ExeInfo known;
-    known.ok = true;
     known.machine = 0x014C;
     known.timestamp = 1463779093u;
     known.file_size = 12179904ull;
@@ -62,17 +63,14 @@ int main() {
 
     // Unknown x86 stays unknown, x64 is explicitly not-implemented
     ttmod::ExeInfo other;
-    other.ok = true;
     other.machine = 0x014C;
     other.timestamp = 1;
     other.file_size = 2;
     assert(std::string(ttmod::select_profile(other).id) == "unknown");
     ttmod::ExeInfo x64;
-    x64.ok = true;
     x64.machine = 0x8664;
     assert(ttmod::select_profile(x64).status == ttmod::ProfileStatus::DefinedNotImplemented);
     ttmod::ExeInfo bad;
-    bad.ok = false;
     assert(std::string(ttmod::select_profile(bad).id) == "unknown");
 
     // Logger writes expected lines

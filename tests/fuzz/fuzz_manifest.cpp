@@ -8,11 +8,9 @@
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     if (size > 65536) return 0;
     std::string input((const char*)data, size);
-    ttmod::ModManifest m = ttmod::parse_manifest(input);
-    (void)m.ok;
-    std::vector<ttmod::ConfigOption> schema;
-    std::string err;
-    (void)ttmod::parse_config_schema(input, schema, err);
+    auto m = ttmod::parse_manifest(input);
+    (void)m.ok();
+    (void)ttmod::parse_config_schema(input);
     (void)ttmod::parse_config_file(input);
     return 0;
 }

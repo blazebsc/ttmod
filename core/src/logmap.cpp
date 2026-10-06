@@ -31,14 +31,12 @@ void logmap_feed(LogMap& m, const std::string& normalized_path) {
 
 LogMap map_from_paths(const std::vector<std::string>& normalized_paths) {
     LogMap m;
-    m.ok = true;
     for (auto& p : normalized_paths) logmap_feed(m, p);
     return m;
 }
 
 LogMap map_boot_log(const std::string& log_text) {
     LogMap m;
-    m.ok = true;
     size_t pos = 0;
     while (true) {
         size_t f = log_text.find("CreateFileW#", pos);

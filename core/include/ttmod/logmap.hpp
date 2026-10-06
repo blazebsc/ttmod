@@ -18,8 +18,6 @@ namespace ttmod {
 // single decision the live tracker applies. Live code must prefer
 // map_from_paths()/logmap_feed() and never grep logs.
 struct LogMap {
-    bool ok = false;
-    std::string error;
     int total = 0;
     std::map<std::string, int> by_ext; // ".lua" -> 153 (lowercased, with dot)
     std::map<std::string, int> by_category; // resdesc/archive/other/save

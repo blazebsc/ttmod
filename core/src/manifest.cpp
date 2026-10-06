@@ -70,10 +70,10 @@ Result<ModManifest> parse_manifest(const std::string& text) {
     };
     if (text.size() > 1024 * 1024)
         return fail("manifest too large", "limit");
-    json j;
-    std::string perr;
-    if (!parse_json_value(text, j, perr) || !j.is_object())
-        return fail(perr.empty() ? "not an object" : perr, "syntax");
+    auto parsed = parse_json_value(text);
+    if (!parsed.ok() || !parsed.value().is_object())
+        return fail(!parsed.ok() ? parsed.error().message : "not an object", "syntax");
+    json j = parsed.value();
     if (!req_str(j, "id", m.identity.id, error)) return fail(error);
     if (!is_valid_mod_id(m.identity.id)) return fail("bad id");
     auto vit = j.find("version");
@@ -162,7 +162,9 @@ Result<ModManifest> parse_manifest(const std::string& text) {
         if (!cit->is_array()) return fail("bad config");
         std::string raw = cit->dump();
         std::string cerr;
-        if (!parse_config_schema(raw, m.presentation.config, cerr)) return fail(std::string("bad config: ") + cerr);
+        auto schema = parse_config_schema(raw);
+        if (!schema.ok()) return fail(std::string("bad config: ") + schema.error().message);
+        m.presentation.config = schema.value();
     }
     // Unknown fields are skipped (additive optional fields only).
     return Result<ModManifest>::ok(std::move(m));

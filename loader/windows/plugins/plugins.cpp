@@ -77,8 +77,8 @@ void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, co
             continue;
         }
         std::string dllpath = join(s.dir, s.plugin_rel);
-        ttmod::ExeInfo pe = ttmod::parse_pe(dllpath);
-        if (!pe.ok || pe.machine != 0x014C) {
+        auto pe = ttmod::parse_pe(dllpath);
+        if (!pe.ok() || pe.value().machine != 0x014C) {
             emit("plugins: " + m.identity.id + " rejected (plugin is not x86 PE)");
             continue;
         }

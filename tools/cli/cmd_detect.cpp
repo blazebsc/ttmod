@@ -8,11 +8,12 @@
 
 int cmd_detect(int argc, char** argv) {
     if (argc != 1) return cmd_usage();
-    ttmod::ExeInfo e = ttmod::parse_pe(argv[0]);
-    if (!e.ok) {
-        std::printf("NOT-PE: %s\n", e.error.c_str());
+    auto parsed = ttmod::parse_pe(argv[0]);
+    if (!parsed.ok()) {
+        std::printf("NOT-PE: %s\n", parsed.error().message.c_str());
         return 1;
     }
+    ttmod::ExeInfo e = parsed.value();
     ttmod::GameProfile p = ttmod::select_profile(e);
     std::printf("size: %llu\nmachine: 0x%04X (%s)\ntimestamp: %u\nfnv1a64: 0x%016llX\n"
                 "profile: %s game=%s season=%d status=%s\n",

@@ -143,20 +143,20 @@ int main() {
     tzset();
 #endif
     setup_src();
-    std::string err;
     std::string src = std::string(kDir) + "/src";
     std::string p1 = std::string(kDir) + "/a.ttmod";
     std::string p2 = std::string(kDir) + "/b.ttmod";
 
     // Valid create + inspect (junk excluded)
-    assert(ttmod::create_package(src, p1, err));
-    auto v = ttmod::inspect_package(p1);
-    assert(v.ok);
+    assert(ttmod::create_package(src, p1).ok());
+    auto insp = ttmod::inspect_package(p1);
+    assert(insp.ok());
+    auto v = insp.value();
     assert(v.files.size() == 2); // files/a.txt + plugins/p.dll (.git/build out)
     assert(!v.manifest_text.empty());
 
     // Deterministic bytes
-    assert(ttmod::create_package(src, p2, err));
+    assert(ttmod::create_package(src, p2).ok());
     FILE *f1 = fopen(p1.c_str(), "rb"), *f2 = fopen(p2.c_str(), "rb");
     assert(f1 && f2);
     std::string d1, d2;
@@ -169,7 +169,7 @@ int main() {
     assert(d1 == d2);
 
     // Extract round-trip
-    assert(ttmod::extract_package(p1, std::string(kDir) + "/out", err));
+    assert(ttmod::extract_package(p1, std::string(kDir) + "/out").ok());
     FILE* fa = fopen((std::string(kDir) + "/out/files/a.txt").c_str(), "rb");
     assert(fa);
     char ab[16] = {};
@@ -177,42 +177,42 @@ int main() {
     fclose(fa);
     assert(std::string(ab) == "hello mod");
     // Non-empty dest refused
-    assert(!ttmod::extract_package(p1, std::string(kDir) + "/out", err));
+    assert(!ttmod::extract_package(p1, std::string(kDir) + "/out").ok());
 
     // Adversarial: traversal / absolute / drive / dup / missing manifest
     wzip(std::string(kDir) + "/evil1.ttmod",
          raw_pkg({{"manifest.json", kManifest}, {"../evil", "x"}}));
-    assert(!ttmod::inspect_package(std::string(kDir) + "/evil1.ttmod").ok);
+    assert(!ttmod::inspect_package(std::string(kDir) + "/evil1.ttmod").ok());
     wzip(std::string(kDir) + "/evil2.ttmod",
          raw_pkg({{"manifest.json", kManifest}, {"C:/evil", "x"}}));
-    assert(!ttmod::inspect_package(std::string(kDir) + "/evil2.ttmod").ok);
+    assert(!ttmod::inspect_package(std::string(kDir) + "/evil2.ttmod").ok());
     wzip(std::string(kDir) + "/evil3.ttmod",
          raw_pkg({{"manifest.json", kManifest}, {"files/A.txt", "x"}, {"files/a.txt", "y"}}));
-    assert(!ttmod::inspect_package(std::string(kDir) + "/evil3.ttmod").ok); // casefold dup
+    assert(!ttmod::inspect_package(std::string(kDir) + "/evil3.ttmod").ok()); // casefold dup
     wzip(std::string(kDir) + "/evil4.ttmod", raw_pkg({{"files/a.txt", "x"}}));
-    assert(!ttmod::inspect_package(std::string(kDir) + "/evil4.ttmod").ok); // no manifest
+    assert(!ttmod::inspect_package(std::string(kDir) + "/evil4.ttmod").ok()); // no manifest
     wzip(std::string(kDir) + "/evil5.ttmod", raw_pkg({{"manifest.json", kManifest}}));
-    assert(!ttmod::inspect_package(std::string(kDir) + "/evil5.ttmod").ok); // declared file missing
+    assert(!ttmod::inspect_package(std::string(kDir) + "/evil5.ttmod").ok()); // declared file missing
     // Symlink entry rejected (unix mode S_IFLNK)
     wzip(std::string(kDir) + "/evil6.ttmod",
          raw_pkg({{"manifest.json", kManifest}, {"files/a.txt", "x"}, {"link", "target"}},
                  {{"link", 0120000u << 16}}));
-    assert(!ttmod::inspect_package(std::string(kDir) + "/evil6.ttmod").ok);
+    assert(!ttmod::inspect_package(std::string(kDir) + "/evil6.ttmod").ok());
     // Truncated archive refused
     wzip(std::string(kDir) + "/evil7.ttmod", d1.substr(0, d1.size() / 2));
-    assert(!ttmod::inspect_package(std::string(kDir) + "/evil7.ttmod").ok);
+    assert(!ttmod::inspect_package(std::string(kDir) + "/evil7.ttmod").ok());
     // Future package format refused at manifest level
     wzip(std::string(kDir) + "/evil8.ttmod",
          raw_pkg({{"manifest.json",
                    "{\"id\":\"x\",\"api\":1,\"package_format\":99,\"files\":{}}"}}));
-    assert(!ttmod::inspect_package(std::string(kDir) + "/evil8.ttmod").ok);
+    assert(!ttmod::inspect_package(std::string(kDir) + "/evil8.ttmod").ok());
     // Absurd depth rejected
     std::string deep = "files";
     for (int i = 0; i < 40; ++i) deep += "/d";
     deep += "/x.txt";
     wzip(std::string(kDir) + "/evil9.ttmod",
          raw_pkg({{"manifest.json", kManifest}, {deep, "x"}}));
-    assert(!ttmod::inspect_package(std::string(kDir) + "/evil9.ttmod").ok);
+    assert(!ttmod::inspect_package(std::string(kDir) + "/evil9.ttmod").ok());
 
     std::puts("package: all asserts passed");
     return 0;

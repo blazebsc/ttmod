@@ -8,18 +8,16 @@
 #include <set>
 #include <string>
 #include <vector>
+#include "ttmod/result.hpp"
 
 namespace ttmod {
 
 using json = nlohmann::ordered_json;
 
-// Parse strictly into out. False + error on malformed input, trailing
-// garbage, oversize input, or any duplicate object key.
-inline bool parse_json_value(const std::string& text, json& out, std::string& error) {
-    if (text.size() > 1024 * 1024) {
-        error = "input too large";
-        return false;
-    }
+// Parse strictly. Failure carries operation "parse-json".
+inline Result<json> parse_json_value(const std::string& text) {
+    if (text.size() > 1024 * 1024)
+        return Result<json>::fail(Error{"parse-json", "", errcat::kLimit, "input too large"});
     std::vector<std::set<std::string>> stack;
     int depth = -1;
     bool dup = false;
@@ -43,17 +41,15 @@ inline bool parse_json_value(const std::string& text, json& out, std::string& er
         }
         return true;
     };
+    json out;
     try {
         out = json::parse(text, cb);
     } catch (const json::exception& e) {
-        error = e.what();
-        return false;
+        return Result<json>::fail(Error{"parse-json", "", errcat::kSyntax, e.what()});
     }
-    if (dup) {
-        error = "duplicate object key";
-        return false;
-    }
-    return true;
+    if (dup)
+        return Result<json>::fail(Error{"parse-json", "", errcat::kDuplicate, "duplicate object key"});
+    return Result<json>::ok(std::move(out));
 }
 
 } // namespace ttmod

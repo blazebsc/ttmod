@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include "ttmod/manifest.hpp" // kPackageFormat
+#include "ttmod/result.hpp"
 
 namespace ttmod {
 
@@ -15,8 +16,6 @@ struct PackEntry {
 };
 
 struct PackView {
-    bool ok = false;
-    std::string error;
     std::string manifest_text; // raw manifest.json bytes
     std::vector<PackEntry> files; // validated regular files (excl. manifest)
 };
@@ -26,15 +25,15 @@ struct PackView {
 // special files, exactly one root manifest.json (case-insensitive dup
 // detection), normalized-name dedupe, and (against the parsed manifest)
 // presence of every declared files{} target + plugin path.
-PackView inspect_package(const std::string& path);
+Result<PackView> inspect_package(const std::string& path);
 
 // Extract a validated package into dest_dir (created if missing; must be
 // empty or nonexistent). Re-validates during extraction; cleans up on error.
-bool extract_package(const std::string& path, const std::string& dest_dir, std::string& error);
+Result<void> extract_package(const std::string& path, const std::string& dest_dir);
 
 // Create a deterministic package from a source mod dir. Entry order sorted,
-// fixed timestamp, fixed compression level. Returns false + error on any
-// problem (missing manifest, unsafe names, IO error).
-bool create_package(const std::string& src_dir, const std::string& out_path, std::string& error);
+// fixed timestamp, fixed compression level. Failure carries a structured
+// Error (missing manifest, unsafe names, IO error).
+Result<void> create_package(const std::string& src_dir, const std::string& out_path);
 
 } // namespace ttmod

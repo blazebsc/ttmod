@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <string>
+#include "ttmod/result.hpp"
 
 namespace ttmod {
 
@@ -10,8 +11,6 @@ namespace ttmod {
 // references). Observed on MCSM1 (MCSM_pc_Boot_data.ttarch2):
 //   magic "ZCTT", u16[4]={0,1,3,0}, u64-ish {44,1171,12530}, 16-byte tag.
 struct Ttarch2Header {
-    bool ok = false;
-    std::string error;
     char magic[4] = {};
     uint16_t w[4] = {};
     uint64_t q[3] = {};
@@ -19,6 +18,6 @@ struct Ttarch2Header {
     uint64_t file_size = 0;
 };
 
-Ttarch2Header inspect_ttarch2(const std::string& path);
+Result<Ttarch2Header> inspect_ttarch2(const std::string& path);
 
 } // namespace ttmod

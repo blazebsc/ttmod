@@ -8,11 +8,13 @@ int main(int argc, char** argv) {
         std::printf("Usage: ttmod-detect <exe>\n");
         return 2;
     }
-    ttmod::ExeInfo e = ttmod::parse_pe(argv[1]);
-    if (!e.ok) {
-        std::printf("NOT-PE: %s\n", e.error.c_str());
+    ttmod::ExeInfo e;
+    auto parsed = ttmod::parse_pe(argv[1]);
+    if (!parsed.ok()) {
+        std::printf("NOT-PE: %s\n", parsed.error().message.c_str());
         return 1;
     }
+    e = parsed.value();
     std::printf("path: %s\n", e.path.c_str());
     std::printf("size: %llu\n", (unsigned long long)e.file_size);
     std::printf("machine: 0x%04X (%s)\n", e.machine, ttmod::arch_name(e.machine));

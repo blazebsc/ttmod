@@ -95,8 +95,11 @@ struct P {
 
 } // namespace
 
-StateFile parse_state(const std::string& text) {
-    StateFile f;
+Result<ModState> parse_state(const std::string& text) {
+    ModState st;
+    auto fail = [&](const std::string& msg) {
+        return Result<ModState>::fail(Error{"parse-state", "", errcat::kSyntax, msg});
+    };
     P p{text.data(), text.data() + text.size()};
     p.ws();
     if (!p.lit('{')) {
@@ -104,26 +107,20 @@ StateFile parse_state(const std::string& text) {
         bool blank = true;
         for (char c : text)
             if (!isspace((unsigned char)c)) blank = false;
-        if (blank) return f;
-        f.ok = false;
-        f.error = "not an object";
-        return f;
+        if (blank) return Result<ModState>::ok(std::move(st));
+        return fail("not an object");
     }
     bool first = true;
     while (true) {
         p.ws();
         if (p.s < p.end && *p.s == '}') break;
         if (!first && !p.lit(',')) {
-            f.ok = false;
-            f.error = "expected ,";
-            return f;
+            return fail("expected ,");
         }
         first = false;
         std::string id;
         if (!p.str(id) || !p.lit(':') || !p.lit('{')) {
-            f.ok = false;
-            f.error = "bad entry";
-            return f;
+            return fail("bad entry");
         }
         bool enabled = true, seen = false;
         while (true) {
@@ -134,9 +131,7 @@ StateFile parse_state(const std::string& text) {
             }
             std::string k;
             if (!p.str(k) || !p.lit(':')) {
-                f.ok = false;
-                f.error = "bad field";
-                return f;
+                return fail("bad field");
             }
             if (k == "enabled") {
                 p.ws();
@@ -149,14 +144,10 @@ StateFile parse_state(const std::string& text) {
                     enabled = false;
                     seen = true;
                 } else {
-                    f.ok = false;
-                    f.error = "enabled not bool";
-                    return f;
+                    return fail("enabled not bool");
                 }
             } else if (!p.skip()) {
-                f.ok = false;
-                f.error = "bad value";
-                return f;
+                return fail("bad value");
             }
             p.ws();
             if (p.lit(',')) continue;
@@ -164,13 +155,11 @@ StateFile parse_state(const std::string& text) {
                 ++p.s;
                 break;
             }
-            f.ok = false;
-            f.error = "entry unterminated";
-            return f;
+            return fail("entry unterminated");
         }
-        if (seen) f.state.overrides[id] = enabled;
+        if (seen) st.overrides[id] = enabled;
     }
-    return f;
+    return Result<ModState>::ok(std::move(st));
 }
 
 } // namespace ttmod

@@ -6,12 +6,14 @@
 
 namespace ttmod {
 
-Ttarch2Header inspect_ttarch2(const std::string& path) {
+Result<Ttarch2Header> inspect_ttarch2(const std::string& path) {
     Ttarch2Header h;
+    auto fail = [&](const std::string& msg, const char* cat) {
+        return Result<Ttarch2Header>::fail(Error{"inspect-ttarch2", path, cat, msg});
+    };
     FILE* f = ttmod::file_io::open_read(path);
     if (!f) {
-        h.error = "cannot open";
-        return h;
+        return fail("cannot open", errcat::kIO);
     }
     uint8_t buf[64] = {};
     size_t n = fread(buf, 1, sizeof buf, f);
@@ -24,12 +26,10 @@ Ttarch2Header inspect_ttarch2(const std::string& path) {
         fclose(f);
     }
     if (n < 64) {
-        h.error = "too small for header";
-        return h;
+        return fail("too small for header", errcat::kRange);
     }
     if (memcmp(buf, "ZCTT", 4) != 0) {
-        h.error = "bad magic (not TTARCH2)";
-        return h;
+        return fail("bad magic (not TTARCH2)", errcat::kSyntax);
     }
     memcpy(h.magic, buf, 4);
     for (int i = 0; i < 4; ++i) h.w[i] = (uint16_t)(buf[4 + i * 2] | (buf[5 + i * 2] << 8));
@@ -40,8 +40,7 @@ Ttarch2Header inspect_ttarch2(const std::string& path) {
     }
     memcpy(h.tag, buf + 36, 16);
     // u64 interpretation requires the high halves zero (observed); else Unknown.
-    h.ok = true;
-    return h;
+    return Result<Ttarch2Header>::ok(std::move(h));
 }
 
 } // namespace ttmod

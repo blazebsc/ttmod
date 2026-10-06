@@ -15,13 +15,14 @@ std::vector<Listed> scan_mods_dir(const std::string& gamedir) {
     std::string mods = (fs::path(gamedir) / "mods").string();
     for (auto& src : ttmod::scan_mod_sources(mods)) {
         if (src.kind == ttmod::ModSourceKind::Package) {
-            auto v = ttmod::inspect_package(src.path);
-            if (!v.ok) {
+            auto insp = ttmod::inspect_package(src.path);
+            if (!insp.ok()) {
                 ttmod::ModManifest bad;
-                out.push_back({"?", "?", src.name + " [INVALID: " + v.error + "]", "", bad, false});
+                out.push_back(
+                    {"?", "?", src.name + " [INVALID: " + insp.error().message + "]", "", bad, false});
                 continue;
             }
-            auto pm = ttmod::parse_manifest(v.manifest_text);
+            auto pm = ttmod::parse_manifest(insp.value().manifest_text);
             if (!pm.ok()) continue; // inspect validated; defensive
             auto m = pm.value();
             out.push_back({m.identity.id, m.identity.version, src.name, "", m});
@@ -48,7 +49,7 @@ ttmod::ModState load_state(const std::string& gamedir) {
     ttmod::ModState st;
     std::string p = (fs::path(gamedir) / "config" / "mods.json").string();
     auto f = ttmod::parse_state(ttmod::file_io::read_all(p));
-    if (f.ok) st = f.state;
+    if (f.ok()) st = f.value();
     return st;
 }
 

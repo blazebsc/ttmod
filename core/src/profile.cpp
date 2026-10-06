@@ -7,7 +7,6 @@
 namespace ttmod {
 
 GameProfile select_profile(const ExeInfo& e) {
-    if (!e.ok) return GameProfile{};
     // MCSM1 builds. Identity = size + timestamp + FNV-1a64 (size+timestamp
     // alone CONFUSES crack-patched variants, e.g. CODEX). SHA256 pinned in
     // docs/games/mcsm1.md. Only the byte-exact known build is "supported";
@@ -24,7 +23,6 @@ GameProfile select_profile(const ExeInfo& e) {
 
 GameMatch match_game(const ExeInfo& e) {
     GameMatch m;
-    if (!e.ok) return m;
     const bool mcsm1_shape =
         e.machine == 0x014C && e.timestamp == 1463779093u && e.opt_magic == 0x10B;
     m.fnv1a64 = e.fnv1a64;
@@ -85,11 +83,13 @@ GameProfile init_from_exe(const std::string& exe_path, const std::string& log_pa
     GameProfile unknown;
     if (!log.open(log_path)) return unknown;
     log.info(std::string("TTMod framework v") + kVersion + " starting");
-    ExeInfo e = parse_pe(exe_path);
-    if (!e.ok) {
-        log.error(std::string("detect failed: ") + e.error);
+    ExeInfo e;
+    auto parsed = parse_pe(exe_path);
+    if (!parsed.ok()) {
+        log.error(std::string("detect failed: ") + parsed.error().message);
         return unknown;
     }
+    e = parsed.value();
     GameProfile prof = select_profile(e);
     log.info(std::string("Detected executable: ") + exe_path);
     char arch[64];

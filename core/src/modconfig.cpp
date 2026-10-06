@@ -30,26 +30,26 @@ bool valid_color(const std::string& s) {
 
 } // namespace
 
-bool parse_config_schema(const std::string& json, std::vector<ConfigOption>& out,
-                         std::string& error) {
+Result<std::vector<ConfigOption>> parse_config_schema(const std::string& text) {
     // Strict: top-level array of objects; unknown keys skipped (additive
     // schema); duplicate keys rejected (see parse_manifest policy).
-    nlohmann::ordered_json j;
-    if (!parse_json_value(json, j, error) || !j.is_array()) {
-        error = "config not array";
-        return false;
-    }
+    std::vector<ConfigOption> out;
+    auto fail = [](const std::string& e) { return Result<std::vector<ConfigOption>>::fail(
+                                                 Error{"parse-config-schema", "", "manifest", e}); };
+    auto parsed = parse_json_value(text);
+    if (!parsed.ok() || !parsed.value().is_array()) return fail("config not array");
+    json j = parsed.value();
     for (auto& e : j) {
         if (!e.is_object()) {
-            error = "config entry not object";
-            return false;
+            return fail("config entry not object");
         }
         ConfigOption o;
+        std::string why;
         auto get_str = [&](const char* k, std::string& dst, bool& have) {
             auto it = e.find(k);
             if (it == e.end()) return true;
             if (!it->is_string() || it->get<std::string>().empty()) {
-                error = std::string("bad ") + k;
+                why = std::string("bad ") + k;
                 return false;
             }
             dst = it->get<std::string>();
@@ -59,53 +59,48 @@ bool parse_config_schema(const std::string& json, std::vector<ConfigOption>& out
         bool have_key = false, have_type = false, have_label = false;
         if (!get_str("key", o.key, have_key) || !get_str("type", o.type, have_type) ||
             !get_str("label", o.label, have_label))
-            return false;
+            return fail(why);
         if (!have_key || !have_type || !have_label) {
-            error = "entry missing key/type/label";
-            return false;
+            return fail("entry missing key/type/label");
         }
         if (!valid_type(o.type)) {
-            error = "bad type";
-            return false;
+            return fail("bad type");
         }
         auto num = [&](const char* k, double& dst, bool& has) {
             auto it = e.find(k);
             if (it == e.end()) return true;
             if (!it->is_number()) {
-                error = std::string("bad ") + k;
+                why = std::string("bad ") + k;
                 return false;
             }
             dst = it->get<double>();
             if (!std::isfinite(dst)) {
-                error = std::string("bad ") + k;
+                why = std::string("bad ") + k;
                 return false;
             }
             has = true;
             return true;
         };
         bool hm = false, hx = false, hs = false;
-        if (!num("min", o.min_val, hm)) return false;
+        if (!num("min", o.min_val, hm)) return fail(why);
         o.has_min = hm;
-        if (!num("max", o.max_val, hx)) return false;
+        if (!num("max", o.max_val, hx)) return fail(why);
         o.has_max = hx;
-        if (!num("step", o.step, hs)) return false;
+        if (!num("step", o.step, hs)) return fail(why);
         auto oit = e.find("options");
         if (oit != e.end()) {
             if (!oit->is_array()) {
-                error = "options not array";
-                return false;
+                return fail("options not array");
             }
             for (auto& v : *oit) {
                 if (!v.is_string()) {
-                    error = "bad options";
-                    return false;
+                    return fail("bad options");
                 }
                 o.options.push_back(v.get<std::string>());
             }
         }
         if (o.type == "enum" && o.options.empty()) {
-            error = "enum needs options";
-            return false;
+            return fail("enum needs options");
         }
         auto dit = e.find("default");
         if (dit != e.end()) {
@@ -118,32 +113,32 @@ bool parse_config_schema(const std::string& json, std::vector<ConfigOption>& out
             } else if (dit->is_number_float()) {
                 double v = dit->get<double>();
                 if (!std::isfinite(v)) {
-                    error = "bad default";
-                    return false;
+                    return fail("bad default");
                 }
                 o.def_int = (long long)v;
                 o.def_float = v;
             } else if (dit->is_string()) {
                 o.def_str = dit->get<std::string>();
             } else {
-                error = "bad default";
-                return false;
+                return fail("bad default");
             }
         }
         if (o.type == "color" && e.contains("default") && !valid_color(o.def_str)) {
-            error = "color default must be #RRGGBB";
-            return false;
+            return fail("color default must be #RRGGBB");
         }
         if (!e.contains("default") && o.type == "enum") o.def_str = o.options[0];
         out.push_back(o);
     }
-    return true;
+    return Result<std::vector<ConfigOption>>::ok(std::move(out));
 }
 
-ConfigFile parse_config_file(const std::string& text) {
+Result<ConfigFile> parse_config_file(const std::string& text) {
     ConfigFile f;
+    auto fail = [&](const std::string& msg) {
+        return Result<ConfigFile>::fail(Error{"parse-config-file", "", errcat::kSyntax, msg});
+    };
     // Blank -> empty (all defaults). Anything else must be a strict object;
-    // malformed file -> ok=false (caller falls back to defaults).
+    // malformed file -> Error (caller falls back to defaults).
     bool blank = true;
     for (char c : text) {
         if (!isspace((unsigned char)c)) {
@@ -151,13 +146,12 @@ ConfigFile parse_config_file(const std::string& text) {
             break;
         }
     }
-    if (blank) return f;
-    json j;
-    std::string error;
-    if (!parse_json_value(text, j, error) || !j.is_object()) {
-        f.ok = false;
-        return f;
+    if (blank) return Result<ConfigFile>::ok(std::move(f));
+    auto parsed = parse_json_value(text);
+    if (!parsed.ok() || !parsed.value().is_object()) {
+        return fail(!parsed.ok() ? parsed.error().message : "not an object");
     }
+    json j = parsed.value();
     for (auto& [k, v] : j.items()) {
         if (v.is_string()) f.values[k] = ConfigValue::text(v.get<std::string>());
         else if (v.is_boolean()) f.values[k] = ConfigValue::boolean(v.get<bool>());
@@ -165,24 +159,21 @@ ConfigFile parse_config_file(const std::string& text) {
             long long i = 0;
             try {
                 i = v.get<long long>();
-            } catch (const json::exception&) {
-                f.ok = false;
-                return f;
+            } catch (const json::exception& e) {
+                return fail(e.what());
             }
             f.values[k] = ConfigValue::integer(i);
         } else if (v.is_number_float()) {
             double d = v.get<double>();
             if (!std::isfinite(d)) {
-                f.ok = false;
-                return f;
+                return fail("non-finite number");
             }
             f.values[k] = ConfigValue::number(d);
         } else {
-            f.ok = false;
-            return f;
+            return fail("bad value type");
         }
     }
-    return f;
+    return Result<ConfigFile>::ok(std::move(f));
 }
 
 ConfigValue config_default(const ConfigOption& o) {
@@ -230,10 +221,6 @@ bool config_validate(const ConfigOption& o, const ConfigValue& v) {
 std::map<std::string, ConfigValue> config_effective(const std::vector<ConfigOption>& schema,
                                                     const ConfigFile& file) {
     std::map<std::string, ConfigValue> out;
-    if (!file.ok) {
-        for (auto& o : schema) out[o.key] = config_default(o);
-        return out;
-    }
     for (auto& o : schema) {
         auto it = file.values.find(o.key);
         if (it != file.values.end() && config_validate(o, it->second)) out[o.key] = it->second;
@@ -376,8 +363,8 @@ std::string build_menu_literal(const std::vector<MenuModSnapshot>& mods, unsigne
 std::string apply_enabled_change(const std::string& mods_json, const std::string& id,
                                  bool enabled) {
     ModState st;
-    StateFile sf = parse_state(mods_json);
-    if (sf.ok) st = sf.state;
+    auto sf = parse_state(mods_json);
+    if (sf.ok()) st = sf.value();
     st.set(id, enabled);
     return st.serialize();
 }
@@ -407,29 +394,31 @@ static bool strict_num(const std::string& s, double& out) {
     return e && *e == '\0';
 }
 
-SetValueResult apply_config_value(const std::vector<ConfigOption>& schema,
-                                  const std::string& file_text, const std::string& key,
-                                  const std::string& valstr) {
-    SetValueResult r;
+Result<std::string> apply_config_value(const std::vector<ConfigOption>& schema,
+                                         const std::string& file_text, const std::string& key,
+                                         const std::string& valstr) {
+    auto fail = [&](const std::string& msg) {
+        return Result<std::string>::fail(Error{"apply-config-value", key, errcat::kRange, msg});
+    };
     const ConfigOption* opt = nullptr;
     for (auto& o : schema)
         if (o.key == key) {
             opt = &o;
             break;
         }
-    if (!opt) return r;
+    if (!opt) return fail("unknown key");
     ConfigValue v;
     if (opt->type == "bool") {
         if (valstr == "1" || valstr == "true") v = ConfigValue::boolean(true);
         else if (valstr == "0" || valstr == "false") v = ConfigValue::boolean(false);
-        else return r;
+        else return fail("bad bool");
     } else if (opt->type == "int") {
         long long i = 0;
-        if (!strict_int(valstr, i)) return r;
+        if (!strict_int(valstr, i)) return fail("bad int");
         v = ConfigValue::integer(i);
     } else if (opt->type == "float") {
         double f = 0;
-        if (!strict_num(valstr, f)) return r;
+        if (!strict_num(valstr, f)) return fail("bad float");
         v = ConfigValue::number(f);
     } else if (opt->type == "string" || opt->type == "color") {
         // Empty string resets to default (documented UI contract).
@@ -437,16 +426,15 @@ SetValueResult apply_config_value(const std::vector<ConfigOption>& schema,
     } else if (opt->type == "enum") {
         v = ConfigValue::text(valstr);
     } else {
-        return r;
+        return fail("bad type");
     }
-    if (!config_validate(*opt, v)) return r;
-    ConfigFile f = parse_config_file(file_text);
-    std::map<std::string, ConfigValue> merged;
-    if (f.ok) merged = f.values;
+    if (!config_validate(*opt, v)) return fail("invalid value");
+    ConfigFile f;
+    auto parsed = parse_config_file(file_text);
+    if (parsed.ok()) f = parsed.value();
+    std::map<std::string, ConfigValue> merged = f.values;
     merged[key] = v;
-    r.ok = true;
-    r.file_text = serialize_config(schema, merged);
-    return r;
+    return Result<std::string>::ok(serialize_config(schema, merged));
 }
 
 } // namespace ttmod

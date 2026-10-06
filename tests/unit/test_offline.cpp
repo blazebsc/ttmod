@@ -29,8 +29,9 @@ int main() {
         fwrite(hdr, 1, 64, f);
         fwrite("payload", 1, 7, f);
         fclose(f);
-        auto h = ttmod::inspect_ttarch2("/tmp/opencode_ttmod_arch/a.ttarch2");
-        assert(h.ok && h.file_size == 71);
+        auto hr = ttmod::inspect_ttarch2("/tmp/opencode_ttmod_arch/a.ttarch2");
+        assert(hr.ok() && hr.value().file_size == 71);
+        auto h = hr.value();
         assert(memcmp(h.magic, "ZCTT", 4) == 0);
         assert(h.w[1] == 1 && h.w[2] == 3);
         assert(h.q[0] == 44 && h.q[1] == 1171 && h.q[2] == 12530);
@@ -39,14 +40,14 @@ int main() {
         FILE* f2 = fopen("/tmp/opencode_ttmod_arch/b.ttarch2", "wb");
         fwrite("tiny", 1, 4, f2);
         fclose(f2);
-        assert(!ttmod::inspect_ttarch2("/tmp/opencode_ttmod_arch/b.ttarch2").ok);
+        assert(!ttmod::inspect_ttarch2("/tmp/opencode_ttmod_arch/b.ttarch2").ok());
         FILE* f3 = fopen("/tmp/opencode_ttmod_arch/c.ttarch2", "wb");
         uint8_t hb[64] = {};
         memcpy(hb, "NOPE", 4);
         fwrite(hb, 1, 64, f3);
         fclose(f3);
-        assert(!ttmod::inspect_ttarch2("/tmp/opencode_ttmod_arch/c.ttarch2").ok);
-        assert(!ttmod::inspect_ttarch2("/tmp/opencode_ttmod_arch/nope.ttarch2").ok);
+        assert(!ttmod::inspect_ttarch2("/tmp/opencode_ttmod_arch/c.ttarch2").ok());
+        assert(!ttmod::inspect_ttarch2("/tmp/opencode_ttmod_arch/nope.ttarch2").ok());
     }
     // logmap: synthetic log
     {
@@ -58,7 +59,7 @@ int main() {
             "[INFO] [CreateFileW#4] C:\\u\\Documents\\Telltale Games\\X\\prefs.prop\n"
             "[INFO] [CreateFileW#5] C:\\w\\x.dll\n";
         auto m = ttmod::map_boot_log(log);
-        assert(m.ok && m.total == 5);
+        assert(m.total == 5);
         assert(m.by_ext[".lua"] == 1 && m.by_ext[".ttarch2"] == 2 && m.by_ext[".prop"] == 1 &&
                m.by_ext[".dll"] == 1);
         assert(m.by_category["resdesc"] == 1 && m.by_category["archive"] == 2 &&
@@ -76,7 +77,7 @@ int main() {
                 "c:/w/x.dll",
             };
             auto n = ttmod::map_from_paths(paths);
-            assert(n.ok && n.total == 5);
+            assert(n.total == 5);
             assert(n.by_ext[".lua"] == 1 && n.by_ext[".ttarch2"] == 2 &&
                    n.by_ext[".prop"] == 1 && n.by_ext[".dll"] == 1);
             assert(n.by_category["resdesc"] == 1 && n.by_category["archive"] == 2 &&
@@ -84,11 +85,10 @@ int main() {
             assert(n.resdesc_order.size() == 1 && n.archive_order.size() == 1);
             assert(n.save_paths.size() == 1);
             ttmod::LogMap one;
-            one.ok = true;
             ttmod::logmap_feed(one, "h:/g/archives/_resdesc_50_boot.lua");
             assert(one.total == 1 && one.by_category["resdesc"] == 1);
             ttmod::LogMap empty = ttmod::map_from_paths({});
-            assert(empty.ok && empty.total == 0);
+            assert(empty.total == 0);
         }
     }
     std::puts("offline: all asserts passed");
