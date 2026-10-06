@@ -10,6 +10,8 @@
 #include "ttmod/runtime.hpp"
 #include "ttmod/theme_color.hpp"
 #include "ttmod/lua_bridge.hpp"
+#include "ttmod/mcsm1_addrs.hpp"
+#include "ttmod/mcsm1_addrs.hpp"
 #include "ttmod/uiqueue.hpp"
 #include "lua_abi.hpp"
 #include "lua_bridge.hpp"
@@ -83,7 +85,7 @@ struct UiProbeTarget {
 };
 static UiProbeTarget g_uiprobes[] = {
     {"scol",
-     0x168430,
+     ttmod::kScolRva,
      {0x55, 0x8B, 0xEC, 0x51, 0x56, 0x57, 0x8B, 0xF1, 0xE8, 0xD3},
      10,
      (LPVOID)hook_scol,

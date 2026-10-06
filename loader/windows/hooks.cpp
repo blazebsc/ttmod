@@ -22,9 +22,11 @@
 #include "MinHook.h"
 #include "events.hpp"
 #include "mods.hpp"
+#include "ttmod/lua_bridge.hpp"
 #include "stage.hpp"
 #include "ttmod/events.hpp"
 #include "ttmod/log.hpp"
+#include "ttmod/lua_bridge.hpp"
 #include "ttmod/pathnorm.hpp"
 #include "ttmod/runtime.hpp"
 #include "ttmod/sigmatch.hpp"
@@ -36,8 +38,8 @@ namespace {
 
 // Reference anchors (telltale_hook, reference-only). Used for diagnostics;
 // LoadResource is NOT hooked (see header comment).
-constexpr DWORD kLoadResourceRVA = 0x1139F0;
-constexpr DWORD kLuaNewstateRVA = 0x611C80;
+constexpr DWORD kLoadResourceRVA = ttmod::kLoadResourceAnchor.rva;
+constexpr DWORD kLuaNewstateRVA = ttmod::kLuaNewstateAnchor.rva;
 constexpr LONG kMaxLoggedHits = 32;
 static LONG g_maxw = 0; // per-open trace OFF by default (user-clean logs);
                         // TTMOD_FILELOG_N=N re-enables (diagnostics)

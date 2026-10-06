@@ -1,5 +1,7 @@
 #pragma once
+#include <cstdint>
 #include <string>
+#include <string_view>
 
 namespace ttmod {
 
@@ -42,6 +44,21 @@ struct GameProfile {
     Architecture arch = Architecture::Unknown;
     ProfileStatus status = ProfileStatus::Unknown;
 };
+
+// Stage F separation: identify (parse_pe) -> match (build identity) ->
+// support (exact-byte allowlist). Match never claims support; support
+// never inspects bytes beyond the match id + measured hash.
+struct GameMatch {
+    const char* id = "unknown";
+    const char* game = "unknown";
+    int season = 0;
+    Architecture arch = Architecture::Unknown;
+    uint64_t fnv1a64 = 0; // measured content hash (support decides on it)
+    uint64_t file_size = 0;
+};
+
+GameMatch match_game(const ExeInfo& e);
+ProfileStatus evaluate_support(const GameMatch& m);
 
 GameProfile select_profile(const ExeInfo& e);
 

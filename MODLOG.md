@@ -271,3 +271,13 @@ awk '/TTMod framework v/{buf=""} {buf=buf $0 "\n"} END{printf "%s",buf}' logs/tt
 - Full Runtime object owning cross-file statics DEFERRED (threads +
   Wine: reorganization without a behavioral need; recorded, not
   forgotten). Same for RuntimeMode::Degraded wiring.
+
+## 2026-10-05 refactor Stage F (profiles)
+
+- Split match/support: `match_game` (identity) + `evaluate_support`
+  (exact-byte allowlist); `select_profile` composes. Detection
+  (`parse_pe`) untouched.
+- Hook RVAs centralized in profile-owned `core/mcsm1_addrs.hpp`
+  (scol target); loader literals replaced (hooks/framework/lua_bridge).
+  Profiles/ per-game dir deferred: single game, single header; the dir
+  earns its keep at game two (documented deviation from the plan).

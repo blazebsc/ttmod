@@ -18,6 +18,8 @@
 #include "events.hpp"
 #include "hooks.hpp"
 #include "lua_bridge.hpp"
+#include "ttmod/lua_bridge.hpp"
+#include "ttmod/lua_bridge.hpp"
 #include "menu_bridge.hpp"
 #include "mods.hpp"
 #include "stage.hpp"
@@ -39,7 +41,7 @@ static void exit_dump() {
     DWORD dt = GetTickCount() - g_t0;
     if (exe) {
         // Image pages are committed in our own process; direct read is safe.
-        const BYTE* t = (const BYTE*)exe + 0x1139F0;
+        const BYTE* t = (const BYTE*)exe + ttmod::kLoadResourceAnchor.rva;
         n = snprintf(buf, sizeof buf,
                      "exit: dt=%lums target=%02X %02X %02X %02X %02X %02X %02X %02X\r\n",
                      (unsigned long)dt, t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7]);

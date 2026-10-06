@@ -7,59 +7,77 @@
 namespace ttmod {
 
 GameProfile select_profile(const ExeInfo& e) {
-    GameProfile p;
-    if (!e.ok) return p;
+    if (!e.ok) return GameProfile{};
     // MCSM1 builds. Identity = size + timestamp + FNV-1a64 (size+timestamp
     // alone CONFUSES crack-patched variants, e.g. CODEX). SHA256 pinned in
     // docs/games/mcsm1.md. Only the byte-exact known build is "supported";
     // everything else idles safely (M9).
+    GameMatch m = match_game(e);
+    GameProfile p;
+    p.id = m.id;
+    p.game = m.game;
+    p.season = m.season;
+    p.arch = m.arch;
+    p.status = evaluate_support(m);
+    return p;
+}
+
+GameMatch match_game(const ExeInfo& e) {
+    GameMatch m;
+    if (!e.ok) return m;
     const bool mcsm1_shape =
         e.machine == 0x014C && e.timestamp == 1463779093u && e.opt_magic == 0x10B;
+    m.fnv1a64 = e.fnv1a64;
+    m.file_size = e.file_size;
     if (mcsm1_shape && e.file_size == 12179904ull && e.fnv1a64 == 0xA11CD391555291BEull) {
-        p.id = "mcsm1_pc_x86";
-        p.game = "minecraft-story-mode";
-        p.season = 1;
-        p.arch = Architecture::X86;
-        p.status = ProfileStatus::Supported;
-        return p;
+        m.id = "mcsm1_pc_x86";
+        m.game = "minecraft-story-mode";
+        m.season = 1;
+        m.arch = Architecture::X86;
+        return m;
     }
     if (mcsm1_shape && e.file_size == 11724800ull && e.fnv1a64 == 0xE507F1E444839F62ull) {
-        p.id = "mcsm1_pc_x86_ali213"; // ALI213 NoDVD variant, 5 sections
-        p.game = "minecraft-story-mode";
-        p.season = 1;
-        p.arch = Architecture::X86;
-        p.status = ProfileStatus::UnrecognizedBuild;
-        return p;
+        m.id = "mcsm1_pc_x86_ali213"; // ALI213 NoDVD variant, 5 sections
+        m.game = "minecraft-story-mode";
+        m.season = 1;
+        m.arch = Architecture::X86;
+        return m;
     }
     if (mcsm1_shape && e.file_size == 12179904ull && e.fnv1a64 == 0x26B0BE1D74787BCDull) {
-        p.id = "mcsm1_pc_x86_codex"; // CODEX NoDVD (crack-patched, same size)
-        p.game = "minecraft-story-mode";
-        p.season = 1;
-        p.arch = Architecture::X86;
-        p.status = ProfileStatus::UnrecognizedBuild;
-        return p;
+        m.id = "mcsm1_pc_x86_codex"; // CODEX NoDVD (crack-patched, same size)
+        m.game = "minecraft-story-mode";
+        m.season = 1;
+        m.arch = Architecture::X86;
+        return m;
     }
     if (mcsm1_shape) {
-        p.id = "mcsm1_pc_x86_variant"; // same shape, unknown bytes: idle
-        p.game = "minecraft-story-mode";
-        p.season = 1;
-        p.arch = Architecture::X86;
-        p.status = ProfileStatus::UnrecognizedBuild;
-        return p;
+        m.id = "mcsm1_pc_x86_variant"; // same shape, unknown bytes: idle
+        m.game = "minecraft-story-mode";
+        m.season = 1;
+        m.arch = Architecture::X86;
+        return m;
     }
     // x64 PE: likely MCSM2-era, but unproven — never claim support.
     if (e.machine == 0x8664) {
-        p.id = "unknown-x64";
-        p.game = "unknown";
-        p.arch = Architecture::X64;
-        p.status = ProfileStatus::DefinedNotImplemented;
-        return p;
+        m.id = "unknown-x64";
+        m.game = "unknown";
+        m.arch = Architecture::X64;
+        return m;
     }
     if (e.machine == 0x014C) {
-        p.arch = Architecture::X86;
-        return p;
+        m.arch = Architecture::X86;
+        return m;
     }
-    return p;
+    return m;
+}
+
+ProfileStatus evaluate_support(const GameMatch& m) {
+    // Exact-byte allowlist: only the measured known build is supported.
+    // Everything else idles safely (Vanilla), including same-shape variants.
+    if (std::string(m.id) == "mcsm1_pc_x86") return ProfileStatus::Supported;
+    if (std::string(m.id) == "unknown-x64") return ProfileStatus::DefinedNotImplemented;
+    if (std::string(m.id) != "unknown") return ProfileStatus::UnrecognizedBuild;
+    return ProfileStatus::Unknown;
 }
 
 GameProfile init_from_exe(const std::string& exe_path, const std::string& log_path) {
