@@ -1,6 +1,6 @@
 #pragma once
-#include <optional>
 #include <string>
+#include "ttmod/result.hpp"
 
 namespace ttmod {
 
@@ -18,8 +18,8 @@ struct AccentRgb {
     float r = 0, g = 0, b = 0;
 };
 
-// Parse "#RRGGBB" (case-insensitive) into 0..1 floats. nullopt on garbage.
-std::optional<AccentRgb> parse_accent(const std::string& s);
+// Parse "#RRGGBB" (case-insensitive) into 0..1 floats. Fails on garbage.
+Result<AccentRgb> parse_accent(const std::string& s);
 
 // True iff (r, g, b) - in EITHER 0..1 floats or 0..255 ints - is a
 // near-gray (>=0.8 after normalization) worth recolouring.

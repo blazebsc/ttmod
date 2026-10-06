@@ -10,7 +10,10 @@
 #include "ttmod/modconfig.hpp"
 #include "ttmod/modstate.hpp"
 #include "ttmod/package.hpp"
+#include "ttmod/pathnorm.hpp"
 #include "ttmod/result.hpp"
+#include "ttmod/sigmatch.hpp"
+#include "ttmod/theme_color.hpp"
 #include "ttmod/ttarch.hpp"
 #include "ttmod/validate.hpp"
 
@@ -56,11 +59,36 @@ int main() {
     assert(!ttmod::inspect_package("/nonexistent-ttmod-package").ok()); // limit (size probe)
     assert(!ttmod::parse_config_file("{oops").ok());                    // syntax
     assert(!ttmod::apply_config_value({}, "", "nope", "1").ok());       // range (unknown key)
+    assert(!ttmod::join_checked("c:/mods/a", "../../escape").ok());     // traversal
+    assert(!ttmod::parse_signature("ZZ").ok());                         // syntax
+    assert(!ttmod::parse_accent("blue").ok());                          // syntax
+    assert(!ttmod::apply_enabled_change("{oops", "a.b", false).ok());   // syntax
+    auto missing_digest = ttmod::fnv1a_file("/nonexistent-ttmod-hash");
+    assert(!missing_digest.ok() && missing_digest.error().category == ttmod::errcat::kIO); // io
+    assert(missing_digest.error().operation == "hash-file" &&
+           missing_digest.error().object == "/nonexistent-ttmod-hash");
     assert(!ttmod::sync_package_cache("/tmp/opencode_ttmod_result_cache", {{"ghost", "/nonexistent-ttmod-pkg"}})
                 .value()
                 .effective.count("ghost")); // per-mod failure is logged, not fatal
     auto synced = ttmod::sync_package_cache("/tmp/opencode_ttmod_result_cache", {});
     assert(synced.ok()); // hard failure only on cache-dir creation
+
+    const std::string digest_path = "/tmp/opencode_ttmod_result_hash";
+    std::remove(digest_path.c_str());
+    FILE* digest_file = std::fopen(digest_path.c_str(), "wb");
+    assert(digest_file);
+    std::fclose(digest_file);
+    auto empty_digest = ttmod::fnv1a_file(digest_path);
+    assert(empty_digest.ok() && empty_digest.value().size == 0);
+    assert(empty_digest.value().fnv1a64 == 14695981039346656037ull);
+    digest_file = std::fopen(digest_path.c_str(), "wb");
+    assert(digest_file);
+    assert(std::fwrite("abc", 1, 3, digest_file) == 3);
+    std::fclose(digest_file);
+    auto digest = ttmod::fnv1a_file(digest_path);
+    assert(digest.ok() && digest.value().size == 3);
+    assert(digest.value().fnv1a64 == 0xe71fa2190541574bull);
+    std::remove(digest_path.c_str());
 
     // Categories are distinct strings (no ad-hoc aliasing).
     assert(std::string(ttmod::errcat::kSyntax) != ttmod::errcat::kIO);

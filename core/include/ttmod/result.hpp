@@ -37,9 +37,8 @@ inline Error make_error(std::string operation, std::string object, std::string c
 // misuse (value() on error, error() on success) aborts - it is a caller
 // bug, never an expected outcome. Prefer try_value()/value_or()/has_value()
 // when failure is expected.
-template <class T>
-class Result {
-public:
+template <class T> class [[nodiscard]] Result {
+  public:
     static Result ok(T v) { return Result(std::move(v)); }
     static Result fail(Error e) { return Result(std::move(e)); }
 
@@ -71,9 +70,8 @@ private:
 // Void specialization for fallible operations with no value.
 // Factory is success() (not ok()) because C++ cannot overload a static
 // ok() with the instance ok().
-template <>
-class Result<void> {
-public:
+template <> class [[nodiscard]] Result<void> {
+  public:
     static Result success() { return Result(true, {}); }
     static Result fail(Error e) { return Result(false, std::move(e)); }
 

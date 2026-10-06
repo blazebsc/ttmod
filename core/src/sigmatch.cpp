@@ -4,7 +4,7 @@
 
 namespace ttmod {
 
-std::optional<Signature> parse_signature(const std::string& text) {
+Result<Signature> parse_signature(const std::string& text) {
     Signature s;
     std::istringstream in(text);
     std::string tok;
@@ -14,13 +14,15 @@ std::optional<Signature> parse_signature(const std::string& text) {
             s.mask.push_back(false);
         } else {
             if (tok.size() != 2 || !isxdigit((unsigned char)tok[0]) || !isxdigit((unsigned char)tok[1]))
-                return std::nullopt;
+                return Result<Signature>::fail(
+                    Error{"parse-signature", text, errcat::kSyntax, "invalid token: " + tok});
             s.bytes.push_back((uint8_t)strtoul(tok.c_str(), nullptr, 16));
             s.mask.push_back(true);
         }
     }
-    if (s.bytes.empty()) return std::nullopt;
-    return s;
+    if (s.bytes.empty())
+        return Result<Signature>::fail(Error{"parse-signature", text, errcat::kMissing, "signature is empty"});
+    return Result<Signature>::ok(std::move(s));
 }
 
 std::vector<size_t> scan(const uint8_t* data, size_t len, const Signature& sig) {

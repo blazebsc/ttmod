@@ -33,12 +33,11 @@ std::string marker_for(const std::string& package_path) {
     // non-cryptographic hash chosen because it needs no dependency. It
     // detects "did this file change", not "is this file trustworthy".
     // Package authenticity is not a goal (see SECURITY.md).
-    uint64_t size = 0;
-    uint64_t hash = fnv1a_file(package_path, &size);
-    if (hash == 0) return "";
+    auto digest = fnv1a_file(package_path);
+    if (!digest.ok()) return "";
     char m[128];
-    snprintf(m, sizeof m, "v=%d fmt=%d fnv=%016llx size=%llu", kCacheSchema, kPackageFormat, (unsigned long long)hash,
-             (unsigned long long)size);
+    snprintf(m, sizeof m, "v=%d fmt=%d fnv=%016llx size=%llu", kCacheSchema, kPackageFormat,
+             (unsigned long long)digest.value().fnv1a64, (unsigned long long)digest.value().size);
     return m;
 }
 

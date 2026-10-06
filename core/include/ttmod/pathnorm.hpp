@@ -1,6 +1,6 @@
 #pragma once
-#include <optional>
 #include <string>
+#include "ttmod/result.hpp"
 
 namespace ttmod {
 
@@ -23,17 +23,15 @@ namespace ttmod {
 std::string normalize_win_path(const std::string& raw);
 
 // Game-root-relative key: normalized abs path minus normalized root prefix.
-// Returns nullopt when abs is not under root. "" means abs == root.
-std::optional<std::string> relative_key(const std::string& norm_abs,
-                                        const std::string& norm_root);
+// Fails when abs is not under root. "" means abs == root.
+Result<std::string> relative_key(const std::string& norm_abs, const std::string& norm_root);
 
 // Join mod_dir (normalized abs) + rel (manifest value), normalize, and verify
 // the result stays inside mod_dir. Manifest values must be relative subpaths
 // (no drive letters, colons, UNC, or leading separators); anything else is
-// rejected. Returns nullopt on escape or malformed rel.
+// rejected. Returns an error on escape or malformed rel.
 // NOTE: lexical only; symlinks/reparse points can still redirect at runtime
 // (documented limitation, checked where the OS permits).
-std::optional<std::string> join_checked(const std::string& norm_mod_dir,
-                                        const std::string& rel);
+Result<std::string> join_checked(const std::string& norm_mod_dir, const std::string& rel);
 
 } // namespace ttmod
