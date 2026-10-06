@@ -36,3 +36,6 @@ Names for the seams. Use these terms exactly; do not invent synonyms.
   …); validated against the §21 allowlist, not enforced (ADR-005).
 - **state registry** — observed identity + role per game Lua state
   (ADR-006); the game owns every state.
+- **mod id** — validated identity (`ModId`, parsed once at the manifest
+  boundary; ADR-007 for the version grammar that rides alongside it).
+  Everything downstream trusts it and never re-validates.

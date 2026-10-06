@@ -81,7 +81,12 @@ Result<ModManifest> parse_manifest(const std::string& text) {
     auto vit = j.find("version");
     if (vit != j.end()) {
         if (!vit->is_string()) return fail("bad version");
-        m.identity.version = vit->get<std::string>();
+        std::string vtext = vit->get<std::string>();
+        // Bounded grammar gate: a malformed/overflowing version fails the
+        // manifest instead of silently sorting as 0.0.0 later.
+        auto ver = Version::parse(vtext);
+        if (!ver.ok()) return fail(std::string("bad version: ") + ver.error().message);
+        m.identity.version = ver.value().str();
     }
     if (!req_int(j, "api", m.compat.api, error) || m.compat.api <= 0) return fail(error);
     if (j.contains("priority") && !req_int(j, "priority", m.overrides.priority, error)) return fail(error);
@@ -154,6 +159,10 @@ Result<ModManifest> parse_manifest(const std::string& text) {
             if (vit2 != e.end()) {
                 if (!vit2->is_string()) return fail("bad depends");
                 dver = vit2->get<std::string>();
+                // Validate the constraint here so a bad spec never reaches
+                // the graph as an unparsed string.
+                auto vc = VersionConstraint::parse(dver);
+                if (!vc.ok()) return fail("bad depends version");
             }
             m.deps.depends.emplace_back(dep.value(), dver);
         }
@@ -183,7 +192,13 @@ Result<ModManifest> parse_manifest(const std::string& text) {
 }
 
 int compare_versions(const std::string& a, const std::string& b) {
-    return Version(a).compare(Version(b));
+    // Malformed side sorts as 0.0.0 rather than throwing or aborting: this
+    // helper only exists for loose display callers. Validated paths parse
+    // versions with Version::parse and get a real Error instead.
+    auto va = Version::parse(a);
+    auto vb = Version::parse(b);
+    const Version zero = Version::parse("").value();
+    return (va.ok() ? va.value() : zero).compare(vb.ok() ? vb.value() : zero);
 }
 
 } // namespace ttmod

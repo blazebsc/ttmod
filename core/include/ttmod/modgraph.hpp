@@ -3,6 +3,7 @@
 #include <vector>
 #include "ttmod/manifest.hpp"
 #include "ttmod/modid.hpp"
+#include "ttmod/version.hpp"
 
 namespace ttmod {
 
