@@ -175,11 +175,32 @@ class LuaVm final : public ScriptVm {
         luaL_error(L, "ttmod: script exceeded its instruction budget");
     }
 
-    static int trampoline(lua_State* L) {
-        auto* ud = lua_touserdata(L, lua_upvalueindex(1));
-        uint32_t token = (uint32_t)(uintptr_t)ud;
-        int nargs = lua_gettop(L);
+    // Raises the ttmod.* entry point from inside the VM. Always safe to call
+    // from Lua (a mod uses pcall); never safe to call across a TTMod Result
+    // boundary.
+    static int ttmod_error(lua_State* L, std::string_view message) {
+        lua_pushfstring(L, "ttmod: %s", std::string(message).c_str());
+        return lua_error(L);
+    }
 
+    // Collects arguments, dispatches, and pushes the result. Returns 0 when the
+    // VM stack holds the return value, or -1 with the reason copied into `out`.
+    //
+    // It is SEPARATE from trampoline() on purpose. luaL_error longjmps, which
+    // skips C++ destructors; if it fired while `args` (a vector<Value>) or the
+    // Result holding an Error were in scope, every error from every binding
+    // would leak. So this function RETURNS, its locals are destroyed normally,
+    // and only then does the caller raise - and the caller owns nothing but a
+    // char array and an int, which a longjmp cannot leak.
+    static int dispatch(lua_State* L, uint32_t token, char* out, size_t out_len) {
+        auto fail = [&](std::string_view why) {
+            size_t n = why.size() < out_len - 1 ? why.size() : out_len - 1;
+            memcpy(out, why.data(), n);
+            out[n] = '\0';
+            return -1;
+        };
+
+        int nargs = lua_gettop(L);
         std::vector<Value> args;
         args.reserve((size_t)nargs);
         for (int i = 1; i <= nargs; ++i) args.push_back(pop_value_at_impl(L, i));
@@ -189,11 +210,19 @@ class LuaVm final : public ScriptVm {
         ctx.nargs = args.size();
         Result<Value> r = registry().invoke(token, ctx.args, ctx.nargs, nullptr);
         if (!r.ok()) {
-            // Errors surface as a Lua error so pcall in mod code behaves
-            // normally, rather than returning a silent nil.
-            return luaL_error(L, "ttmod: %s", r.error().message.c_str());
+            // Copy out and let the Result die here, before the caller longjmps.
+            return fail(r.error().message);
         }
-        if (!push_value_impl(L, r.value())) return lua_error_at(L, "marshal: cannot push result", "");
+        if (!push_value_impl(L, r.value())) return fail("cannot marshal result");
+        return 0;
+    }
+
+    static int trampoline(lua_State* L) {
+        auto* ud = lua_touserdata(L, lua_upvalueindex(1));
+        uint32_t token = (uint32_t)(uintptr_t)ud;
+        // Trivially destructible locals only: this frame is allowed to longjmp.
+        char msg[256] = {0};
+        if (dispatch(L, token, msg, sizeof msg) < 0) return ttmod_error(L, msg);
         return 1;
     }
 
@@ -209,10 +238,6 @@ class LuaVm final : public ScriptVm {
         Error e{"push-value", "", errcat::kType, msg ? msg : "cannot marshal value"};
         lua_pop(L_, 1);
         return e;
-    }
-
-    static int lua_error_at(lua_State* L, const char* fmt, const char* a) {
-        return luaL_error(L, fmt, a);
     }
 
     void push_env(const Value& env) {
