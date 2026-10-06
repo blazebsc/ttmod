@@ -9,6 +9,7 @@
 
 #include "MinHook.h"
 #include "win32_path.hpp"
+#include "ttmod/game_lua.hpp"
 #include "ttmod/log.hpp"
 #include "ttmod/file_io.hpp"
 #include "ttmod/runtime.hpp"
@@ -64,53 +65,28 @@ static bool tail_matches(const char* path, const char* tail) {
     return n >= m && strcmp(path + n - m, tail) == 0;
 }
 
-// Game Lua state registry (doc §57): identity + role + lifecycle. The game
-// owns every state; this only observes. Role is inferred from the scripts
-// a state loads (Menu.lua -> menu, engine boots -> engine) and logged once.
-struct LuaStateInfo {
-    lua_State* L = nullptr;
-    int order = 0;    // capture sequence, 1-based
-    std::string role; // "unknown" | "engine" | "menu"
-    int scripts_seen = 0;
-};
-static std::mutex g_states_mtx;
-static std::vector<LuaStateInfo> g_states;
+// Game Lua state registry: identity + role + lifecycle (ADR-006, Step 8).
+// The rules live in core (ttmod::GameLuaRegistry) where they are unit
+// tested; this layer only supplies the opaque handle and does the logging.
+// The game owns every state - we observe, never own or close.
+static ttmod::GameLuaRegistry g_states;
 
 static void note_script_on_state(lua_State* L, const char* filename) {
     if (!L || !filename) return;
-    // Lock strictly around registry state: build the log line inside,
-    // emit AFTER unlock (file I/O under the mutex would serialize
-    // unrelated LoadResource threads behind logging).
+    // The core call locks internally and returns only a bool, so file I/O
+    // (emit) stays outside the critical section: logging under a registry
+    // mutex would serialize unrelated LoadResource threads behind disk.
+    if (!g_states.note_script(L, filename)) return;
     int order = 0;
-    const char* role = nullptr;
-    {
-        std::lock_guard<std::mutex> lock(g_states_mtx);
-        for (auto& s : g_states) {
-            if (s.L != L) continue;
-            ++s.scripts_seen;
-            if (s.role != "unknown") return;
-            if (tail_matches(filename, "Menu.lua")) role = "menu";
-            else {
-                for (auto* t : {"_engine.lua", "EngineTypes.lua", "StoryBoardTracker.lua"}) {
-                    size_t n = strlen(t), m = strlen(filename);
-                    if (m >= n && strcmp(filename + m - n, t) == 0) {
-                        role = "engine";
-                        break;
-                    }
-                }
-            }
-            if (role) {
-                s.role = role;
-                order = s.order;
-            }
-            return;
+    for (auto& e : g_states.entries())
+        if (e.handle == (void*)L) {
+            order = e.order;
+            break;
         }
-    }
-    if (role) {
-        char m[128];
-        snprintf(m, sizeof m, "lua: state #%d identified as %s (%s)", order, role, filename);
-        emit(m);
-    }
+    char m[128];
+    snprintf(m, sizeof m, "lua: state #%d identified as %s (%s)", order,
+             ttmod::to_string(ttmod::GameLuaRegistry::role_for_script(filename)), filename);
+    emit(m);
 }
 
 // Native color-setter hook addresses. The UI region unpacks progressively,
@@ -229,14 +205,12 @@ static void dump_module_image(const char* out_path) {
     for (int i = 0; i < nt->FileHeader.NumberOfSections; ++i, ++sec) {
         if (sec->SizeOfRawData == 0) continue;
         // the image is mapped: VirtualAddress IS the file offset in the dump
-        fseek(f, sec->PointerToRawData ? sec->PointerToRawData : sec->VirtualAddress,
-              SEEK_SET);
+        fseek(f, sec->PointerToRawData ? sec->PointerToRawData : sec->VirtualAddress, SEEK_SET);
         fwrite(base + sec->VirtualAddress, 1, sec->SizeOfRawData, f);
     }
     fclose(f);
     char m[160];
-    snprintf(m, sizeof m, "dump: wrote unpacked image (%u sections) to %s",
-             nt->FileHeader.NumberOfSections, out_path);
+    snprintf(m, sizeof m, "dump: wrote unpacked image (%u sections) to %s", nt->FileHeader.NumberOfSections, out_path);
     emit(m);
 }
 
@@ -253,8 +227,7 @@ static int __cdecl hook_loadresource(lua_State* L, char* filename) {
     // after the script load, on that state. Before the Menu.lua branch so
     // observe-only mode (TTMOD_LUA_LRCHUNK=0) still drains plugin chunks.
     for (const std::string& c : ttmod::uiqueue_take())
-        bridge_run_chunk(L, g_fnLoadstring, g_fnPcallk, g_fnGettop, g_fnSetglobal, g_fnTolstring,
-                         "plugin", c.c_str());
+        bridge_run_chunk(L, g_fnLoadstring, g_fnPcallk, g_fnGettop, g_fnSetglobal, g_fnTolstring, "plugin", c.c_str());
     // Menu_Add wrapper: Menu.lua defines Menu_Add. Suffix "Menu.lua" does
     // NOT match "Menu_Main.lua" (ends in "Main.lua"), so only Menu.lua
     // itself triggers; the chunk one-shot guard covers reloads anyway.
@@ -262,12 +235,10 @@ static int __cdecl hook_loadresource(lua_State* L, char* filename) {
         // One-shot unpacked-image dump, at the moment the menu UI code is
         // certainly unpacked and about to run (see dump_module_image).
         if (InterlockedCompareExchange(&g_dump_done, 1, 0) == 0) {
-            DWORD need =
-                GetEnvironmentVariableA("TTMOD_DUMP_MEM", nullptr, 0);
+            DWORD need = GetEnvironmentVariableA("TTMOD_DUMP_MEM", nullptr, 0);
             if (need > 1 && need < 32768) {
                 std::string dpath(need, '\0');
-                if (GetEnvironmentVariableA("TTMOD_DUMP_MEM", dpath.data(),
-                                            need) == need - 1)
+                if (GetEnvironmentVariableA("TTMOD_DUMP_MEM", dpath.data(), need) == need - 1)
                     dump_module_image(dpath.c_str());
             }
         }
@@ -290,12 +261,11 @@ static int __cdecl hook_loadresource(lua_State* L, char* filename) {
             }
         }
     }
-    if (filename && tail_matches(filename, "Menu.lua") && g_fnLoadstring && g_fnPcallk &&
-        g_fnGettop && g_fnPushCClosure && g_fnSetglobal && g_fnTolstring) {
+    if (filename && tail_matches(filename, "Menu.lua") && g_fnLoadstring && g_fnPcallk && g_fnGettop &&
+        g_fnPushCClosure && g_fnSetglobal && g_fnTolstring) {
         // TTMOD_LUA_LRCHUNK=0: observe-only (detour stays, no chunk runs).
         char nochunk[8] = {};
-        if (GetEnvironmentVariableA("TTMOD_LUA_LRCHUNK", nochunk, sizeof nochunk) > 0 &&
-            strcmp(nochunk, "0") == 0) {
+        if (GetEnvironmentVariableA("TTMOD_LUA_LRCHUNK", nochunk, sizeof nochunk) > 0 && strcmp(nochunk, "0") == 0) {
             emit("lua: wrapper chunk skipped via TTMOD_LUA_LRCHUNK=0");
             return rc;
         }
@@ -305,8 +275,8 @@ static int __cdecl hook_loadresource(lua_State* L, char* filename) {
         }
         g_fnPushCClosure(L, append_log, 0);
         g_fnSetglobal(L, "Menu_Main_AppendLog");
-        bridge_run_chunk(L, g_fnLoadstring, g_fnPcallk, g_fnGettop, g_fnSetglobal, g_fnTolstring,
-                         "Menu_Add wrapper", ttmod_win::kMenuAddWrapChunk);
+        bridge_run_chunk(L, g_fnLoadstring, g_fnPcallk, g_fnGettop, g_fnSetglobal, g_fnTolstring, "Menu_Add wrapper",
+                         ttmod_win::kMenuAddWrapChunk);
         char m[96];
         snprintf(m, sizeof m, "lua: Menu_Add wrapper offered");
         emit(m);
@@ -442,13 +412,8 @@ static lua_State* __cdecl hook_lua_newstate(lua_Alloc alloc, void* ud) {
     lua_State* L = g_origNewstate(alloc, ud);
     if (!L || g_dead) return L;
     {
-        std::lock_guard<std::mutex> lock(g_states_mtx);
-        LuaStateInfo info;
-        info.L = L;
-        info.order = (int)g_states.size() + 1;
-        info.role = "unknown";
-        g_states.push_back(info);
-        if (g_states.size() == 1) {
+        int order = g_states.observe(L);
+        if (order == 1) {
             emit("lua: lua_newstate observed, live state captured");
             stage(g_logpath.c_str(), "lua_newstate observed");
         }
@@ -471,16 +436,15 @@ static lua_State* __cdecl hook_lua_newstate(lua_Alloc alloc, void* ud) {
             char m[256] = {};
             const char* err = "";
             if (g_fnTolstring && t1 > t0) err = g_fnTolstring(L, -1, nullptr);
-            snprintf(m, sizeof m, "lua: bridge test FAILED load=%d pcall=%d top=%d->%d err=%s", lr,
-                     pr, t0, t1, err ? err : "?");
+            snprintf(m, sizeof m, "lua: bridge test FAILED load=%d pcall=%d top=%d->%d err=%s", lr, pr, t0, t1,
+                     err ? err : "?");
             emit(m);
         }
     }
     // Mods-menu UI: idempotent defs on EVERY captured state so whichever
     // state hosts the menu gets the entry points + screens. Same-thread,
     // balanced-stack rules as the proof above.
-    menumods_register(L, g_fnLoadstring, g_fnPcallk, g_fnGettop, g_fnTolstring, g_fnPushCClosure,
-                      g_fnSetglobal);
+    menumods_register(L, g_fnLoadstring, g_fnPcallk, g_fnGettop, g_fnTolstring, g_fnPushCClosure, g_fnSetglobal);
     return L;
 }
 
@@ -511,14 +475,13 @@ static DWORD WINAPI late_hook_thread(LPVOID p) {
     bool ok = false;
     for (int i = 0; i < 3 && !g_dead; ++i) {
         if (i) Sleep(kRetries[i]);
-        if (memcmp(base + ttmod::kLuaNewstateAnchor.rva, ttmod::kLuaNewstateAnchor.bytes, 4) ==
-            0) {
+        if (memcmp(base + ttmod::kLuaNewstateAnchor.rva, ttmod::kLuaNewstateAnchor.bytes, 4) == 0) {
             ok = true;
             break;
         }
         char m[96];
-        snprintf(m, sizeof m, "lua: anchor try%d bytes=%02X %02X %02X %02X", i,
-                 base[0x611C80], base[0x611C81], base[0x611C82], base[0x611C83]);
+        snprintf(m, sizeof m, "lua: anchor try%d bytes=%02X %02X %02X %02X", i, base[0x611C80], base[0x611C81],
+                 base[0x611C82], base[0x611C83]);
         emit(m);
     }
     if (!ok) {
@@ -556,8 +519,7 @@ static DWORD WINAPI late_hook_thread(LPVOID p) {
     // Script-load hook (same late window + live-anchor gate as newstate):
     // after Menu_Main.lua finishes loading, install the Menu_Main wrapper
     // exactly once. Loader-thread, same-state execution.
-    if (memcmp(base + ttmod::kLoadResourceLiveAnchor.rva, ttmod::kLoadResourceLiveAnchor.bytes,
-               4) == 0) {
+    if (memcmp(base + ttmod::kLoadResourceLiveAnchor.rva, ttmod::kLoadResourceLiveAnchor.bytes, 4) == 0) {
         void* lr = (void*)(base + 0x1139F0);
         if (MH_CreateHook(lr, (LPVOID)hook_loadresource, (LPVOID*)&g_origLoadResource) == MH_OK &&
             MH_EnableHook(lr) == MH_OK) {
@@ -567,8 +529,8 @@ static DWORD WINAPI late_hook_thread(LPVOID p) {
         }
     } else {
         char m[96];
-        snprintf(m, sizeof m, "lua: loadresource anchor mismatch %02X %02X %02X %02X, skipping",
-                 base[0x1139F0], base[0x1139F1], base[0x1139F2], base[0x1139F3]);
+        snprintf(m, sizeof m, "lua: loadresource anchor mismatch %02X %02X %02X %02X, skipping", base[0x1139F0],
+                 base[0x1139F1], base[0x1139F2], base[0x1139F3]);
         emit(m);
     }
     delete h;
@@ -586,15 +548,14 @@ void lua_bridge_init(const char* profile_id, const char* log_path) {
         return;
     }
     HANDLE t = CreateThread(nullptr, 0, late_hook_thread, new LateHook{exe}, 0, nullptr);
-    if (t)
-        CloseHandle(t);
-    else
-        emit("lua: late thread failed, skipping");
+    if (t) CloseHandle(t);
+    else emit("lua: late thread failed, skipping");
 }
 
 void lua_bridge_shutdown() {
     InterlockedExchange(&g_dead, 1);
-    std::lock_guard<std::mutex> lock(g_states_mtx);
+    // Drops our observations only. The game still owns every state; nothing
+    // here closes or frees one.
     g_states.clear();
 }
 
