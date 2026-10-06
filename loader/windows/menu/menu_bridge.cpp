@@ -50,24 +50,10 @@ static std::string read_file(const std::string& path) {
     return t;
 }
 
+// Atomic write of a per-mod config file. Delegates to the shared helper so
+// the unique-temp + flush + rename policy exists in exactly one place.
 static bool write_file(const std::string& path, const std::string& text) {
-    // Atomic: temp + flush + rename. A crash never leaves a half-written
-    // config that the next launch would parse as corrupt-then-default.
-    std::string tmp = path + ".tmp";
-    FILE* f = ttmod::file_io::open_write(tmp);
-    if (!f) return false;
-    size_t w = fwrite(text.data(), 1, text.size(), f);
-    bool flushed = fflush(f) == 0;
-    bool closed = fclose(f) == 0;
-    if (!flushed || !closed || w != text.size()) {
-        ttmod::file_io::remove_file(tmp);
-        return false;
-    }
-    if (ttmod::file_io::rename_file(tmp.c_str(), path.c_str()) != 0) {
-        ttmod::file_io::remove_file(tmp);
-        return false;
-    }
-    return true;
+    return ttmod::file_io::write_file_atomic(path, text);
 }
 
 // Fresh snapshot: manifests (store time) + enabled (fresh mods.json) +
@@ -115,9 +101,8 @@ static const char* take_error(lua_State* L, LuaGettopFn gettop, LuaTolstringFn t
     return buf; // caller restores the stack (it owns the pop policy)
 }
 
-void bridge_run_chunk(lua_State* L, LuaLoadstringFn loadstring, LuaPcallkFn pcallk,
-                      LuaGettopFn gettop, LuaSetglobalFn setglobal, LuaTolstringFn tolstring,
-                      const char* what, const char* chunk) {
+void bridge_run_chunk(lua_State* L, LuaLoadstringFn loadstring, LuaPcallkFn pcallk, LuaGettopFn gettop,
+                      LuaSetglobalFn setglobal, LuaTolstringFn tolstring, const char* what, const char* chunk) {
     if (!L || !loadstring || !pcallk || !gettop || !chunk) return;
     int t0 = gettop(L);
     int lr = loadstring(L, chunk);
@@ -138,8 +123,8 @@ void bridge_run_chunk(lua_State* L, LuaLoadstringFn loadstring, LuaPcallkFn pcal
     }
     if (lr != 0 || pr != 0 || t1 != t0) {
         char m[640];
-        snprintf(m, sizeof m, "lua: %s chunk load=%d pcall=%d balanced=%d err=%s",
-                 what ? what : "?", lr, pr, t1 == t0, err ? err : "-");
+        snprintf(m, sizeof m, "lua: %s chunk load=%d pcall=%d balanced=%d err=%s", what ? what : "?", lr, pr, t1 == t0,
+                 err ? err : "-");
         emit(m);
     }
 }
@@ -150,8 +135,7 @@ static int __cdecl fn_refresh(lua_State* L) {
     unsigned seq = (unsigned)InterlockedIncrement(&g_seq);
     auto snap = snapshot();
     std::string chunk = ttmod::build_menu_literal(snap, seq);
-    bridge_run_chunk(L, g_loadstring, g_pcallk, g_gettop, g_setglobal, g_tolstring, "refresh",
-                      chunk.c_str());
+    bridge_run_chunk(L, g_loadstring, g_pcallk, g_gettop, g_setglobal, g_tolstring, "refresh", chunk.c_str());
     char m[128]; // menu opens are rare; one line each is fine
     snprintf(m, sizeof m, "menumods: refresh seq=%u mods=%u", seq, (unsigned)snap.size());
     emit(m);
@@ -220,8 +204,8 @@ static int __cdecl fn_log(lua_State* L) {
     return 0;
 }
 
-static void reg_fn(lua_State* L, LuaPushCClosureFn pushcclosure, LuaSetglobalFn setglobal,
-                   lua_CFunction fn, const char* name) {
+static void reg_fn(lua_State* L, LuaPushCClosureFn pushcclosure, LuaSetglobalFn setglobal, lua_CFunction fn,
+                   const char* name) {
     if (!pushcclosure || !setglobal) return;
     pushcclosure(L, fn, 0);
     setglobal(L, name);
@@ -257,11 +241,9 @@ bool menumods_button_enabled() {
     return enabled;
 }
 
-void menumods_register(lua_State* L, LuaLoadstringFn loadstring, LuaPcallkFn pcallk,
-                       LuaGettopFn gettop, LuaTolstringFn tolstring,
-                       LuaPushCClosureFn pushcclosure, LuaSetglobalFn setglobal) {
-    if (!L || !loadstring || !pcallk || !gettop || !tolstring || !pushcclosure || !setglobal)
-        return;
+void menumods_register(lua_State* L, LuaLoadstringFn loadstring, LuaPcallkFn pcallk, LuaGettopFn gettop,
+                       LuaTolstringFn tolstring, LuaPushCClosureFn pushcclosure, LuaSetglobalFn setglobal) {
+    if (!L || !loadstring || !pcallk || !gettop || !tolstring || !pushcclosure || !setglobal) return;
     g_loadstring = loadstring;
     g_pcallk = pcallk;
     g_gettop = gettop;
@@ -277,26 +259,23 @@ void menumods_register(lua_State* L, LuaLoadstringFn loadstring, LuaPcallkFn pca
     // menumods_ui.lua runs in, so the menu could never be themed. Queued chunks
     // are already drained, so replay from the retained queue snapshot instead.
     for (const std::string& c : ttmod::uiqueue_recent())
-        bridge_run_chunk(L, loadstring, pcallk, gettop, setglobal, tolstring, "menu-plugin",
-                         c.c_str());
+        bridge_run_chunk(L, loadstring, pcallk, gettop, setglobal, tolstring, "menu-plugin", c.c_str());
     // Colour-property probe: TTMOD_PROBE=1 (env) or config/probe-props makes the
     // UI dump every candidate AgentSetProperty name against a real label clone
     // and log which one reads back. Diagnostic only, logged, off by default.
     {
         char probe[8] = {};
-        bool on = GetEnvironmentVariableA("TTMOD_PROBE", probe, sizeof probe) > 0 &&
-                  strcmp(probe, "0") != 0;
+        bool on = GetEnvironmentVariableA("TTMOD_PROBE", probe, sizeof probe) > 0 && strcmp(probe, "0") != 0;
         if (!on && ttmod_win::exists(g_gamedir + "/config/probe-props")) {
             on = true;
         }
         if (on) {
             emit("menumods: probe mode on, will dump colour properties to the log");
-            bridge_run_chunk(L, g_loadstring, g_pcallk, g_gettop, g_setglobal, g_tolstring,
-                             "probe-enable", "TTMOD_PROBE_PROPS = 1");
+            bridge_run_chunk(L, g_loadstring, g_pcallk, g_gettop, g_setglobal, g_tolstring, "probe-enable",
+                             "TTMOD_PROBE_PROPS = 1");
         }
     }
-    bridge_run_chunk(L, g_loadstring, g_pcallk, g_gettop, g_setglobal, g_tolstring, "ui-defs",
-                  kMenuModsUi);
+    bridge_run_chunk(L, g_loadstring, g_pcallk, g_gettop, g_setglobal, g_tolstring, "ui-defs", kMenuModsUi);
     emit("menumods: ui registered on state");
 }
 

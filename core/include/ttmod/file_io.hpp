@@ -13,6 +13,8 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#else
+#include <unistd.h>
 #endif
 
 namespace ttmod {
@@ -30,8 +32,7 @@ inline std::wstring to_wide(const std::string& s) {
     MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, w.data(), n);
     for (auto& c : w)
         if (c == L'/') c = L'\\';
-    if (w.size() >= 240 && w[1] == L':' && w.compare(0, 4, L"\\\\?\\") != 0)
-        w = L"\\\\?\\" + w;
+    if (w.size() >= 240 && w[1] == L':' && w.compare(0, 4, L"\\\\?\\") != 0) w = L"\\\\?\\" + w;
     return w;
 }
 
@@ -107,10 +108,31 @@ inline std::string read_all(const std::string& path) {
     return s;
 }
 
-// Atomic write: temp + flush + rename. A crash never leaves a half-written
-// file that the next launch would parse as corrupt.
+// Atomic write: unique temp + flush + rename. A crash never leaves a
+// half-written file that the next launch would parse as corrupt.
+//
+// The temp name carries the pid (and a counter, since one process can write
+// two different paths). A shared "<path>.tmp" would let two writers - the
+// config store and the menu bridge, say - truncate each other's temp file
+// and then rename a half-written file into place. That failure mode was
+// silent: both writes "succeeded" and the last rename won.
+//
+// Atomicity of the rename itself:
+//   POSIX  rename(2) is atomic within a filesystem.
+//   Windows MoveFileExW(MOVEFILE_REPLACE_EXISTING) is atomic for same-volume
+//   moves on NTFS; see rename_file below.
+// A stale "<name>.<pid>.tmp" from a killed process is never read (only the
+// final name is ever parsed) and is overwritten by the next write.
+inline std::string atomic_temp_name(const std::string& path) {
+#if defined(_WIN32)
+    return path + "." + std::to_string(GetCurrentProcessId()) + ".tmp";
+#else
+    return path + "." + std::to_string(static_cast<long>(getpid())) + ".tmp";
+#endif
+}
+
 inline bool write_file_atomic(const std::string& path, const std::string& text) {
-    std::string tmp = path + ".tmp";
+    std::string tmp = atomic_temp_name(path);
     FILE* f = open_write(tmp);
     if (!f) return false;
     size_t w = fwrite(text.data(), 1, text.size(), f);

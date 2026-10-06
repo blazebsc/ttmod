@@ -24,8 +24,8 @@ void wfile(const std::string& p, const std::string& data) {
 
 void setup_src() {
     char cmd[512];
-    snprintf(cmd, sizeof cmd, "rm -rf %s && mkdir -p %s/src/files %s/src/plugins %s/src/.git %s/src/build",
-             kDir, kDir, kDir, kDir, kDir);
+    snprintf(cmd, sizeof cmd, "rm -rf %s && mkdir -p %s/src/files %s/src/plugins %s/src/.git %s/src/build", kDir, kDir,
+             kDir, kDir, kDir);
     assert(system(cmd) == 0);
     wfile(std::string(kDir) + "/src/manifest.json",
           "{\"id\":\"pkg.test\",\"version\":\"1.0.0\",\"api\":1,\"files\":{\"a.txt\":\"files/a.txt\"}}");
@@ -116,10 +116,11 @@ struct RawZip {
     }
 };
 
-const char* kManifest =
-    "{\"id\":\"pkg.test\",\"version\":\"1.0.0\",\"api\":1,\"files\":{\"a.txt\":\"files/a.txt\"}}";
+const char* kManifest = "{\"id\":\"pkg.test\",\"version\":\"1.0.0\",\"api\":1,\"files\":{\"a.txt\":\"files/a.txt\"}}";
 
-void wzip(const std::string& p, const std::string& data) { wfile(p, data); }
+void wzip(const std::string& p, const std::string& data) {
+    wfile(p, data);
+}
 
 std::string raw_pkg(std::vector<std::pair<std::string, std::string>> files,
                     std::vector<std::pair<std::string, mz_uint32>> attrs = {}) {
@@ -180,11 +181,9 @@ int main() {
     assert(!ttmod::extract_package(p1, std::string(kDir) + "/out").ok());
 
     // Adversarial: traversal / absolute / drive / dup / missing manifest
-    wzip(std::string(kDir) + "/evil1.ttmod",
-         raw_pkg({{"manifest.json", kManifest}, {"../evil", "x"}}));
+    wzip(std::string(kDir) + "/evil1.ttmod", raw_pkg({{"manifest.json", kManifest}, {"../evil", "x"}}));
     assert(!ttmod::inspect_package(std::string(kDir) + "/evil1.ttmod").ok());
-    wzip(std::string(kDir) + "/evil2.ttmod",
-         raw_pkg({{"manifest.json", kManifest}, {"C:/evil", "x"}}));
+    wzip(std::string(kDir) + "/evil2.ttmod", raw_pkg({{"manifest.json", kManifest}, {"C:/evil", "x"}}));
     assert(!ttmod::inspect_package(std::string(kDir) + "/evil2.ttmod").ok());
     wzip(std::string(kDir) + "/evil3.ttmod",
          raw_pkg({{"manifest.json", kManifest}, {"files/A.txt", "x"}, {"files/a.txt", "y"}}));
@@ -195,24 +194,85 @@ int main() {
     assert(!ttmod::inspect_package(std::string(kDir) + "/evil5.ttmod").ok()); // declared file missing
     // Symlink entry rejected (unix mode S_IFLNK)
     wzip(std::string(kDir) + "/evil6.ttmod",
-         raw_pkg({{"manifest.json", kManifest}, {"files/a.txt", "x"}, {"link", "target"}},
-                 {{"link", 0120000u << 16}}));
+         raw_pkg({{"manifest.json", kManifest}, {"files/a.txt", "x"}, {"link", "target"}}, {{"link", 0120000u << 16}}));
     assert(!ttmod::inspect_package(std::string(kDir) + "/evil6.ttmod").ok());
     // Truncated archive refused
     wzip(std::string(kDir) + "/evil7.ttmod", d1.substr(0, d1.size() / 2));
     assert(!ttmod::inspect_package(std::string(kDir) + "/evil7.ttmod").ok());
     // Future package format refused at manifest level
     wzip(std::string(kDir) + "/evil8.ttmod",
-         raw_pkg({{"manifest.json",
-                   "{\"id\":\"x\",\"api\":1,\"package_format\":99,\"files\":{}}"}}));
+         raw_pkg({{"manifest.json", "{\"id\":\"x\",\"api\":1,\"package_format\":99,\"files\":{}}"}}));
     assert(!ttmod::inspect_package(std::string(kDir) + "/evil8.ttmod").ok());
-    // Absurd depth rejected
+    // Absurd depth rejected (raw-name bound, checked before normalization)
     std::string deep = "files";
     for (int i = 0; i < 40; ++i) deep += "/d";
     deep += "/x.txt";
-    wzip(std::string(kDir) + "/evil9.ttmod",
-         raw_pkg({{"manifest.json", kManifest}, {deep, "x"}}));
+    wzip(std::string(kDir) + "/evil9.ttmod", raw_pkg({{"manifest.json", kManifest}, {deep, "x"}}));
     assert(!ttmod::inspect_package(std::string(kDir) + "/evil9.ttmod").ok());
+
+    // Package resource limits (package_policy.hpp). Each one is enforced
+    // with the same canonical module, not a local constant.
+    namespace packlimits = ttmod::packlimits;
+    // Path length: > kMaxPathChars raw chars. Compresses to almost nothing.
+    {
+        std::string seg(200, 'a');
+        std::string longname = "files/" + seg + "/" + seg + "/" + seg + "/x.txt"; // >512
+        wzip(std::string(kDir) + "/long.ttmod", raw_pkg({{"manifest.json", kManifest}, {longname, "x"}}));
+        assert(!ttmod::inspect_package(std::string(kDir) + "/long.ttmod").ok());
+    }
+    // Oversized manifest: > kMaxManifestBytes decompressed, tiny on disk.
+    {
+        std::string big = kManifest;
+        big.append((size_t)ttmod::packlimits::kMaxManifestBytes, ' ');
+        wzip(std::string(kDir) + "/bigman.ttmod", raw_pkg({{"manifest.json", big}}));
+        auto r = ttmod::inspect_package(std::string(kDir) + "/bigman.ttmod");
+        assert(!r.ok());
+        assert(r.error().category == ttmod::errcat::kLimit);
+    }
+    // Oversized single entry: > kMaxEntryBytes decompressed (zeros compress
+    // ~1000:1, so the archive stays far under kMaxPackageBytes).
+    {
+        std::string huge((size_t)ttmod::packlimits::kMaxEntryBytes + 1024, '\0');
+        wzip(std::string(kDir) + "/huge.ttmod", raw_pkg({{"manifest.json", kManifest}, {"files/big.bin", huge}}));
+        auto r = ttmod::inspect_package(std::string(kDir) + "/huge.ttmod");
+        assert(!r.ok());
+        assert(r.error().category == ttmod::errcat::kLimit);
+    }
+    // Total expansion: each entry under the per-entry cap, sum over the
+    // total cap. This is the archive-bomb case the per-entry limit misses.
+    {
+        size_t chunk = (size_t)ttmod::packlimits::kMaxEntryBytes - 4096;
+        std::string blob(chunk, '\0');
+        std::vector<std::pair<std::string, std::string>> files = {{"manifest.json", kManifest}};
+        for (int i = 0; i < 5; ++i) files.push_back({"files/big" + std::to_string(i) + ".bin", blob});
+        wzip(std::string(kDir) + "/bomb.ttmod", raw_pkg(files));
+        auto r = ttmod::inspect_package(std::string(kDir) + "/bomb.ttmod");
+        assert(!r.ok());
+        assert(r.error().category == ttmod::errcat::kLimit);
+    }
+    // Too many entries: > kMaxEntries central-directory records.
+    {
+        std::vector<std::pair<std::string, std::string>> files = {{"manifest.json", kManifest}};
+        for (uint32_t i = 0; i < ttmod::packlimits::kMaxEntries + 8; ++i)
+            files.push_back({"files/f" + std::to_string(i) + ".txt", "x"});
+        wzip(std::string(kDir) + "/many.ttmod", raw_pkg(files));
+        auto r = ttmod::inspect_package(std::string(kDir) + "/many.ttmod");
+        assert(!r.ok());
+        assert(r.error().category == ttmod::errcat::kLimit);
+    }
+    // A package at the limit is still accepted: the bounds must not reject
+    // legitimate content. Uses a manifest with no declared files, since
+    // inspect also cross-checks declared files[] against entry names.
+    {
+        const char* kBareManifest = "{\"id\":\"many.mod\",\"api\":1}";
+        std::vector<std::pair<std::string, std::string>> files = {{"manifest.json", kBareManifest}};
+        for (uint32_t i = 0; i < ttmod::packlimits::kMaxEntries - 2; ++i)
+            files.push_back({"files/f" + std::to_string(i) + ".txt", "x"});
+        wzip(std::string(kDir) + "/atlimit.ttmod", raw_pkg(files));
+        auto r = ttmod::inspect_package(std::string(kDir) + "/atlimit.ttmod");
+        assert(r.ok());
+        assert(r.value().files.size() == ttmod::packlimits::kMaxEntries - 2);
+    }
 
     std::puts("package: all asserts passed");
     return 0;
