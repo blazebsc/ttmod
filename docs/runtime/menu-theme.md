@@ -22,7 +22,7 @@ so the colour can be changed in-game; it applies on restart.
 
 ## How it works (two layers)
 
-**Layer 1 — Lua paint** (`loader/windows/menumods_ui.lua`): the `Menu_Add`
+**Layer 1 — Lua paint** (`loader/windows/menu/menumods_ui.lua`): the `Menu_Add`
 wrapper routes every created widget through `TTMOD_THEME_WIDGET`, which writes
 the accent (0..1 floats, named `{r,g,b,a}` fields — the engine's actual
 representation; 0..255 ints get clamped and render stock) into `Text Color`
@@ -30,7 +30,7 @@ on each label clone and `Selection Color` on the button clone. A retry queue
 covers widgets returned before their label child exists. Verified in-game
 (`verify-ok: Text Color holds (exact)`).
 
-**Layer 2 — native substitute** (`loader/windows/lua_bridge.cpp`, `hook_scol`
+**Layer 2 — native substitute** (`loader/windows/lua/lua_bridge.cpp`, `hook_scol`
 on the engine color setter at RVA `0x168430`, thiscall, anchor-verified,
 retry-installed): near-gray-bright color structs are rewritten to the accent
 in place. This catches engine-side writes that bypass Lua entirely (select

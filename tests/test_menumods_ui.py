@@ -8,7 +8,7 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-UI = os.path.join(ROOT, "loader", "windows", "menumods_ui.lua")
+UI = os.path.join(ROOT, "loader", "windows", "menu", "menumods_ui.lua")
 
 STUBS = r"""
 -- The GAME's Lua runtime has _G == nil (verified in-game 2026-10-02): a stripped

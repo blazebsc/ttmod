@@ -127,7 +127,7 @@ if(TTMOD_BUILD_WIN_RUNTIME)
   if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
     message(FATAL_ERROR "TTMOD_BUILD_WIN_RUNTIME requires a 32-bit x86 toolchain (i686)")
   endif()
-  add_library(dinput8 SHARED loader/windows/dinput8_proxy.cpp)
+  add_library(dinput8 SHARED loader/windows/proxy/dinput8_proxy.cpp)
   # MinHook (BSD-2-Clause, Tsuda Kageyu; see third_party/minhook/LICENSE.txt).
   add_library(minhook STATIC
     third_party/minhook/src/buffer.c
@@ -136,19 +136,19 @@ if(TTMOD_BUILD_WIN_RUNTIME)
     third_party/minhook/src/hde/hde32.c
     third_party/minhook/src/hde/hde64.c)
   target_include_directories(minhook PUBLIC third_party/minhook/include)
-  add_library(ttmod_framework SHARED loader/windows/framework.cpp loader/windows/hooks.cpp loader/windows/plugins.cpp loader/windows/mods.cpp loader/windows/events.cpp loader/windows/lua_bridge.cpp loader/windows/menu_bridge.cpp ${TTMOD_CORE_SRCS})
+  add_library(ttmod_framework SHARED loader/windows/runtime/framework.cpp loader/windows/hooks/hooks.cpp loader/windows/plugins/plugins.cpp loader/windows/runtime/mods.cpp loader/windows/runtime/events.cpp loader/windows/lua/lua_bridge.cpp loader/windows/menu/menu_bridge.cpp ${TTMOD_CORE_SRCS})
 ttmod_apply_warnings(ttmod_framework)
 ttmod_apply_sanitizers(ttmod_framework)
   target_include_directories(ttmod_framework PUBLIC core/include)
-  target_include_directories(ttmod_framework PRIVATE loader/windows third_party/minhook/include third_party/nlohmann/include)
+  target_include_directories(ttmod_framework PRIVATE loader/windows loader/windows/proxy loader/windows/hooks loader/windows/plugins loader/windows/lua loader/windows/menu loader/windows/platform loader/windows/runtime third_party/minhook/include third_party/nlohmann/include)
   target_link_libraries(ttmod_framework PRIVATE minhook miniz)
   # Embedded Mods-menu Lua (generated header, never committed).
   find_package(Python3 COMPONENTS Interpreter)
   add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/menumods_ui.h
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/embed_lua.py
-      ${CMAKE_SOURCE_DIR}/loader/windows/menumods_ui.lua
+      ${CMAKE_SOURCE_DIR}/loader/windows/menu/menumods_ui.lua
       ${CMAKE_CURRENT_BINARY_DIR}/menumods_ui.h kMenuModsUi
-    DEPENDS ${CMAKE_SOURCE_DIR}/loader/windows/menumods_ui.lua
+    DEPENDS ${CMAKE_SOURCE_DIR}/loader/windows/menu/menumods_ui.lua
             ${CMAKE_SOURCE_DIR}/tools/embed_lua.py
     COMMENT "Embedding menumods_ui.lua")
   add_custom_target(menumods_ui_h DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/menumods_ui.h)

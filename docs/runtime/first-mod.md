@@ -12,7 +12,7 @@ The engine opened German107 twice and German108 never. Game exited 0.
 Default (env unset): pure passthrough. This env-gated demo was REMOVED
 when the permanent M5 override system shipped (`resource-overrides.md`);
 the CreateFileW hook is now a log-capped passthrough IAT hook
-(`loader/windows/hooks.cpp`). History preserved here; do not re-add.
+(`loader/windows/hooks/hooks.cpp`). History preserved here; do not re-add.
 
 ## 2. Visible window title (example plugin `examples/title-mcsm`)
 `title.mcsm` finds the `Telltale Games` window and prefixes it:

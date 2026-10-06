@@ -7,7 +7,7 @@ Game CreateFileW → IAT hook → normalize → Resolver (index) → hit?
   no  → real CreateFileW(original, ...same args...) (misses silent by default)
 ```
 Resolver (`core/resolver.*`, portable, unit-tested) is separate from the
-Windows hook (`loader/windows/hooks.cpp` + `mods.cpp`). Hot path = one map
+Windows hook (`loader/windows/hooks/hooks.cpp` + `mods.cpp`). Hot path = one map
 lookup; index built once at init; no IO per request. Only the filename may
 change - access/share/security/disposition/flags/template pass through.
 

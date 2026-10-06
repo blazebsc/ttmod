@@ -120,7 +120,7 @@ and 12 probes, but never created the Lua VM (no newstate observed) and
 never opened menu streams - long-lived pre-menu, NOT a menu session.
 
 ## Pre-Lua boot diagnosis (2026-09-17, hunter paused at 98 attempts)
-- Added loader/windows/stage.hpp: additive "[STAGE ms]" timeline lines
+- Added loader/windows/platform/stage.hpp: additive "[STAGE ms]" timeline lines
   (new lines only; core Logger format untouched, tests unaffected).
 - First timestamped normal boot: init 41ms, first open 173ms, first
   override 1489ms, lua_newstate 2709ms. Lua VM exists by ~3s normally.

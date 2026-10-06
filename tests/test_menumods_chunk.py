@@ -8,9 +8,9 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Chunk text is extracted from loader/windows/menu_bridge.hpp (single
+# Chunk text is extracted from loader/windows/menu/menu_bridge.hpp (single
 # source of truth, loader-owned), then executed for real.
-HDR = os.path.join(ROOT, "loader", "windows", "menu_bridge.hpp")
+HDR = os.path.join(ROOT, "loader", "windows", "menu", "menu_bridge.hpp")
 with open(HDR, encoding="utf-8") as f:
     hsrc = f.read()
 i = hsrc.index("kMenuModsChunk")
@@ -34,7 +34,7 @@ DRIVER = (
     "print('menumods-chunk: exists+called+returned OK')\n"
 )
 
-with open(os.path.join(ROOT, "loader", "windows", "menu_bridge.hpp"), encoding="utf-8") as f:
+with open(os.path.join(ROOT, "loader", "windows", "menu", "menu_bridge.hpp"), encoding="utf-8") as f:
     src = f.read()
 for needle in ("kMenuModsChunk", "kMenuModsCalls", "kMenuModsPressed", "bridge_run_chunk"):
     assert needle in src, needle

@@ -13,7 +13,7 @@ plugins/
     plugin.dll
 ```
 
-## Loader (`loader/windows/plugins.cpp`)
+## Loader (`loader/windows/plugins/plugins.cpp`)
 discovers `plugins/*` → parses manifest (portable `ttmod::parse_manifest`,
 unit-tested in `tests/test_manifest.cpp`) → rejects with reason on:
 missing manifest, bad manifest, api mismatch, game mismatch, missing DLL,

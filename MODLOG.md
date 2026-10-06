@@ -281,3 +281,13 @@ awk '/TTMod framework v/{buf=""} {buf=buf $0 "\n"} END{printf "%s",buf}' logs/tt
   (scol target); loader literals replaced (hooks/framework/lua_bridge).
   Profiles/ per-game dir deferred: single game, single header; the dir
   earns its keep at game two (documented deviation from the plan).
+
+## 2026-10-05 refactor Stage G1 (loader directory split)
+
+- loader/windows split by responsibility: proxy/, hooks/, plugins/,
+  lua/, menu/, platform/, runtime/. Moves only (git mv); flat
+  includes preserved via per-dir include paths; zero content edits.
+- Hot path verified light (TLS guard + map lookup, capped logs, no
+  I/O/allocs beyond small strings) - deliberately NOT micro-optimized
+  without measured need. Async/background logger deferred: per-message
+  open/close is the thread-safe pattern under game threading.

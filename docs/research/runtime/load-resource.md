@@ -10,7 +10,7 @@ is preserved for a post-unpack M6 attempt. No game code is patched.
 
 Update (M6+): the M6 attempt succeeded - late (2.5 s, anchor-verified)
 MinHook detours on game `lua_newstate` + `ScriptManager::LoadResource` are
-installed by `loader/windows/lua_bridge.cpp` and drive the shipped in-game
+installed by `loader/windows/lua/lua_bridge.cpp` and drive the shipped in-game
 Mods menu (see `docs/runtime/in-game-mod-menu.md`). The IAT hook above
 remains the file-IO path; the detours below are the Lua path.
 

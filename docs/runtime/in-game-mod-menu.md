@@ -10,11 +10,11 @@ toggles/settings persist to `config/mods.json` + `config/<id>.json` and
 apply on restart. 20/20 tests green (15 native + 5 Python); win32 DLLs staged.
 
 ## Architecture (what actually ships)
-- `loader/windows/lua_bridge.cpp` - late (2.5 s, anchor-verified) MinHook
+- `loader/windows/lua/lua_bridge.cpp` - late (2.5 s, anchor-verified) MinHook
   detours on game `lua_newstate` + `ScriptManager::LoadResource`; installs
   the Menu_Add wrapper chunk when `Menu.lua` loads and registers the menu
   bridge on EVERY captured Lua state.
-- `loader/windows/menu_bridge.hpp::kMenuAddWrapChunk` - wraps `Menu_Add`,
+- `loader/windows/menu/menu_bridge.hpp::kMenuAddWrapChunk` - wraps `Menu_Add`,
   census-logs main-menu rows via AppendLog, re-arms on the 'play' row
   (always first → revisit re-append), and appends ONE Mods row when the
   'exit' row passes: `Menu_Add(ListButton,'mods','label_help',
@@ -28,7 +28,7 @@ apply on restart. 20/20 tests green (15 native + 5 Python); win32 DLLs staged.
   `ttmod_menu_set_enabled(id,"1"/"0")` → `config/mods.json`,
   `ttmod_menu_set_value(id,key,v)` → validate + `config/<id>.json`,
   `ttmod_menu_log(s)` → `menumods-lua:` lines in ttmod.log.
-- `loader/windows/menumods_ui.lua` (embedded as menumods_ui.h) - the screens:
+- `loader/windows/menu/menumods_ui.lua` (embedded as menumods_ui.h) - the screens:
   list → details → toggle/config-edit → back. Defined on every state
   (whichever state the menu runs on gets them).
 
