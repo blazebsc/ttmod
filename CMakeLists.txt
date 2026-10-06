@@ -10,6 +10,10 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # (fseeko/ftello). First-party C++ stays strict via CMAKE_CXX_EXTENSIONS OFF.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Vendored Lua 5.4.7 for the TTMod-owned scripting VM (doc §§2,4,23,71).
+# Kept OUT of ttmod_core and OUT of the CLI: the CLI must stay VM-free.
+add_subdirectory(third_party/lua)
+
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(helpers)
 include(warnings)
@@ -40,6 +44,12 @@ set(TTMOD_CORE_SRCS
   core/src/modid.cpp
   core/src/modplan.cpp
   core/src/game_lua.cpp
+  core/src/script_value.cpp
+  core/src/game_dispatch.cpp
+  core/src/scheduler.cpp
+  core/src/mod_lifecycle.cpp
+  core/src/script_api.cpp
+  core/src/script_vm.cpp
   core/src/uiqueue.cpp
   core/src/theme_color.cpp
   core/src/validate.cpp
@@ -120,6 +130,21 @@ ttmod_add_unit_test(manifest_split tests/unit/test_manifest_split.cpp)
 ttmod_add_unit_test(atomic tests/unit/test_atomic.cpp)
 ttmod_add_unit_test(modplan tests/unit/test_modplan.cpp)
 ttmod_add_unit_test(game_lua tests/unit/test_game_lua.cpp)
+ttmod_add_unit_test(script_value tests/unit/test_script_value.cpp)
+ttmod_add_unit_test(game_dispatch tests/unit/test_game_dispatch.cpp)
+ttmod_add_unit_test(mod_lifecycle tests/unit/test_mod_lifecycle.cpp)
+ttmod_add_unit_test(script_vm tests/unit/test_script_vm.cpp)
+
+# Script backend: the Lua VM. Separate from ttmod_core so core (and therefore
+# the CLI) never links a scripting VM.
+add_library(ttmod_lua_backend STATIC core/script/lua/lua_vm.cpp)
+ttmod_apply_warnings(ttmod_lua_backend)
+target_include_directories(ttmod_lua_backend PUBLIC core/include PRIVATE core)
+target_link_libraries(ttmod_lua_backend PUBLIC ttmod_core PRIVATE lua54)
+
+ttmod_add_unit_test(lua_backend tests/script/test_lua_vm.cpp)
+target_link_libraries(test_lua_backend PRIVATE ttmod_lua_backend lua54)
+target_include_directories(test_lua_backend PRIVATE core)
 find_program(PYTHON3_BIN python3)
 if(PYTHON3_BIN)
   add_test(NAME lua_dis COMMAND ${PYTHON3_BIN} ${CMAKE_SOURCE_DIR}/tests/lua/test_lua_dis.py)

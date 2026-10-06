@@ -89,6 +89,41 @@ int main() {
         assert(!v("{\"id\":\"a\",\"api\":1,\"conflicts\":[\"..\"]}").ok());
         // Config schema is validated by its own stage, once.
         assert(!v("{\"id\":\"a\",\"api\":1,\"config\":[{\"key\":\"k\"}]}").ok());
+
+        // ---- entrypoints (doc §§18, 20, 65) ---------------------------
+        auto luau = v("{\"id\":\"a\",\"api\":1,\"runtimes\":[\"luau\"],"
+                      "\"entrypoints\":{\"luau\":\"main.luau\"}}");
+        assert(luau.ok());
+        assert(luau.value().entrypoints.luau == "main.luau");
+        assert(luau.value().entrypoints.find(ttmod::Runtime::Luau) != nullptr);
+        assert(luau.value().entrypoints.find(ttmod::Runtime::Lua) == nullptr);
+        // All three at once: the ultimate mod (doc §52).
+        auto all = v("{\"id\":\"a\",\"api\":1,\"runtimes\":[\"native\",\"luau\",\"telltale-lua\"],"
+                     "\"plugin\":\"plugin.dll\","
+                     "\"entrypoints\":{\"luau\":\"main.luau\",\"telltale-lua\":\"game.lua\"}}");
+        assert(all.ok());
+        assert(all.value().entrypoints.luau == "main.luau");
+        assert(all.value().entrypoints.telltale_lua == "game.lua");
+        assert(all.value().entrypoints.native_is_absent());
+        // native is NOT an entrypoint: one source of truth, with a message.
+        assert(!v("{\"id\":\"a\",\"api\":1,\"runtimes\":[\"native\"],"
+                  "\"entrypoints\":{\"native\":\"plugin.dll\"}}")
+                    .ok());
+        // Unknown runtime name.
+        assert(!v("{\"id\":\"a\",\"api\":1,\"entrypoints\":{\"ps5\":\"x.lua\"}}").ok());
+        // Wrong value type, and traversal in the path.
+        assert(!v("{\"id\":\"a\",\"api\":1,\"entrypoints\":{\"lua\":5}}").ok());
+        assert(!v("{\"id\":\"a\",\"api\":1,\"entrypoints\":{\"lua\":\"../evil.lua\"}}").ok());
+        assert(!v("{\"id\":\"a\",\"api\":1,\"entrypoints\":\"main.lua\"}").ok());
+        // Opting into entrypoints makes the two fields agree exactly: a
+        // runtime with no entry point, or an entry point for a runtime that
+        // was not declared, is a mod that silently does nothing.
+        assert(!v("{\"id\":\"a\",\"api\":1,\"runtimes\":[\"lua\"],\"entrypoints\":{\"luau\":\"m.luau\"}}").ok());
+        assert(!v("{\"id\":\"a\",\"api\":1,\"entrypoints\":{\"lua\":\"main.lua\"}}").ok());
+        // A manifest with no entrypoints key at all stays valid: it predates
+        // the script VM and refusing would break shipped mods.
+        assert(v("{\"id\":\"a\",\"api\":1,\"runtimes\":[\"lua\"]}").ok());
+        assert(v("{\"id\":\"a\",\"api\":1,\"runtimes\":[\"native\"],\"plugin\":\"p.dll\"}").ok());
     }
 
     // The split is composable: hand-built RawManifest goes straight to
