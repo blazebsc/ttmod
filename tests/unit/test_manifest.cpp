@@ -19,6 +19,22 @@ static ttmod::VersionConstraint con(const char* s) {
     return std::move(r).value();
 }
 
+static std::string manifest_with_games(const std::vector<std::string>& games) {
+    std::string text = "{\"id\":\"g\",\"api\":1,\"games\":[";
+    for (size_t i = 0; i < games.size(); ++i) {
+        if (i) text += ",";
+        text += "\"" + games[i] + "\"";
+    }
+    return text + "]}";
+}
+
+static void expect_manifest_error(const std::string& text, const char* category, const std::string& message_part) {
+    auto r = ttmod::parse_manifest(text);
+    assert(!r.ok());
+    assert(r.error().category == category);
+    assert(r.error().message.find(message_part) != std::string::npos);
+}
+
 int main() {
     auto good = ttmod::parse_manifest("{ \"id\": \"hello.mcsm\", \"version\": \"1.0.0\", \"api\": 1, "
                                       "\"games\": [\"minecraft-story-mode:s1\"], \"extra\": {\"a\":1} }")
@@ -36,6 +52,12 @@ int main() {
     assert(res.overrides.priority == 200 && !res.enabled && res.overrides.files.size() == 2);
     assert(res.overrides.files[0].first == "archives/x.lua" && res.overrides.files[0].second == "files/archives/x.lua");
 
+    auto normalized = ttmod::parse_manifest("{\"id\":\"paths\",\"api\":1,\"plugin\":\"./plugins/x.dll\","
+                                            "\"files\":{\"a/x.lua\":\"files\\\\sub\\\\..\\\\x.lua\"}}")
+                          .value();
+    assert(normalized.overrides.files[0].first == "a/x.lua" && normalized.overrides.files[0].second == "files/x.lua");
+    assert(normalized.plugin.path == "plugins/x.dll");
+
     assert(!ttmod::parse_manifest("").ok());
     assert(!ttmod::parse_manifest("{\"id\":\"x\"}").ok());               // missing api
     assert(!ttmod::parse_manifest("{\"api\":1}").ok());                  // missing id
@@ -45,6 +67,48 @@ int main() {
     assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"enabled\":\"yes\"}").ok());
     assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"files\":[]}").ok()); // files not object
     assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"files\":{\"a\":1}}").ok());
+
+    auto valid_games =
+        ttmod::parse_manifest(manifest_with_games({"a", "minecraft-story-mode:s1", "x:s123", "x:s10"})).value();
+    assert(valid_games.compat.games.size() == 4);
+    assert(valid_games.compat.games[0] == "a" && valid_games.compat.games[1] == "minecraft-story-mode:s1" &&
+           valid_games.compat.games[2] == "x:s123" && valid_games.compat.games[3] == "x:s10");
+    for (const char* bad : {"", "Minecraft", "a:s", "a:sx", "a:s1234", "a b", ":s1", "a:s0", "a:s01", "a:s001"}) {
+        auto failed = ttmod::parse_manifest(manifest_with_games({bad}));
+        assert(!failed.ok() && failed.error().category == ttmod::errcat::kType);
+        assert(failed.error().message == std::string("bad games: ") + bad);
+    }
+    const std::string long_game(65, 'a');
+    auto long_game_result = ttmod::parse_manifest(manifest_with_games({long_game}));
+    assert(!long_game_result.ok() && long_game_result.error().category == ttmod::errcat::kType);
+    assert(long_game_result.error().message == "bad games: " + long_game);
+    expect_manifest_error(manifest_with_games({"a", "a"}), ttmod::errcat::kDuplicate, "a");
+
+    {
+        ttmod::ModCompatibility compat;
+        compat.api = 0;
+        assert(!compat.supports_api(3));
+        compat.api = 1;
+        assert(compat.supports_api(3));
+        compat.api = 3;
+        assert(compat.supports_api(3));
+        compat.api = 4;
+        assert(!compat.supports_api(3));
+
+        compat.games = {"g:s1", "bare"};
+        assert(compat.supports_game("g", 1));
+        assert(compat.supports_game("bare", 2));
+        assert(!compat.supports_game("g", 2));
+        ttmod::ModCompatibility no_games;
+        assert(!no_games.supports_game("g", 1));
+
+        compat.arch = ttmod::Architecture::Any;
+        assert(compat.supports_arch(ttmod::Architecture::X86));
+        assert(compat.supports_arch(ttmod::Architecture::X64));
+        compat.arch = ttmod::Architecture::X64;
+        assert(!compat.supports_arch(ttmod::Architecture::X86));
+        assert(compat.supports_arch(ttmod::Architecture::X64));
+    }
 
     auto plug = ttmod::parse_manifest(
                     "{\"id\":\"p\",\"api\":1,\"plugin\":\"plugins/p.dll\",\"arch\":\"x86\",\"package_format\":1}")
@@ -68,6 +132,17 @@ int main() {
     // Dependency and conflict ids go through the same canonical validator.
     assert(!ttmod::parse_manifest("{\"id\":\"m\",\"api\":1,\"depends\":[{\"id\":\"../evil\"}]}").ok());
     assert(!ttmod::parse_manifest("{\"id\":\"m\",\"api\":1,\"conflicts\":[\"..\\\\evil\"]}").ok());
+    expect_manifest_error("{\"id\":\"m\",\"api\":1,\"depends\":[{\"id\":\"m\"}]}", ttmod::errcat::kType, "m");
+    expect_manifest_error("{\"id\":\"m\",\"api\":1,\"conflicts\":[\"m\"]}", ttmod::errcat::kType, "m");
+    expect_manifest_error("{\"id\":\"m\",\"api\":1,\"depends\":[{\"id\":\"base\"},{\"id\":\"base\"}]}",
+                          ttmod::errcat::kDuplicate, "base");
+    expect_manifest_error("{\"id\":\"m\",\"api\":1,\"conflicts\":[\"base\",\"base\"]}", ttmod::errcat::kDuplicate,
+                          "base");
+    expect_manifest_error("{\"id\":\"m\",\"api\":1,\"depends\":[{\"id\":\"base\"}],\"conflicts\":[\"base\"]}",
+                          ttmod::errcat::kType, "base");
+    expect_manifest_error("{\"id\":\"m\",\"api\":1,\"runtimes\":[\"lua\",\"lua\"]}", ttmod::errcat::kDuplicate, "lua");
+    expect_manifest_error("{\"id\":\"m\",\"api\":1,\"permissions\":[\"game.read\",\"game.read\"]}",
+                          ttmod::errcat::kDuplicate, "game.read");
 
     // Version + VersionConstraint are parsed, never constructed raw.
     {

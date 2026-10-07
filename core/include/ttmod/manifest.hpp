@@ -35,6 +35,9 @@ struct ModCompatibility {
     std::vector<std::string> games;
     Architecture arch = Architecture::Any; // absent = any
     int api = 0;
+    [[nodiscard]] bool supports_api(int host_api) const noexcept;
+    [[nodiscard]] bool supports_game(std::string_view game, int season) const;
+    [[nodiscard]] bool supports_arch(Architecture host) const noexcept;
 };
 struct DependencySpec {
     // depends entries {mod id, version constraint ("" = any)}.
@@ -181,9 +184,15 @@ inline std::optional<Permission> parse_permission(std::string_view s) {
     if (s == "native") return Permission::Native;
     return std::nullopt;
 }
-// A validated manifest. Every identity, path, version, runtime name and
-// permission here has already passed its canonical policy, so consumers
-// never re-check (Step 4: parse and validation are separate layers).
+// A validated manifest. validate_manifest establishes these invariants:
+// - id is valid; versions and dependency constraints are typed.
+// - plugin, replacement-target, and entrypoint paths are normalized mod-relative;
+//   game-side override keys remain resolver-owned.
+// - games are well-formed and unique; dependencies are non-self, unique,
+//   and non-contradictory.
+// - runtimes and permissions are known and unique; entrypoints agree with
+//   runtimes when present; the config schema is validated.
+// Consumers rely on these invariants and never re-validate them.
 struct ModManifest {
     ModIdentity identity;
     ModCompatibility compat;

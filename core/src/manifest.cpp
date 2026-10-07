@@ -10,6 +10,7 @@
 #include "ttmod/validate.hpp"
 #include "ttmod/version.hpp"
 
+#include <algorithm>
 #include <climits>
 
 namespace ttmod {
@@ -35,7 +36,41 @@ bool known_field(const std::string& k) {
     return false;
 }
 
+bool valid_game_entry(std::string_view game) {
+    if (game.empty() || game.size() > 64) return false;
+
+    const auto colon = game.find(':');
+    const std::string_view name = game.substr(0, colon);
+    if (name.empty()) return false;
+    for (char c : name)
+        if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-')) return false;
+
+    if (colon == std::string_view::npos) return true;
+    const std::string_view season = game.substr(colon + 1);
+    if (season.size() < 2 || season.size() > 4 || season.front() != 's' || season[1] < '1' || season[1] > '9')
+        return false;
+    for (char c : season.substr(2))
+        if (c < '0' || c > '9') return false;
+    return true;
+}
+
 } // namespace
+
+bool ModCompatibility::supports_api(int host_api) const noexcept {
+    return api >= 1 && api <= host_api;
+}
+
+bool ModCompatibility::supports_game(std::string_view game, int season) const {
+    const std::string bare(game);
+    const std::string versioned = bare + ":s" + std::to_string(season);
+    for (const auto& supported : games)
+        if (supported == bare || supported == versioned) return true;
+    return false;
+}
+
+bool ModCompatibility::supports_arch(Architecture host) const noexcept {
+    return arch == Architecture::Any || arch == host;
+}
 
 Result<RawManifest> read_raw_manifest(const std::string& text) {
     auto fail = [&](const std::string& e, const char* cat) {
@@ -237,17 +272,28 @@ Result<ModManifest> validate_manifest(const RawManifest& raw) {
         if (!raw.plugin->empty()) {
             auto p = validate_mod_relative_path(*raw.plugin);
             if (!p.ok()) return fail(std::string("bad plugin: ") + p.error().message, p.error().category);
+            m.plugin.path = std::move(p).value();
         }
-        m.plugin.path = *raw.plugin;
     }
 
-    if (raw.games) m.compat.games = *raw.games;
+    if (raw.games) {
+        for (const auto& game : *raw.games) {
+            if (!valid_game_entry(game)) return fail("bad games: " + game, errcat::kType);
+            if (std::find(m.compat.games.begin(), m.compat.games.end(), game) != m.compat.games.end())
+                return fail("duplicate games: " + game, errcat::kDuplicate);
+            m.compat.games.push_back(game);
+        }
+    }
 
     if (raw.conflicts) {
         for (auto& c : *raw.conflicts) {
             auto cid = ModId::parse(c);
             if (!cid.ok()) return fail("bad conflicts: " + c, errcat::kType);
-            m.deps.conflicts.push_back(cid.value());
+            ModId id = std::move(cid).value();
+            if (id == m.identity.id) return fail("conflicts with self: " + id.str(), errcat::kType);
+            if (std::find(m.deps.conflicts.begin(), m.deps.conflicts.end(), id) != m.deps.conflicts.end())
+                return fail("duplicate conflicts: " + id.str(), errcat::kDuplicate);
+            m.deps.conflicts.push_back(std::move(id));
         }
     }
 
@@ -257,6 +303,8 @@ Result<ModManifest> validate_manifest(const RawManifest& raw) {
             // Unknown runtime names are rejected: a typo would otherwise
             // silently produce a mod that declares no runtime at all.
             if (!rt) return fail("bad runtimes: " + r, errcat::kType);
+            if (std::find(m.runtime.runtimes.begin(), m.runtime.runtimes.end(), *rt) != m.runtime.runtimes.end())
+                return fail("duplicate runtimes: " + r, errcat::kDuplicate);
             m.runtime.runtimes.push_back(*rt);
         }
     }
@@ -266,6 +314,9 @@ Result<ModManifest> validate_manifest(const RawManifest& raw) {
             auto pp = parse_permission(p);
             // Permissions are a security boundary, not a hint.
             if (!pp) return fail("bad permissions: " + p, errcat::kType);
+            if (std::find(m.runtime.permissions.begin(), m.runtime.permissions.end(), *pp) !=
+                m.runtime.permissions.end())
+                return fail("duplicate permissions: " + p, errcat::kDuplicate);
             m.runtime.permissions.push_back(*pp);
         }
     }
@@ -274,9 +325,16 @@ Result<ModManifest> validate_manifest(const RawManifest& raw) {
         for (auto& d : *raw.depends) {
             auto dep = ModId::parse(d.id);
             if (!dep.ok()) return fail("bad depends: " + d.id, errcat::kType);
+            ModId id = std::move(dep).value();
+            if (id == m.identity.id) return fail("depends on self: " + id.str(), errcat::kType);
+            if (std::find_if(m.deps.depends.begin(), m.deps.depends.end(),
+                             [&](const auto& existing) { return existing.first == id; }) != m.deps.depends.end())
+                return fail("duplicate depends: " + id.str(), errcat::kDuplicate);
+            if (std::find(m.deps.conflicts.begin(), m.deps.conflicts.end(), id) != m.deps.conflicts.end())
+                return fail("depends and conflicts: " + id.str(), errcat::kType);
             auto vc = VersionConstraint::parse(d.version);
             if (!vc.ok()) return fail("bad depends version: " + vc.error().message, errcat::kSyntax);
-            m.deps.depends.emplace_back(dep.value(), std::move(vc).value());
+            m.deps.depends.emplace_back(std::move(id), std::move(vc).value());
         }
     }
 
@@ -287,7 +345,7 @@ Result<ModManifest> validate_manifest(const RawManifest& raw) {
             // (root-relative or absolute) validated by the resolver, not here.
             auto rp = validate_mod_relative_path(to);
             if (!rp.ok()) return fail("bad files[" + from + "]: " + rp.error().message, rp.error().category);
-            m.overrides.files.emplace_back(from, to);
+            m.overrides.files.emplace_back(from, std::move(rp).value());
         }
     }
 

@@ -12,3 +12,4 @@ would reopen it.
 - [006](006-state-registry.md) - game Lua states get identity, not just a count
 - [007](007-version-grammar.md) - bounded version grammar, prerelease ignored, not SemVer
 - [008](008-result-access-contract.md) - Result access: explicit, ref-qualified, move via std::move(r).value()
+- [009](009-manifest-authoritative.md) - validated manifests are authoritative
