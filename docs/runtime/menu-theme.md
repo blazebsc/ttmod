@@ -53,6 +53,18 @@ Lua-side guards (`theme_wrap_asp/roll/tc`, log-only) and a read-only audit
 (`theme-audit`, attribution `own:`/`menu:`) ship in the UI chunk for diagnosis.
 They have never fired on a live write path; the native hook does the work.
 
+**Swatch preservation (2026-10-07).** The colour picker paints each palette
+row's label with that swatch's own colour. The engine's hover cycle then
+writes stock white / 0.878 gray at the same label — and both the Lua
+wrappers and the native substitute used to rewrite those writes to the
+accent, so a hovered swatch stuck accent until game restart. `paint()`
+now records each agent's intended colour in `theme_custom` *before* the
+write; `apply_theme` repaints that colour instead of the accent (which
+makes every repaint path — rollover wrapper, retry queue, THEME_WIDGET —
+preserve it), and the `AgentSetProperty`/`TextSetColor` wrappers restore
+it on stock writes. The audit compares against the agent's *intended*
+colour, so correct swatches never false-flag.
+
 ## Proven behaviour (screenshot-verified)
 
 - Rest and hovered rows render the accent (green/blue/white exact).

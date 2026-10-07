@@ -312,6 +312,13 @@ local theme_probed = false
 -- re-probe or fight the engine's own refresh. Plain table, NOT setmetatable:
 -- the game's Lua is 5.1 (no setmetatable, no table.unpack) - verified in-game.
 local theme_painted = {}
+-- Deliberate per-agent colours (the colour picker's palette rows). An agent
+-- whose colour was chosen to be something other than the accent must KEEP
+-- that colour through the engine's hover select/deselect cycle, which
+-- otherwise repaints it accent and never restores it (2026-10-07: hovering a
+-- colour option stuck it accent until game restart). paint() records it;
+-- apply_theme and the write wrappers read it before choosing the accent.
+local theme_custom = {}
 -- Attribution: which screen painted the agent. Set in apply_theme from the
 -- TTMOD_OWN_BUILD flag (true while OUR Populate runs inside Menu_Push -
 -- synchronous, single-threaded). 'own' = our Mods screens (popped menus
@@ -366,7 +373,16 @@ local TT_STATE_COLOUR_PROPS = { 'Selection Color' }
 local function paint(agent, hex)
     if agent == nil or pcall == nil or AgentSetProperty == nil then return false end
     if theme_winner == nil then return false end
-    if not set_color(agent, theme_winner, hex) then return false end
+    -- Record the intended colour BEFORE the write: the AgentSetProperty
+    -- wrapper reads theme_custom to decide preserve-vs-accent, and a pale
+    -- swatch's own near-gray-white paint must be preserved by this very
+    -- write, not substituted to the accent.
+    local prev_custom = theme_custom[agent]
+    theme_custom[agent] = hex
+    if not set_color(agent, theme_winner, hex) then
+        theme_custom[agent] = prev_custom
+        return false
+    end
     -- State variants too, so hover/press does not snap back to stock colour.
     for _, p in ipairs(theme_state_props) do
         if p ~= theme_winner then set_color(agent, p, hex) end
@@ -384,6 +400,19 @@ local function apply_theme(agent)
     local acc = TTMOD_ACCENT
     if type(acc) ~= 'string' then return end
     if agent == nil then return end
+    -- Deliberate custom colour (palette swatch): keep it. Every repaint path
+    -- - the rollover wrapper, the retry queue, TTMOD_THEME_WIDGET - lands
+    -- here, so this one check preserves the swatch through the whole hover
+    -- select/deselect cycle instead of sticking it accent.
+    local custom = theme_custom[agent]
+    if custom ~= nil and custom ~= acc then
+        if theme_painted[agent] == custom then return end
+        if paint(agent, custom) then
+            theme_painted[agent] = custom
+            theme_where[agent] = (TTMOD_OWN_BUILD and 'own' or 'menu')
+        end
+        return
+    end
     if theme_painted[agent] == acc then return end
     if paint(agent, acc) then
         theme_painted[agent] = acc
@@ -448,8 +477,21 @@ local function theme_audit()
         elseif type(v) == 'table' and type(v.r) == 'number' then
             n = n + 1
             local function near(a, b) return math.abs(a - b) < 1e-4 end
-            if not (near(v.r, wr) and near(v.g or 0, wg) and
-                    near(v.b or 0, wb)) then
+            -- Expected colour is whatever THIS agent was painted with - the
+            -- accent for themed rows, the swatch hex for palette rows - so a
+            -- correct swatch never false-flags as an overwrite.
+            local er, eg, eb = wr, wg, wb
+            local want = theme_painted[agent]
+            if type(want) == 'string' then
+                local a1, a2, a3 = want:match('^#(%x%x)(%x%x)(%x%x)$')
+                if a1 ~= nil then
+                    er = tonumber(a1, 16) / 255
+                    eg = tonumber(a2, 16) / 255
+                    eb = tonumber(a3, 16) / 255
+                end
+            end
+            if not (near(v.r, er) and near(v.g or 0, eg) and
+                    near(v.b or 0, eb)) then
                 over = over + 1
                 if theme_where[agent] == 'own' then over_own = over_own + 1
                 else over_menu = over_menu + 1 end
@@ -486,13 +528,24 @@ end
 -- Menu.lua load (earliest: catches game scripts that localize the global
 -- before the first widget builds). Menu-states only; engine states that
 -- lack Menu_Add stay untouched.
-local function theme_accent_rgb()
-    local acc = TTMOD_ACCENT
-    if type(acc) ~= 'string' then return nil end
-    local r, g, b = acc:match('^#(%x%x)(%x%x)(%x%x)$')
+local function theme_hex_rgb(s)
+    if type(s) ~= 'string' then return nil end
+    local r, g, b = s:match('^#(%x%x)(%x%x)(%x%x)$')
     if r == nil then return nil end
     return { tonumber(r, 16) / 255, tonumber(g, 16) / 255,
              tonumber(b, 16) / 255 }
+end
+local function theme_accent_rgb()
+    return theme_hex_rgb(TTMOD_ACCENT)
+end
+-- An agent's deliberate custom colour as a writeable value table, or nil.
+local function theme_custom_rgb(agent)
+    if agent == nil then return nil end
+    local hex = theme_custom[agent]
+    if hex == nil then return nil end
+    local rgb = theme_hex_rgb(hex)
+    if rgb == nil then return nil end
+    return { r = rgb[1], g = rgb[2], b = rgb[3], a = 1 }
 end
 local function theme_substitute(prop, v)
     if prop ~= 'Text Color' or type(v) ~= 'table' then return nil end
@@ -533,6 +586,14 @@ local function theme_wrap_asp()
             local allow = TTMOD_THEME_SCOPE ~= 'ttmod' or
                 (agent ~= nil and theme_painted[agent] ~= nil)
             if allow then
+                -- Custom-coloured agent (palette swatch): the engine's
+                -- select/deselect stock writes restore ITS colour, never the
+                -- accent - that restore is what stuck swatches accent-only.
+                local keep = theme_custom_rgb(agent)
+                if keep ~= nil then
+                    mlog('theme-sub: preserving custom colour')
+                    return orig(agent, prop, keep)
+                end
                 mlog('theme-sub: Text Color stock/white -> accent')
                 return orig(agent, prop, sub)
             end
@@ -584,7 +645,7 @@ local function theme_wrap_roll()
             local allow = TTMOD_THEME_SCOPE ~= 'ttmod' or
                 (agent ~= nil and theme_painted[agent] ~= nil)
             if allow then
-                mlog('theme-roll: rollover -> accent')
+                mlog('theme-roll: rollover repaint')
                 pcall(theme_repaint_agent, agent)
             end
         end
@@ -618,6 +679,14 @@ local function theme_wrap_tc()
                 local allow = TTMOD_THEME_SCOPE ~= 'ttmod' or
                     (agent ~= nil and theme_painted[agent] ~= nil)
                 if allow then
+                    local keep = theme_custom_rgb(agent)
+                    if keep ~= nil then
+                        mlog('theme-tc: preserving custom colour')
+                        if type(r) == 'table' then
+                            return orig(agent, keep)
+                        end
+                        return orig(agent, keep.r, keep.g, keep.b, a)
+                    end
                     local rgb = theme_accent_rgb()
                     mlog('theme-tc: TextSetColor stock/white -> accent')
                     if type(r) == 'table' then

@@ -31,6 +31,14 @@ function Clone_Find(b, what) return {of = (type(b) == 'table' and b.of or '?'), 
 function AgentSetProperty(a, k, v) rec('setprop', tostring(a and a.of), k, tostring(v))
   if k == nil then error('nil property') end
   local key = (tostring(a and a.of) or '?') .. '/' .. (a and a.clone or '') .. '/' .. k
+  -- Swatch-preservation fixture: the last label to receive a Text Color
+  -- write, so the suite can re-drive the engine's hover writes at the exact
+  -- agent the palette painted.
+  if k == 'Text Color' then
+    TT_LAST_TC_AGENT = a
+    TT_TC_ALL = TT_TC_ALL or {}
+    TT_TC_ALL[#TT_TC_ALL + 1] = a
+  end
   -- Only these exist on a label (in-game probes 2026-10-03); every other
   -- name is accepted-then-ignored, the silent-failure case read-back catches.
   -- 'Selection Color' lives on the BUTTON clone: it is the row's hover
@@ -390,6 +398,45 @@ AgentSetProperty({ of = 'sub_u' }, 'Text Color', { r = 1, g = 1, b = 1, a = 1 })
 assert(_color['sub_u//Text Color'].r == 1 and _color['sub_u//Text Color'].g == 1,
   'ttmod scope leaves game widgets alone')
 TTMOD_THEME_SCOPE = 'all'
+-- SWATCH PRESERVATION (2026-10-07): the colour picker paints each palette
+-- row's label with that swatch's own colour; the engine's hover
+-- select/deselect cycle then writes stock white / 0.878 gray at the same
+-- label. The substitution must restore the SWATCH colour, never the accent -
+-- the reported bug was the row sticking accent until game restart.
+TTMOD_ACCENT = '#FF8000'
+TTMOD_THEME_SCOPE = 'all'
+calls = {}
+TT_TC_ALL = {}
+TT_LAST_TC_AGENT = nil
+Menu_Mods_PickColor('demo.config', 'accent', 1)
+-- The Back row is themed accent AFTER the swatches (setlabel themes every
+-- label), so pick the last SWATCH agent from the capture list, not the
+-- absolute last write.
+local sw = nil
+for i = #TT_TC_ALL, 1, -1 do
+  if tostring(TT_TC_ALL[i].of):sub(1, 3) == 'sw_' then sw = TT_TC_ALL[i] break end
+end
+assert(sw ~= nil, 'palette paint captured a swatch label agent')
+local swk = tostring(sw.of) .. '/' .. (sw.clone or '') .. '/Text Color'
+-- '#FFB000' (page 1, last swatch painted) as 0..1 floats; its green channel
+-- (176/255) is distinct from the '#FF8000' accent (128/255), so a wrong
+-- substitution shows up in the assert.
+local swg = 176 / 255
+assert(_color[swk] ~= nil and math.abs(_color[swk].g - swg) < 1e-6,
+  'swatch painted its own colour, not the accent')
+calls = {}
+AgentSetProperty(sw, 'Text Color', { r = 1, g = 1, b = 1, a = 1 })
+assert(_color[swk] ~= nil and math.abs(_color[swk].g - swg) < 1e-6,
+  'hover white write preserves the swatch colour')
+calls = {}
+AgentSetProperty(sw, 'Text Color', { r = 0.878, g = 0.878, b = 0.878, a = 1 })
+assert(_color[swk] ~= nil and math.abs(_color[swk].g - swg) < 1e-6,
+  'deselect stock-gray write restores the swatch colour')
+local saw_keep = false
+for _, c in ipairs(calls) do
+  if c:find('theme-sub: preserving custom colour', 1, true) then saw_keep = true end
+end
+assert(saw_keep, 'preservation logged')
 -- theme_roll: the hover fix, end to end. The stub models the engine: hover
 -- writes white, unhover restores stock gray, both bypassing the
 -- AgentSetProperty global. The wrapper must repaint accent either way.
