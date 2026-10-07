@@ -315,21 +315,25 @@ static DWORD WINAPI InitThread(LPVOID self) {
     module_survey(ctx);
     detect_profile(ctx);
 
+    // Hooks + Lua bridge FIRST (v0.12.0 order): the LoadResource detour must
+    // be live before plugins queue UI chunks, because the hook is what runs
+    // them. A RuntimeOwner is created before the hooks so hooks can observe
+    // states through it; it is prepared (non-blocking) after the plan exists.
+    ttmod::RuntimeOwner* owner = new ttmod::RuntimeOwner(ctx.prof.c_str(), ctx.logpath.c_str());
+    g_runtime_owner = owner; // hooks see it from the first callback
+    init_events_hooks_lua(ctx, owner);
+
     read_modstate(ctx);
     discover_mods(ctx);
     safe_mode_gate(ctx);
     sync_cache(ctx);
     build_plan(ctx);
 
-    // Create RuntimeOwner and prepare runtime (wait for game Lua states)
-    ttmod::RuntimeOwner* owner = new ttmod::RuntimeOwner(ctx.prof.c_str(), ctx.logpath.c_str());
     if (!owner->prepare_runtime(ctx.plan)) {
         ttmod::Logger lg;
         if (lg.open(ctx.logpath)) lg.info("[TTMod] RuntimeOwner prepare failed, continuing without script runtime");
     }
-    g_runtime_owner = owner; // Available for hooks and loader components
 
-    init_events_hooks_lua(ctx, owner);
     build_scanned(ctx);
     init_plugins(ctx, owner);
     init_mods(ctx, owner);
@@ -345,6 +349,7 @@ BOOL APIENTRY DllMain(HMODULE self, DWORD reason, LPVOID) {
         HANDLE t = CreateThread(nullptr, 0, InitThread, self, 0, nullptr);
         if (t) CloseHandle(t);
     } else if (reason == DLL_PROCESS_DETACH) {
+        ttmod_win::lua_bridge_shutdown();
         if (g_runtime_owner) {
             g_runtime_owner->shutdown();
             delete g_runtime_owner;
