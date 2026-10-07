@@ -5,7 +5,6 @@
 #include "ttmod/plugin_api.h"
 
 #include <algorithm>
-#include <cstdio>
 #include <filesystem>
 
 namespace ttmod {
@@ -22,14 +21,6 @@ std::string read_file(const std::string& p) {
     while ((r = fread(b, 1, sizeof b, f)) > 0) s.append(b, r);
     fclose(f);
     return s;
-}
-
-bool game_ok(const ModManifest& m, const char* game, int season) {
-    char want[128];
-    snprintf(want, sizeof want, "%s:s%d", game, season);
-    for (auto& g : m.compat.games)
-        if (g == want || g == game) return true;
-    return false;
 }
 
 } // namespace
@@ -103,11 +94,11 @@ Discovery discover_mods(const std::string& mods_dir, const ModState& state, cons
     std::vector<Item> items;
     for (auto& c : cands) {
         const ModManifest& m = c.manifest;
-        if (m.compat.api < 1 || m.compat.api > TTMOD_PLUGIN_API_VERSION) {
+        if (!m.compat.supports_api(TTMOD_PLUGIN_API_VERSION)) {
             d.skipped.push_back(c.id.str() + ": unsupported API " + std::to_string(m.compat.api));
             continue;
         }
-        if (!game_ok(m, game, season)) {
+        if (!m.compat.supports_game(game, season)) {
             d.skipped.push_back(c.id.str() + ": game not supported");
             continue;
         }

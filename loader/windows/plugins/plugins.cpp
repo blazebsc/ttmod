@@ -75,7 +75,7 @@ void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, co
         const ttmod::ModManifest& m = s.manifest;
         if (!s.has_dll) continue; // resource-only; mods loader owns it
         // M11: manifest-declared plugin path (or legacy plugin.dll), arch gate.
-        if (m.compat.arch != ttmod::Architecture::Any && m.compat.arch != ttmod::Architecture::X86) {
+        if (!m.compat.supports_arch(ttmod::Architecture::X86)) {
             emit("plugins: " + m.identity.id.str() + " rejected (arch " + ttmod::to_string(m.compat.arch) + " != x86)");
             continue;
         }
