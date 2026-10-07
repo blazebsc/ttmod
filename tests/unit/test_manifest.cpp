@@ -73,8 +73,7 @@ int main() {
     assert(valid_games.compat.games.size() == 4);
     assert(valid_games.compat.games[0] == "a" && valid_games.compat.games[1] == "minecraft-story-mode:s1" &&
            valid_games.compat.games[2] == "x:s123" && valid_games.compat.games[3] == "x:s10");
-    for (const char* bad : {"",       "Minecraft", "a:s",    "a:sx",  "a:s1234", "a b",
-                            ":s1",    "a:s0",      "a:s01",  "a:s001"}) {
+    for (const char* bad : {"", "Minecraft", "a:s", "a:sx", "a:s1234", "a b", ":s1", "a:s0", "a:s01", "a:s001"}) {
         auto failed = ttmod::parse_manifest(manifest_with_games({bad}));
         assert(!failed.ok() && failed.error().category == ttmod::errcat::kType);
         assert(failed.error().message == std::string("bad games: ") + bad);
