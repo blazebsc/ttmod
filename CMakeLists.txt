@@ -51,6 +51,7 @@ set(TTMOD_CORE_SRCS
   core/src/script_api.cpp
   core/src/script_vm.cpp
   core/src/game_lua_runtime.cpp
+  core/src/runtime_owner.cpp
   core/src/uiqueue.cpp
   core/src/theme_color.cpp
   core/src/validate.cpp
