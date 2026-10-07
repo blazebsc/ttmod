@@ -69,6 +69,15 @@ Two subtleties proven by the same log session:
   painting only the label leaves hover rendering sourced from accent
   (exactly the stuck-accent symptom). `Menu_Mods_PickColor` now paints the
   swatch colour on the row's button agent as well as its label.
+- **Paint must land AFTER `Menu_Push`, not inside `Populate`.** The audit
+  read every swatch back as template `0.878` at the very next `Menu_Add`:
+  the engine applies each row's template during its realization pass, which
+  overwrites everything painted inside `Populate` (and the retry queue's
+  repairs). Post-push widget state is stable — it is where the accent holds
+  on every other screen — so `Menu_Mods_PickColor` captures the swatch rows
+  and repaints them after the push. This ordering is also what unblocks the
+  getter substitution: with the property actually holding the swatch colour
+  at rest, `scol-keep` finally reads a deliberate colour on hover.
 - **The keep redirect is a COPY, the accent an in-place write — the
   asymmetry is load-bearing.** The accent must live in the engine's struct
   for the stay path, but a swatch colour written through the same struct
