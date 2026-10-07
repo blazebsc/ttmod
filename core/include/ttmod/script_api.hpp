@@ -30,9 +30,22 @@
 
 namespace ttmod {
 
-// "ttmod.events.on" -> {ns:"events", name:"on"}. Plugin registrations are
-// re-homed under "native/<mod-id>" by the registry, so a plugin cannot squat a
-// stable namespace such as "game".
+// Forward declarations for ScriptHost interface
+class GameDispatcher;
+class GameLuaRuntime;
+class ScriptApiRegistry;
+
+// Abstract host interface for script VM bindings.
+// The platform layer (RuntimeOwner) implements this to provide access to
+// dispatcher, scheduler, mod config, etc.
+class ScriptHost {
+public:
+    virtual ~ScriptHost() = default;
+    virtual GameDispatcher& dispatcher() noexcept = 0;
+    virtual GameLuaRuntime& runtime() noexcept = 0;
+    virtual ScriptApiRegistry& api_registry() noexcept = 0;
+};
+
 struct ApiKey {
     std::string ns;
     std::string name;

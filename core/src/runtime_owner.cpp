@@ -3,6 +3,7 @@
 #include "ttmod/script_vm.hpp"
 #include "ttmod/script_api.hpp"
 #include "ttmod/script_value.hpp"
+#include "../script/lua/lua_vm.hpp"
 
 namespace ttmod {
 
@@ -27,16 +28,9 @@ bool RuntimeOwner::prepare_runtime(const ModPlan& plan) {
 
     plan_ = plan;
 
-    // Wait for game Lua states to be observed (Engine + Menu)
-    if (!lua_rt_.wait_until_ready()) {
-        return false; // bridge disabled or timeout
-    }
-
-    // Build the binding table for ttmod.* API
-    // For now, use Null VM; Lua backend will be created by the Lua backend factory
-    // when the Windows layer calls into it.
-    // We use the Null VM as a placeholder - the real VM is created by the Windows layer
-    // after the bridge is initialized.
+    // Do NOT wait for game Lua states here - they may not be loaded yet.
+    // The real VM will be created lazily when states are observed.
+    // For now, set up the Null VM as a placeholder.
     vm_ = make_null_vm(api_);
 
     prepared_ = true;
@@ -68,6 +62,15 @@ void RuntimeOwner::shutdown() {
 
     prepared_ = false;
     safe_mode_ = false;
+}
+
+void RuntimeOwner::set_vm(std::unique_ptr<ScriptVm> vm) {
+    vm_ = std::move(vm);
+}
+
+bool RuntimeOwner::ensure_real_vm() {
+    // No-op in core; platform layer overrides
+    return false;
 }
 
 } // namespace ttmod
