@@ -50,8 +50,8 @@ int main() {
     // Invalid overrides fall back safely with problems recorded
     Resolver r2;
     r2.set_game_root("c:/g");
-    ModDef bad{mid("bad"), "c:/mods/bad", 100, true,
-               {{"x", "../escape"}, {"y", "missing.lua"}, {"c:/other/z", "f.lua"}}};
+    ModDef bad{
+        mid("bad"), "c:/mods/bad", 100, true, {{"x", "../escape"}, {"y", "missing.lua"}, {"c:/other/z", "f.lua"}}};
     assert(!r2.add_mod(bad, nothing_exists)); // nothing usable
     assert(r2.problems().size() == 3);
     assert(r2.resolve("c:/g/x").reason == "miss");

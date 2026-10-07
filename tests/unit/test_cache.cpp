@@ -120,8 +120,7 @@ int main() {
     {
         std::string invalid_retired = cache + "/bad..id.ttmod-old";
         std::string invalid_live = cache + "/bad..id";
-        assert(system(("rm -rf " + invalid_retired + " " + invalid_live + " && mkdir -p " +
-                       invalid_retired + "/files")
+        assert(system(("rm -rf " + invalid_retired + " " + invalid_live + " && mkdir -p " + invalid_retired + "/files")
                           .c_str()) == 0);
         assert(ttmod::file_io::write_file_atomic(invalid_retired + "/.ttmod-cache", "v=1 test"));
         assert(ttmod::file_io::write_file_atomic(invalid_retired + "/files/a.txt", "foreign"));

@@ -20,7 +20,7 @@ int main() {
     assert(good.ok());
     assert(!good.value().enabled_for(mid("a.mod"), true));
     assert(good.value().enabled_for(mid("b.mod"), false));
-    assert(good.value().enabled_for(mid("c.mod"), true));  // missing -> manifest default
+    assert(good.value().enabled_for(mid("c.mod"), true)); // missing -> manifest default
     assert(!good.value().enabled_for(mid("c.mod"), false));
 
     auto bad = ttmod::parse_state("{oops");
@@ -40,15 +40,11 @@ int main() {
     std::string s = st.serialize();
     assert(s.find("\"a.mod\"") < s.find("\"b.mod\"")); // sorted
     auto rt = ttmod::parse_state(s);
-    assert(rt.ok() && !rt.value().enabled_for(mid("a.mod"), true) &&
-           rt.value().enabled_for(mid("b.mod"), false));
+    assert(rt.ok() && !rt.value().enabled_for(mid("a.mod"), true) && rt.value().enabled_for(mid("b.mod"), false));
 
-    auto rejected = ttmod::parse_state(
-        "{\"a..b\":{\"enabled\":false},\"good.mod\":{\"enabled\":true}}");
-    assert(rejected.ok() && rejected.value().rejected_keys.size() == 1 &&
-           rejected.value().rejected_keys[0] == "a..b");
-    assert(rejected.value().overrides.size() == 1 &&
-           rejected.value().enabled_for(mid("good.mod"), false));
+    auto rejected = ttmod::parse_state("{\"a..b\":{\"enabled\":false},\"good.mod\":{\"enabled\":true}}");
+    assert(rejected.ok() && rejected.value().rejected_keys.size() == 1 && rejected.value().rejected_keys[0] == "a..b");
+    assert(rejected.value().overrides.size() == 1 && rejected.value().enabled_for(mid("good.mod"), false));
     const std::string cleaned = rejected.value().serialize();
     assert(cleaned.find("a..b") == std::string::npos);
     auto cleaned_round_trip = ttmod::parse_state(cleaned);
