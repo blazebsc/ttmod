@@ -216,7 +216,7 @@ static void reg_fn(lua_State* L, LuaPushCClosureFn pushcclosure, LuaSetglobalFn 
     setglobal(L, name);
 }
 
-void menumods_init(const char* game_dir, const char* log_path) {
+void menumods_init(const char* game_dir, const char* log_path, ttmod::RuntimeOwner* owner) {
     g_gamedir = game_dir ? game_dir : "";
     g_logpath = log_path ? log_path : "";
 }

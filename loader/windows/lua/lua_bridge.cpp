@@ -21,6 +21,10 @@
 #include "lua_bridge.hpp"
 #include "menu_bridge.hpp"
 #include "stage.hpp"
+#include "ttmod/runtime_owner.hpp"
+
+// RuntimeOwner created in InitThread, used by hooks and loader components.
+extern ttmod::RuntimeOwner* g_runtime_owner;
 
 namespace ttmod_win {
 namespace {
@@ -222,64 +226,24 @@ static int __cdecl hook_loadresource(lua_State* L, char* filename) {
         snprintf(m, sizeof m, "lua: loadresource #%ld %s", (long)g_loadlog, filename ? filename : "?");
         emit(m);
     }
-    note_script_on_state(L, filename);
-    // Plugin chunk queue (v5): drained on the game's script thread right
-    // after the script load, on that state. Before the Menu.lua branch so
-    // observe-only mode (TTMOD_LUA_LRCHUNK=0) still drains plugin chunks.
-    for (const std::string& c : ttmod::uiqueue_take())
-        bridge_run_chunk(L, g_fnLoadstring, g_fnPcallk, g_fnGettop, g_fnSetglobal, g_fnTolstring, "plugin", c.c_str());
-    // Menu_Add wrapper: Menu.lua defines Menu_Add. Suffix "Menu.lua" does
-    // NOT match "Menu_Main.lua" (ends in "Main.lua"), so only Menu.lua
-    // itself triggers; the chunk one-shot guard covers reloads anyway.
-    if (filename && tail_matches(filename, "Menu.lua")) {
-        // One-shot unpacked-image dump, at the moment the menu UI code is
-        // certainly unpacked and about to run (see dump_module_image).
-        if (InterlockedCompareExchange(&g_dump_done, 1, 0) == 0) {
-            DWORD need = GetEnvironmentVariableA("TTMOD_DUMP_MEM", nullptr, 0);
-            if (need > 1 && need < 32768) {
-                std::string dpath(need, '\0');
-                if (GetEnvironmentVariableA("TTMOD_DUMP_MEM", dpath.data(), need) == need - 1)
-                    dump_module_image(dpath.c_str());
-            }
-        }
+    // Observe state and classify role via RuntimeOwner
+    if (g_runtime_owner) {
+        g_runtime_owner->runtime().observe_state(L, filename);
+    } else {
+        note_script_on_state(L, filename); // fallback
     }
-    if (filename && tail_matches(filename, "Menu.lua")) {
-        // UI-region probes (rollover binding, native color setters): install
-        // via bounded retry thread. That memory unpacks progressively -
-        // still packed at Menu.lua load on fast runs - so anchor matching
-        // can take up to a minute. One starter per process.
-        static volatile LONG ui_started = 0;
-        if (InterlockedCompareExchange(&ui_started, 1, 0) == 0) {
-            char roff[8] = {};
-            if (GetEnvironmentVariableA("TTMOD_SETCOLOR", roff, sizeof roff) > 0 && strcmp(roff, "0") == 0) {
-                emit("scol: skipped via TTMOD_SETCOLOR=0");
-                for (size_t k = 0; k < sizeof g_uiprobes / sizeof g_uiprobes[0]; ++k) g_uiprobes[k].done = true;
-            } else {
-                HANDLE t = CreateThread(nullptr, 0, ui_probe_thread, nullptr, 0, nullptr);
-                if (t) CloseHandle(t);
-                else emit("uiprobe: retry thread failed, probes unavailable");
-            }
-        }
+    // Drain plugin chunks and other dispatcher work via RuntimeOwner's dispatcher
+    if (g_runtime_owner) {
+        g_runtime_owner->dispatcher().pump();
+    } else {
+        // Fallback to old uiqueue for compatibility
+        for (const std::string& c : ttmod::uiqueue_take())
+            bridge_run_chunk(L, g_fnLoadstring, g_fnPcallk, g_fnGettop, g_fnSetglobal, g_fnTolstring, "plugin",
+                             c.c_str());
     }
-    if (filename && tail_matches(filename, "Menu.lua") && g_fnLoadstring && g_fnPcallk && g_fnGettop &&
-        g_fnPushCClosure && g_fnSetglobal && g_fnTolstring) {
-        // TTMOD_LUA_LRCHUNK=0: observe-only (detour stays, no chunk runs).
-        char nochunk[8] = {};
-        if (GetEnvironmentVariableA("TTMOD_LUA_LRCHUNK", nochunk, sizeof nochunk) > 0 && strcmp(nochunk, "0") == 0) {
-            emit("lua: wrapper chunk skipped via TTMOD_LUA_LRCHUNK=0");
-            return rc;
-        }
-        if (!menumods_button_enabled()) {
-            emit("lua: Menu_Add wrapper skipped (menu disabled)");
-            return rc;
-        }
-        g_fnPushCClosure(L, append_log, 0);
-        g_fnSetglobal(L, "Menu_Main_AppendLog");
-        bridge_run_chunk(L, g_fnLoadstring, g_fnPcallk, g_fnGettop, g_fnSetglobal, g_fnTolstring, "Menu_Add wrapper",
-                         ttmod_win::kMenuAddWrapChunk);
-        char m[96];
-        snprintf(m, sizeof m, "lua: Menu_Add wrapper offered");
-        emit(m);
+    // Offer Menu_Add wrapper once when Menu.lua loads
+    if (g_runtime_owner && filename && tail_matches(filename, "Menu.lua")) {
+        g_runtime_owner->runtime().maybe_install_menu_add_wrapper(L);
     }
     return rc;
 }
@@ -542,7 +506,7 @@ static DWORD WINAPI late_hook_thread(LPVOID p) {
 
 } // namespace
 
-void lua_bridge_init(const char* profile_id, const char* log_path) {
+void lua_bridge_init(const char* profile_id, const char* log_path, ttmod::RuntimeOwner* owner) {
     g_logpath = log_path ? log_path : "";
     if (!ttmod::profile_has(profile_id, ttmod::Capability::LuaBridge)) return;
     HMODULE exe = GetModuleHandleA(nullptr);

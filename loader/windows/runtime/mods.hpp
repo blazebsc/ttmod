@@ -8,12 +8,13 @@
 #include "ttmod/discovery.hpp"
 #include "ttmod/manifest.hpp"
 #include "ttmod/plugin_api.h"
+#include "ttmod/runtime_owner.hpp"
 namespace ttmod_win {
 // Builds the process-wide resolver. Safe to call once at init.
-void mods_init(const std::vector<ScannedMod>& all, const char* game_root, const char* log_path);
+void mods_init(const std::vector<ScannedMod>& all, const char* game_root, const char* log_path,
+               ttmod::RuntimeOwner* owner);
 // Menu store: enabled entries + disabled ones (from discovery). Powers ABI v4.
-void mods_store_menu(const std::vector<ScannedMod>& enabled,
-                     const std::vector<ttmod::Discovered>& disabled);
+void mods_store_menu(const std::vector<ScannedMod>& enabled, const std::vector<ttmod::Discovered>& disabled);
 int mods_menu_count();
 int mods_menu_info(int index, ttmod_modinfo* out);
 // Full manifest for snapshot assembly (internal menu bridge only, never ABI).

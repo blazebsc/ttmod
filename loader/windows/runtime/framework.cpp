@@ -17,6 +17,7 @@
 #include "ttmod/cache.hpp"
 #include "ttmod/modstate.hpp"
 #include "ttmod/modplan.hpp"
+#include "ttmod/runtime_owner.hpp"
 #include "events.hpp"
 #include "hooks.hpp"
 #include "lua_bridge.hpp"
@@ -31,6 +32,9 @@
 
 static DWORD g_t0 = 0;
 static char g_exitlog[MAX_PATH] = {};
+// RuntimeOwner pointer, set by InitThread, used by hooks and loader components.
+// Heap-allocated so it persists beyond InitThread; freed in DllMain detach.
+ttmod::RuntimeOwner* g_runtime_owner = nullptr;
 
 // Exit-time evidence (raw Win32 only: no msvcrt, no hooks, no alloc).
 // Records session length + target-region state to distinguish
@@ -148,10 +152,10 @@ static void detect_profile(InitCtx& ctx) {
     }
 }
 
-static void init_events_hooks_lua(const InitCtx& ctx) {
+static void init_events_hooks_lua(const InitCtx& ctx, ttmod::RuntimeOwner* owner) {
     ttmod_win::events_init(ctx.logpath.c_str());
     ttmod_win::hooks_init(ctx.prof.c_str(), ctx.logpath.c_str());
-    ttmod_win::lua_bridge_init(ctx.prof.c_str(), ctx.logpath.c_str());
+    ttmod_win::lua_bridge_init(ctx.prof.c_str(), ctx.logpath.c_str(), owner);
     ttmod_win::stage(ctx.logpath.c_str(), "hooks+bridge init returned");
 }
 
@@ -284,20 +288,20 @@ static void build_scanned(InitCtx& ctx) {
     }
 }
 
-static void init_plugins(const InitCtx& ctx) {
-    ttmod_win::plugins_init(ctx.all, ctx.prof.c_str(), ctx.game, ctx.season, ctx.logpath.c_str());
+static void init_plugins(const InitCtx& ctx, ttmod::RuntimeOwner* owner) {
+    ttmod_win::plugins_init(ctx.all, ctx.prof.c_str(), ctx.game, ctx.season, ctx.logpath.c_str(), owner);
 }
 
-static void init_mods(const InitCtx& ctx) {
-    ttmod_win::mods_init(ctx.all, ctx.gamedir.c_str(), ctx.logpath.c_str());
+static void init_mods(const InitCtx& ctx, ttmod::RuntimeOwner* owner) {
+    ttmod_win::mods_init(ctx.all, ctx.gamedir.c_str(), ctx.logpath.c_str(), owner);
 }
 
 static void store_menu_snapshot(const InitCtx& ctx) {
     ttmod_win::mods_store_menu(ctx.all, ctx.disc.disabled);
 }
 
-static void init_menu(const InitCtx& ctx) {
-    ttmod_win::menumods_init(ctx.gamedir.c_str(), ctx.logpath.c_str());
+static void init_menu(const InitCtx& ctx, ttmod::RuntimeOwner* owner) {
+    ttmod_win::menumods_init(ctx.gamedir.c_str(), ctx.logpath.c_str(), owner);
     ttmod_win::stage(ctx.logpath.c_str(), "init thread done (mods+plugins ready)");
 }
 
@@ -310,17 +314,28 @@ static DWORD WINAPI InitThread(LPVOID self) {
     ensure_dirs(ctx);
     module_survey(ctx);
     detect_profile(ctx);
-    init_events_hooks_lua(ctx);
+
     read_modstate(ctx);
     discover_mods(ctx);
     safe_mode_gate(ctx);
     sync_cache(ctx);
     build_plan(ctx);
+
+    // Create RuntimeOwner and prepare runtime (wait for game Lua states)
+    ttmod::RuntimeOwner* owner = new ttmod::RuntimeOwner(ctx.prof.c_str(), ctx.logpath.c_str());
+    if (!owner->prepare_runtime(ctx.plan)) {
+        ttmod::Logger lg;
+        if (lg.open(ctx.logpath)) lg.info("[TTMod] RuntimeOwner prepare failed, continuing without script runtime");
+    }
+    g_runtime_owner = owner; // Available for hooks and loader components
+
+    init_events_hooks_lua(ctx, owner);
     build_scanned(ctx);
-    init_plugins(ctx);
-    init_mods(ctx);
+    init_plugins(ctx, owner);
+    init_mods(ctx, owner);
     store_menu_snapshot(ctx);
-    init_menu(ctx);
+    init_menu(ctx, owner);
+
     return 0;
 }
 
@@ -330,7 +345,11 @@ BOOL APIENTRY DllMain(HMODULE self, DWORD reason, LPVOID) {
         HANDLE t = CreateThread(nullptr, 0, InitThread, self, 0, nullptr);
         if (t) CloseHandle(t);
     } else if (reason == DLL_PROCESS_DETACH) {
-        ttmod_win::lua_bridge_shutdown();
+        if (g_runtime_owner) {
+            g_runtime_owner->shutdown();
+            delete g_runtime_owner;
+            g_runtime_owner = nullptr;
+        }
         exit_dump();
     }
     return TRUE; // never block the game
