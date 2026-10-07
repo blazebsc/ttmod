@@ -22,9 +22,15 @@
 #include "menu_bridge.hpp"
 #include "stage.hpp"
 #include "ttmod/runtime_owner.hpp"
+#include "ttmod/script_vm.hpp"
+#include "ttmod/script_api.hpp"
+#include "../../../core/script/lua/lua_vm.hpp"
 
 // RuntimeOwner created in InitThread, used by hooks and loader components.
 extern ttmod::RuntimeOwner* g_runtime_owner;
+
+// Static flag to track if real VM was created
+static bool g_vm_created = false;
 
 namespace ttmod_win {
 namespace {
@@ -229,6 +235,20 @@ static int __cdecl hook_loadresource(lua_State* L, char* filename) {
     // Observe state and classify role via RuntimeOwner
     if (g_runtime_owner) {
         g_runtime_owner->runtime().observe_state(L, filename);
+        // Upgrade from Null VM to real Lua VM if states are ready and not yet created
+        if (!g_vm_created && g_runtime_owner->runtime().is_ready()) {
+            auto created = make_lua_vm(g_runtime_owner->api_registry(),
+                                       g_runtime_owner,
+                                       std::span<const ttmod::BindingDesc>(),
+                                       ttmod::LuaVmOptions{});
+            if (created.ok()) {
+                g_runtime_owner->set_vm(std::move(created.value()));
+                g_vm_created = true;
+                emit("lua: real VM created and installed");
+            } else {
+                emit("lua: failed to create real VM");
+            }
+        }
     } else {
         note_script_on_state(L, filename); // fallback
     }

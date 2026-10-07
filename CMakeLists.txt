@@ -200,7 +200,7 @@ ttmod_apply_warnings(ttmod_framework)
 ttmod_apply_sanitizers(ttmod_framework)
   target_include_directories(ttmod_framework PUBLIC core/include)
   target_include_directories(ttmod_framework PRIVATE loader/windows loader/windows/proxy loader/windows/hooks loader/windows/plugins loader/windows/lua loader/windows/menu loader/windows/platform loader/windows/runtime third_party/minhook/include third_party/nlohmann/include)
-  target_link_libraries(ttmod_framework PRIVATE minhook miniz)
+  target_link_libraries(ttmod_framework PRIVATE minhook miniz ttmod_lua_backend lua54)
   # Embedded Mods-menu Lua (generated header, never committed).
   find_package(Python3 COMPONENTS Interpreter)
   add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/menumods_ui.h

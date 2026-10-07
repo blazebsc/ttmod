@@ -18,7 +18,7 @@
 
 namespace ttmod {
 
-class RuntimeOwner {
+class RuntimeOwner : public ScriptHost {
   public:
     // Constructs with profile + log path. Does NOT start observing states yet.
     explicit RuntimeOwner(const char* profile_id, const char* log_path);
@@ -38,20 +38,26 @@ class RuntimeOwner {
     }
 
     // Accessors for native plugins (host ABI).
-    GameDispatcher& dispatcher() noexcept {
+    GameDispatcher& dispatcher() noexcept override {
         return dispatch_;
     }
-    GameLuaRuntime& runtime() noexcept {
+    GameLuaRuntime& runtime() noexcept override {
         return lua_rt_;
     }
-    ScriptApiRegistry& api_registry() noexcept {
+    ScriptApiRegistry& api_registry() noexcept override {
         return api_;
     }
 
     // Get or create the shared ScriptVm. Returns null if safe_mode or no runtime.
-    ScriptVm* vm() noexcept {
-        return safe_mode_ ? nullptr : vm_.get();
-    }
+    // Attempts to upgrade from Null VM to real Lua VM if states are ready.
+    ScriptVm* vm() noexcept;
+
+    // Set the ScriptVm (called by Windows layer when real VM is ready).
+    void set_vm(std::unique_ptr<ScriptVm> vm);
+
+    // Ensure real Lua VM is created if states are ready and we're still on Null VM.
+    // Returns true if real VM is now active. Override in platform layer for real VM creation.
+    virtual bool ensure_real_vm();
 
     // Pump dispatcher (call from game thread, e.g. LoadResource hook).
     void pump_dispatcher() {
