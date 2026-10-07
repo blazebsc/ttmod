@@ -4,6 +4,8 @@
 // The game creates and destroys every Lua state; TTMod observes, never owns.
 // This is the portable, unit-testable layer; Windows-specific hook logic stays
 // in loader/windows/lua/lua_bridge.cpp and calls these methods.
+#include <chrono>
+#include <condition_variable>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -20,6 +22,9 @@ struct GameLuaRuntimeOptions {
     // When true, the runtime operates in observe-only mode (no hooks,
     // no chunk execution). Used by safe mode and the test double.
     bool observe_only = false;
+    // How long to wait for a state to be "ready" (first identifying script seen).
+    // In practice Menu.lua load is the gate; default 30s covers cold starts.
+    std::chrono::milliseconds ready_timeout{30000};
 };
 
 // The runtime owns the registry and coordinates with ModPlan lifecycle.
@@ -49,6 +54,13 @@ class GameLuaRuntime {
     // Shutdown: clears internal state. Game still owns every state.
     void shutdown();
 
+    // Blocks until at least one Engine and one Menu state are observed,
+    // or ready_timeout expires. Returns false on timeout / bridge disabled.
+    bool wait_until_ready();
+
+    // True when at least one state of each required role is live.
+    [[nodiscard]] bool is_ready() const noexcept;
+
     // ModPlan coordination: mark which mods are allowed to use game Lua.
     // Called once per ModPlan rebuild.
     void set_allowed_mods(const std::vector<ModId>& allowed);
@@ -65,6 +77,11 @@ class GameLuaRuntime {
 
   private:
     GameLuaRuntimeOptions opt_;
+    mutable std::mutex mtx_;
+    std::vector<LuaStateEntry> states_;
+    std::condition_variable ready_cv_;
+    bool ready_ = false;
+    int capture_order_ = 0;
     GameLuaRegistry registry_;
     std::vector<ModId> allowed_mods_;
 };
