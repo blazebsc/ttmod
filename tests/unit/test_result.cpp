@@ -51,8 +51,7 @@ int main() {
         assert(!vbad.ok() && vbad.error().category == ttmod::errcat::kIO);
         auto made = ttmod::make_error("o", "b", ttmod::errcat::kMissing, "m");
         assert(made.operation == "o" && made.category == ttmod::errcat::kMissing);
-        auto attributed = ttmod::with_operation(
-            Error{"inner", "object", ttmod::errcat::kSyntax, "message"}, "outer");
+        auto attributed = ttmod::with_operation(Error{"inner", "object", ttmod::errcat::kSyntax, "message"}, "outer");
         assert(attributed.operation == "outer" && attributed.object == "object" &&
                attributed.category == ttmod::errcat::kSyntax && attributed.message == "message");
     } catch (...) {
@@ -68,8 +67,7 @@ int main() {
         std::unique_ptr<int> extracted_or = std::move(held_or).value_or(nullptr);
         assert(extracted_or && *extracted_or == 17);
 
-        auto failed_or = Result<std::unique_ptr<int>>::fail(
-            Error{"op", "", ttmod::errcat::kMissing, "missing"});
+        auto failed_or = Result<std::unique_ptr<int>>::fail(Error{"op", "", ttmod::errcat::kMissing, "missing"});
         std::unique_ptr<int> fallback = std::move(failed_or).value_or(nullptr);
         assert(!fallback);
 
