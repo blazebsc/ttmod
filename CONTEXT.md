@@ -41,6 +41,7 @@ Names for the seams. Use these terms exactly; do not invent synonyms.
   Everything downstream trusts it and never re-validates. Strings appear
   only at serialization/UI boundaries (mods.json, menu snapshot, lifecycle
   status, C-ABI/event strings, logs).
+- **mod source** — origin (`ModSource`: directory or package), distinct from manifest identity/content; a package cache path is only an effective location.
 - **TTMod VM** — the scripting VM TTMod owns and destroys (doc §2, §71).
   Never the game's. Lua today; the same six-operation `ScriptVm` contract is
   what a Luau backend implements later.

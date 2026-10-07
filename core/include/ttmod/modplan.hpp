@@ -26,13 +26,17 @@
 
 namespace ttmod {
 
-// A validated mod with its effective on-disk location resolved. Everything
-// here has passed manifest validation and dependency resolution.
+// A validated mod with its source origin and effective on-disk location
+// resolved. For packages, source.path remains the archive while dir is the
+// cache location.
 struct LoadedMod {
     ModId id;
+    ModSource source;
     std::string dir; // effective dir: unpacked dir or ttmod/cache/<id>
-    bool packaged = false;
     ModManifest manifest;
+    [[nodiscard]] bool packaged() const noexcept {
+        return source.kind == ModSourceKind::Package;
+    }
 };
 
 struct ModPlan {

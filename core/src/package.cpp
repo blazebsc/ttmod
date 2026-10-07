@@ -176,10 +176,7 @@ Result<PackView> inspect_package(const std::string& path) {
     v.manifest_text = manifest;
     // Manifest must parse; every declared file + plugin path must be present.
     Result<ModManifest> pm = parse_manifest(manifest);
-    if (!pm.ok()) {
-        return Result<PackView>::fail(Error{"inspect-package", path, pm.error().category,
-                                            std::string("manifest invalid: ") + pm.error().message});
-    }
+    if (!pm.ok()) return Result<PackView>::fail(pm.error());
     ModManifest m = pm.value();
     auto has = [&](const std::string& rel) {
         std::string k = safe_entry(rel);

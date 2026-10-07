@@ -1,9 +1,11 @@
 #pragma once
+#include <optional>
 #include <string>
 #include <vector>
 #include "ttmod/manifest.hpp"
 #include "ttmod/modid.hpp"
 #include "ttmod/modstate.hpp"
+#include "ttmod/result.hpp"
 
 namespace ttmod {
 
@@ -16,23 +18,34 @@ namespace ttmod {
 // all decisions recorded in skipped[] as user-friendly reasons.
 enum class ModSourceKind { Directory, Package };
 
-// One directory walk, shared by runtime discovery and the CLI: every
-// *.ttmod file and every subdirectory (hidden/OS-metadata skipped), sorted
-// by name. Junk (README, DLLs, zips) never enters. Callers validate.
+// ModSource describes origin (where); ModManifest describes identity/content
+// (what). A cache directory is an effective location for a Package source,
+// not a source.
 struct ModSource {
     std::string name; // filename/dirname
     std::string path; // absolute path
     ModSourceKind kind;
 };
 
+// One directory walk, shared by runtime discovery and the CLI: every
+// *.ttmod file and every subdirectory (hidden/OS-metadata skipped), sorted
+// by name. Junk (README, DLLs, zips) never enters. Callers validate.
 std::vector<ModSource> scan_mod_sources(const std::string& mods_dir, int* entries_seen = nullptr);
+
+// The one place that turns a source into a manifest.
+// ok(nullopt): not a mod (Directory without manifest.json).
+// fail: Package -> operation "inspect-package" (bad archive) or the manifest's
+//       own error; Directory -> manifest read/parse/validate error. An EMPTY
+//       manifest.json is a failure now, not "not a mod".
+Result<std::optional<ModManifest>> read_source_manifest(const ModSource& src);
 
 struct Discovered {
     ModId id;
-    std::string source; // absolute path: .ttmod file or unpacked dir
-    bool packaged = false;
-    ModSourceKind kind = ModSourceKind::Directory;
+    ModSource source;
     ModManifest manifest;
+    [[nodiscard]] bool packaged() const noexcept {
+        return source.kind == ModSourceKind::Package;
+    }
 };
 
 // Invalid entries stay visible (CLI lists them) instead of vanishing.

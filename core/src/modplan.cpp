@@ -35,10 +35,10 @@ ModPlan build_plan(const Discovery& disc, const CacheSync& cache, const ModPlanO
     for (auto& d : disc.mods) {
         LoadedMod m;
         m.id = d.id;
+        m.source = d.source;
         m.manifest = d.manifest;
-        m.packaged = d.packaged;
-        m.dir = d.source;
-        if (d.packaged) {
+        m.dir = d.source.path;
+        if (d.packaged()) {
             auto it = cache.effective.find(d.id);
             if (it == cache.effective.end()) {
                 plan.skipped.push_back(d.id.str() + ": cache unavailable, not loaded");

@@ -6,10 +6,14 @@
 #include "ttmod/manifest.hpp"
 #include "ttmod/package.hpp"
 
+static std::string package_error_message(const ttmod::Error& error) {
+    return error.operation == "inspect-package" ? error.message : "manifest invalid: " + error.message;
+}
+
 static void print_packinfo(const std::string& path) {
     auto insp = ttmod::inspect_package(path);
     if (!insp.ok()) {
-        std::printf("INVALID: %s\n", insp.error().message.c_str());
+        std::printf("INVALID: %s\n", package_error_message(insp.error()).c_str());
         return;
     }
     auto pm = ttmod::parse_manifest(insp.value().manifest_text);
@@ -70,7 +74,7 @@ int cmd_package(int argc, char** argv) {
     if (sub == "validate" && argc == 2) {
         auto insp = ttmod::inspect_package(argv[1]);
         if (!insp.ok()) {
-            std::printf("INVALID: %s\n", insp.error().message.c_str());
+            std::printf("INVALID: %s\n", package_error_message(insp.error()).c_str());
             return 1;
         }
         auto pm = ttmod::parse_manifest(insp.value().manifest_text);
