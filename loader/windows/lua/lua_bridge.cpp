@@ -393,16 +393,25 @@ static bool scol_accent(float* out) {
 }
 static volatile LONG g_scolBsub = 0;
 static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* color, int flag) {
-    // NEVER mutate the caller's color buffer. The engine passes pointers into
-    // its own persistent color structs, so writing through them poisons the
-    // engine's palette until process restart - the "hover turns the text my
-    // accent and it never turns back" bug. Substitute via a local copy and
-    // hand the COPY to the original setter; the caller's struct stays intact
-    // so the engine's un-hover restore still has the real previous color.
-    float substitute[3] = {0, 0, 0};
-    void* pass = color;
+    // The substitution MUST write through to the caller's color struct, not a
+    // copy. Two failure modes were proven in-game, in both directions:
+    //
+    //  - Copy-based substitution: the engine's mouse-off "stay" path reads
+    //    its own color struct DIRECTLY, bypassing this setter, so the struct
+    //    must contain the accent or the hovered row turns stock WHITE after
+    //    mouse-off (the regression this comment prevents from coming back).
+    //
+    //  - No substitution at all: rest and hover stay stock white.
+    //
+    // So the in-place write IS the mechanism: the accent has to live in the
+    // engine's persistent struct for the highlight paths that never pass
+    // through scol. The struct stays accent for the process lifetime, which
+    // is what makes the theme hold at rest, on hover, AND after mouse-off.
+    // The last-touched-row keeping the highlight is the engine's own
+    // selection model (documented in docs/runtime/menu-theme.md) - stock
+    // behaves identically, it is just invisible white-on-white.
+    float* c = (float*)color;
     if (color && desc) {
-        float* c = (float*)color;
         float acc[3] = {};
         bool haveAcc = scol_accent(acc);
         bool sub = haveAcc && ttmod::should_substitute(c[0], c[1], c[2]);
@@ -413,17 +422,16 @@ static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* col
                 snprintf(m, sizeof m, "scol-sub: %.3f,%.3f,%.3f -> accent", c[0], c[1], c[2]);
                 emit(m);
             }
-            substitute[0] = acc[0];
-            substitute[1] = acc[1];
-            substitute[2] = acc[2];
-            pass = substitute;
+            c[0] = acc[0];
+            c[1] = acc[1];
+            c[2] = acc[2];
         } else if (haveAcc && !(c[0] <= 0.001f && c[1] <= 0.001f && c[2] <= 0.001f)) {
             scol_log("scol", &g_uiprobes[0].hits, g_uiprobes[0].cap, color);
         } else {
             InterlockedIncrement(&g_uiprobes[0].hits);
         }
     }
-    if (g_origScol) return g_origScol(self, desc, pass, flag);
+    if (g_origScol) return g_origScol(self, desc, color, flag);
     return 0;
 }
 

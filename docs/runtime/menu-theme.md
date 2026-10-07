@@ -32,20 +32,22 @@ covers widgets returned before their label child exists. Verified in-game
 
 **Layer 2 — native substitute** (`loader/windows/lua/lua_bridge.cpp`, `hook_scol`
 on the engine color setter at RVA `0x168430`, thiscall, anchor-verified,
-retry-installed): near-gray-bright color structs become the accent via a
-local copy passed to the original setter — the caller's buffer is never
-written through. This catches engine-side writes that bypass Lua entirely
-(select white, stock restores). Gated on a valid accent in config *and* the
-mod being enabled in `config/mods.json`; black fills, disabled gray, and
-real tints pass through. Kill-switch: `TTMOD_SETCOLOR=0`.
+retry-installed): near-gray-bright color structs are rewritten to the accent
+in place. This catches engine-side writes that bypass Lua entirely (select
+white, stock restores). Gated on a valid accent in config *and* the mod being
+enabled in `config/mods.json`; black fills, disabled gray, and real tints pass
+through. Kill-switch: `TTMOD_SETCOLOR=0`.
 
-The copy matters: the engine passes pointers into its own *persistent*
-color structs. An earlier version rewrote the accent in place, which
-poisoned the engine's palette until process restart — hovering a colour
-option in this menu turned its text the accent and no repaint or menu
-rebuild restored it, because every later setter call round-tripped the
-polluted struct. Substituting on a stack copy leaves the engine's data
-intact, so its own restore/repaint paths still see the real colours.
+**The in-place write is load-bearing - do not "fix" it to a copy.** The
+engine's mouse-off "stay" path reads its own persistent color struct
+directly, bypassing this setter entirely. Both failure modes were proven
+in-game, in both directions: substituting via a stack copy leaves the
+engine's struct stock-white, so the hovered row turns WHITE after mouse-off;
+substituting in place puts the accent into the struct, which is the only
+thing the bypass path ever reads. The struct holds the accent for the
+process lifetime - that is the mechanism, not a leak. The last-touched
+row keeping its highlight after mouse-off is the engine's own selection
+model (stock behaves identically; invisible when everything is white).
 
 Lua-side guards (`theme_wrap_asp/roll/tc`, log-only) and a read-only audit
 (`theme-audit`, attribution `own:`/`menu:`) ship in the UI chunk for diagnosis.
