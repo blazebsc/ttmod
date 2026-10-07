@@ -25,8 +25,11 @@ static ModManifest mk(const char* id, const char* ver, const char* api = "1") {
 
 static Discovery disc_of(std::vector<ModManifest> mods) {
     Discovery d;
-    for (auto& m : mods)
-        d.mods.push_back({m.identity.id, "/mods/" + m.identity.id.str(), false, ModSourceKind::Directory, m});
+    for (auto& m : mods) {
+        std::string path = "/mods/" + m.identity.id.str();
+        d.mods.push_back(
+            {m.identity.id, ModSource{m.identity.id.str(), path, ModSourceKind::Directory}, m});
+    }
     return d;
 }
 
@@ -72,7 +75,8 @@ int main() {
     {
         Discovery d;
         auto m = mk("pkg.mod", "1.0");
-        d.mods.push_back({m.identity.id, "/mods/pkg.mod.ttmod", true, ModSourceKind::Package, m});
+        const std::string package_path = "/mods/pkg.mod.ttmod";
+        d.mods.push_back({m.identity.id, ModSource{"pkg.mod.ttmod", package_path, ModSourceKind::Package}, m});
         ModPlan p = build_plan(d, CacheSync{}); // empty cache
         assert(p.load_order.empty());
         assert(!p.skipped.empty());
@@ -81,7 +85,8 @@ int main() {
         ModPlan p2 = build_plan(d, cs);
         assert(p2.load_order.size() == 1);
         assert(p2.load_order[0].dir == "/cache/pkg.mod");
-        assert(p2.load_order[0].packaged);
+        assert(p2.load_order[0].packaged());
+        assert(p2.load_order[0].source.path == package_path);
     }
     // Determinism: identical input yields identical order.
     {

@@ -204,7 +204,7 @@ static void safe_mode_gate(InitCtx& ctx) {
             char h[160];
             int pkgs = 0;
             for (auto& m : ctx.disc.mods)
-                if (m.packaged) pkgs++;
+                if (m.packaged()) pkgs++;
             snprintf(h, sizeof h, "[TTMod] Scanning mods/ (%d entries)", ctx.disc.entries_seen);
             lg.info(h);
             for (auto& s : ctx.disc.skipped) lg.info(std::string("[TTMod] Skipped: ") + s);
@@ -222,7 +222,7 @@ static void sync_cache(InitCtx& ctx) {
     // Packaged mods extract to ttmod/cache/<id> (stale entries cleaned).
     std::vector<std::pair<ttmod::ModId, std::string>> pkgs;
     for (auto& m : ctx.disc.mods)
-        if (m.packaged) pkgs.emplace_back(m.id, m.source);
+        if (m.packaged()) pkgs.emplace_back(m.id, m.source.path);
     auto synced = ttmod::sync_package_cache(ttmod_win::join(ctx.gamedir, "ttmod\\cache"), pkgs);
     if (synced.ok()) {
         ctx.cache = synced.value();
@@ -272,7 +272,7 @@ static void build_scanned(InitCtx& ctx) {
                             "path, so it is ignored (add \"plugin\": \"plugins/<name>.dll\")");
             }
         }
-        ctx.all.push_back({dir, has_dll, m.packaged, has_dll ? prel : "", m.manifest});
+        ctx.all.push_back({dir, has_dll, m.packaged(), has_dll ? prel : "", m.manifest});
     }
     {
         ttmod::Logger lg;
