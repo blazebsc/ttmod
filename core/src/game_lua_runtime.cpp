@@ -12,12 +12,30 @@ GameLuaRuntime::~GameLuaRuntime() {
 
 int GameLuaRuntime::observe(void* handle) {
     if (!handle) return -1;
+    {
+        std::lock_guard<std::mutex> lock(mtx_);
+        ++capture_order_;
+        // We track capture order but the registry doesn't expose it; we can add it later
+    }
     return registry_.observe(handle);
 }
 
 bool GameLuaRuntime::note_script(void* handle, const char* filename) {
     if (!handle || !filename) return false;
-    return registry_.note_script(handle, filename);
+    bool identified = registry_.note_script(handle, filename);
+    if (identified) {
+        std::lock_guard<std::mutex> lock(mtx_);
+        bool has_engine = false, has_menu = false;
+        for (auto& e : registry_.entries()) {
+            if (e.role == LuaStateRole::Engine) has_engine = true;
+            if (e.role == LuaStateRole::Menu) has_menu = true;
+        }
+        if (has_engine && has_menu && !ready_) {
+            ready_ = true;
+            ready_cv_.notify_all();
+        }
+    }
+    return identified;
 }
 
 std::vector<LuaStateEntry> GameLuaRuntime::entries() const {
@@ -41,12 +59,29 @@ LuaStateRole GameLuaRuntime::role_of(void* handle) const {
 }
 
 void GameLuaRuntime::shutdown() {
+    {
+        std::lock_guard<std::mutex> lock(mtx_);
+        ready_ = false;
+    }
     registry_.clear();
     allowed_mods_.clear();
 }
 
 void GameLuaRuntime::set_allowed_mods(const std::vector<ModId>& allowed) {
     allowed_mods_ = allowed;
+}
+
+bool GameLuaRuntime::wait_until_ready() {
+    if (opt_.observe_only) return false;
+    std::unique_lock<std::mutex> lock(mtx_);
+    if (ready_) return true;
+    ready_cv_.wait_for(lock, opt_.ready_timeout, [this] { return ready_; });
+    return ready_;
+}
+
+bool GameLuaRuntime::is_ready() const noexcept {
+    std::lock_guard<std::mutex> lock(mtx_);
+    return ready_;
 }
 
 Result<void> GameLuaRuntime::run_chunk_on_game_thread(void* handle, std::string_view source,
