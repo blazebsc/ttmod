@@ -52,12 +52,10 @@ int main() {
     assert(res.overrides.priority == 200 && !res.enabled && res.overrides.files.size() == 2);
     assert(res.overrides.files[0].first == "archives/x.lua" && res.overrides.files[0].second == "files/archives/x.lua");
 
-    auto normalized = ttmod::parse_manifest(
-                          "{\"id\":\"paths\",\"api\":1,\"plugin\":\"./plugins/x.dll\","
-                          "\"files\":{\"a/x.lua\":\"files\\\\sub\\\\..\\\\x.lua\"}}")
+    auto normalized = ttmod::parse_manifest("{\"id\":\"paths\",\"api\":1,\"plugin\":\"./plugins/x.dll\","
+                                            "\"files\":{\"a/x.lua\":\"files\\\\sub\\\\..\\\\x.lua\"}}")
                           .value();
-    assert(normalized.overrides.files[0].first == "a/x.lua" &&
-           normalized.overrides.files[0].second == "files/x.lua");
+    assert(normalized.overrides.files[0].first == "a/x.lua" && normalized.overrides.files[0].second == "files/x.lua");
     assert(normalized.plugin.path == "plugins/x.dll");
 
     assert(!ttmod::parse_manifest("").ok());
@@ -133,17 +131,15 @@ int main() {
     // Dependency and conflict ids go through the same canonical validator.
     assert(!ttmod::parse_manifest("{\"id\":\"m\",\"api\":1,\"depends\":[{\"id\":\"../evil\"}]}").ok());
     assert(!ttmod::parse_manifest("{\"id\":\"m\",\"api\":1,\"conflicts\":[\"..\\\\evil\"]}").ok());
-    expect_manifest_error("{\"id\":\"m\",\"api\":1,\"depends\":[{\"id\":\"m\"}]}",
-                          ttmod::errcat::kType, "m");
+    expect_manifest_error("{\"id\":\"m\",\"api\":1,\"depends\":[{\"id\":\"m\"}]}", ttmod::errcat::kType, "m");
     expect_manifest_error("{\"id\":\"m\",\"api\":1,\"conflicts\":[\"m\"]}", ttmod::errcat::kType, "m");
     expect_manifest_error("{\"id\":\"m\",\"api\":1,\"depends\":[{\"id\":\"base\"},{\"id\":\"base\"}]}",
                           ttmod::errcat::kDuplicate, "base");
-    expect_manifest_error("{\"id\":\"m\",\"api\":1,\"conflicts\":[\"base\",\"base\"]}",
-                          ttmod::errcat::kDuplicate, "base");
+    expect_manifest_error("{\"id\":\"m\",\"api\":1,\"conflicts\":[\"base\",\"base\"]}", ttmod::errcat::kDuplicate,
+                          "base");
     expect_manifest_error("{\"id\":\"m\",\"api\":1,\"depends\":[{\"id\":\"base\"}],\"conflicts\":[\"base\"]}",
                           ttmod::errcat::kType, "base");
-    expect_manifest_error("{\"id\":\"m\",\"api\":1,\"runtimes\":[\"lua\",\"lua\"]}",
-                          ttmod::errcat::kDuplicate, "lua");
+    expect_manifest_error("{\"id\":\"m\",\"api\":1,\"runtimes\":[\"lua\",\"lua\"]}", ttmod::errcat::kDuplicate, "lua");
     expect_manifest_error("{\"id\":\"m\",\"api\":1,\"permissions\":[\"game.read\",\"game.read\"]}",
                           ttmod::errcat::kDuplicate, "game.read");
 
