@@ -364,9 +364,7 @@ Result<std::string> apply_enabled_change(const std::string& mods_json, const std
     ModState st;
     auto sf = parse_state(mods_json);
     if (!sf.ok()) {
-        Error error = sf.error();
-        error.operation = "apply-enabled-change";
-        return Result<std::string>::fail(std::move(error));
+        return Result<std::string>::fail(with_operation(sf.error(), "apply-enabled-change"));
     }
     st = sf.value();
     st.set(id, enabled);

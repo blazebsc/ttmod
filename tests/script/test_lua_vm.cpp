@@ -55,7 +55,7 @@ int main() {
     // A real TTMod-owned VM.
     auto created = make_lua_vm(api, nullptr, std::span<const BindingDesc>(kBindings));
     assert(created.ok());
-    std::unique_ptr<ScriptVm> vm(std::move(created.value()));
+    std::unique_ptr<ScriptVm> vm(std::move(created).value());
     assert(std::string(vm->backend()) == "lua");
     assert(vm->bytes_used() > 0);
 

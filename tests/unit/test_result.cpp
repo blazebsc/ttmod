@@ -2,7 +2,9 @@
 // and the no-exceptions boundary (safe APIs never throw).
 #include <cassert>
 #include <cstdio>
+#include <memory>
 #include <string>
+#include <utility>
 
 #include "ttmod/cache.hpp"
 #include "ttmod/detect.hpp"
@@ -28,6 +30,9 @@ int main() {
         assert(ok.try_value() && *ok.try_value() == 42);
         assert(ok.value() == 42);
         assert(ok.value_or(7) == 42);
+        auto string_result = Result<std::string>::ok("kept");
+        assert(string_result.value_or("fallback") == "kept");
+        assert(string_result.value() == "kept");
         auto vok = Result<void>::success();
         assert(vok.ok() && vok.has_value());
     } catch (...) {
@@ -46,8 +51,36 @@ int main() {
         assert(!vbad.ok() && vbad.error().category == ttmod::errcat::kIO);
         auto made = ttmod::make_error("o", "b", ttmod::errcat::kMissing, "m");
         assert(made.operation == "o" && made.category == ttmod::errcat::kMissing);
+        auto attributed = ttmod::with_operation(
+            Error{"inner", "object", ttmod::errcat::kSyntax, "message"}, "outer");
+        assert(attributed.operation == "outer" && attributed.object == "object" &&
+               attributed.category == ttmod::errcat::kSyntax && attributed.message == "message");
     } catch (...) {
         assert(!"failure path threw");
+    }
+
+    {
+        auto held = Result<std::unique_ptr<int>>::ok(std::make_unique<int>(42));
+        std::unique_ptr<int> extracted = std::move(held).value();
+        assert(extracted && *extracted == 42);
+
+        auto held_or = Result<std::unique_ptr<int>>::ok(std::make_unique<int>(17));
+        std::unique_ptr<int> extracted_or = std::move(held_or).value_or(nullptr);
+        assert(extracted_or && *extracted_or == 17);
+
+        auto failed_or = Result<std::unique_ptr<int>>::fail(
+            Error{"op", "", ttmod::errcat::kMissing, "missing"});
+        std::unique_ptr<int> fallback = std::move(failed_or).value_or(nullptr);
+        assert(!fallback);
+
+        auto mutable_result = Result<int>::ok(1);
+        int* value = mutable_result.try_value();
+        assert(value);
+        *value = 2;
+        assert(mutable_result.value() == 2);
+
+        auto failed_try = Result<int>::fail(Error{"op", "", ttmod::errcat::kIO, "failed"});
+        assert(failed_try.try_value() == nullptr);
     }
 
     // Every major category surfaces through a real core API.

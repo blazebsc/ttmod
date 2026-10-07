@@ -162,7 +162,7 @@ Result<PackView> inspect_package(const std::string& path) {
             if (!entry.ok()) {
                 return fail("cannot read manifest.json", errcat::kIO);
             }
-            manifest = std::move(entry.value());
+            manifest = std::move(entry).value();
             continue;
         }
         v.files.push_back({norm, st.m_uncomp_size});
