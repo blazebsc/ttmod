@@ -15,6 +15,8 @@
 
 int main() {
     using ttmod::ModId;
+    using ttmod::Version;
+    using ttmod::VersionConstraint;
 
     // Valid ids parse and round-trip byte-for-byte.
     for (const char* good : {"a", "a.b", "hello.mcsm", "pkg.test", "c.mod", "a_b-c.d", "Mod123", "x1"}) {
@@ -80,6 +82,18 @@ int main() {
     assert(ver("1.10").compare(ver("1.9")) > 0);
     assert(ver("").compare(ver("0")) == 0);               // omitted version == 0.0.0
     assert(ver("1.0.0-beta").compare(ver("1.0.0")) == 0); // prerelease ignored for gating
+    assert(Version::parse("999999999").ok());
+    assert(!Version::parse("1000000000").ok());
+    assert(Version::parse("1.2.3.4").ok());
+    assert(!Version::parse("1.2.3.4.5").ok());
+    assert(Version::parse("1.0-" + std::string(32, 'a')).ok());
+    assert(!Version::parse("1.0-" + std::string(33, 'a')).ok());
+    assert(ver("01.002") == ver("1.2"));
+    assert(!Version::parse(" 1.0").ok());
+    assert(!Version::parse("1.0 ").ok());
+    const std::string max64 = "999999999.999999999.999999999.999999999-" + std::string(24, 'a');
+    assert(max64.size() == 64 && Version::parse(max64).ok());
+    assert(!Version::parse(max64 + "a").ok());
     // Malformed / overflowing versions never become a Version.
     for (const char* bad : {" ", "1.", ".1", "1..0", "1.x", "v1.0", "-1.0", "1.0.0.0.0", "9999999999", "1 0", "1.0.0-",
                             "1.0.0-beta!", "1.0+build", "-", "-1.0", "--"}) {
@@ -99,6 +113,14 @@ int main() {
     assert(!con("=2.1.0").satisfied_by(ver("2.1.1")));
     assert(con("<3.0").satisfied_by(ver("2.9.9")));
     assert(!con(">2.0").satisfied_by(ver("2.0")));
+    assert(con("<=2.0").satisfied_by(ver("2.0")));
+    assert(!con("<=2.0").satisfied_by(ver("2.0.1")));
+    for (const char* op : {">=", "=", "<", ">", "<="}) {
+        auto r = VersionConstraint::parse(op);
+        assert(!r.ok() && r.error().category == ttmod::errcat::kSyntax &&
+               r.error().message == "missing version after operator");
+    }
+    for (const char* malformed : {"==1.0", ">=>=1.0", ">= 1.0"}) assert(!VersionConstraint::parse(malformed).ok());
     assert(!ttmod::VersionConstraint::parse(">=x.y").ok());
 
     // Hashing matches equality (used as an unordered key elsewhere).

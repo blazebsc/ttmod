@@ -1,5 +1,4 @@
 #include "ttmod/modgraph.hpp"
-#include "ttmod/version.hpp"
 #include <algorithm>
 #include <functional>
 #include <map>
@@ -48,12 +47,9 @@ DepResolution resolve_dependencies(const std::vector<ModManifest>& mods) {
                     block("missing", "dependency blocked: " + dep.str());
                     break;
                 }
-                // Constraint was validated at the manifest boundary; parse again here so
-                // the graph depends on the type, not on a raw string.
-                auto need = VersionConstraint::parse(spec);
-                if (!need.ok() || !need.value().satisfied_by(Version::parse(it->second->identity.version).value())) {
-                    block("version",
-                          "dependency " + dep.str() + " version " + it->second->identity.version + " < " + spec);
+                if (!spec.satisfied_by(it->second->identity.version)) {
+                    block("version", "dependency " + dep.str() + " version " + it->second->identity.version.str() +
+                                         " does not satisfy " + spec.str());
                     break;
                 }
             }

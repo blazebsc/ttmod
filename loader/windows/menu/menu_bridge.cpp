@@ -70,7 +70,7 @@ static std::vector<ttmod::MenuModSnapshot> snapshot() {
         ttmod::MenuModSnapshot s;
         s.id = m.identity.id.str();
         s.name = m.presentation.name;
-        s.version = m.identity.version;
+        s.version = m.identity.version.str();
         s.description = m.presentation.description;
         s.enabled = ttmod::effective_enabled(m, st);
         ttmod_modinfo mi{};

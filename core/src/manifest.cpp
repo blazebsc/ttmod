@@ -208,7 +208,7 @@ Result<ModManifest> validate_manifest(const RawManifest& raw) {
     if (raw.version) {
         auto ver = Version::parse(*raw.version);
         if (!ver.ok()) return fail(std::string("bad version: ") + ver.error().message, errcat::kSyntax);
-        m.identity.version = ver.value().str();
+        m.identity.version = std::move(ver).value();
     }
 
     if (!raw.api) return fail("missing api", errcat::kMissing);
@@ -274,11 +274,9 @@ Result<ModManifest> validate_manifest(const RawManifest& raw) {
         for (auto& d : *raw.depends) {
             auto dep = ModId::parse(d.id);
             if (!dep.ok()) return fail("bad depends: " + d.id, errcat::kType);
-            if (!d.version.empty()) {
-                auto vc = VersionConstraint::parse(d.version);
-                if (!vc.ok()) return fail("bad depends version: " + vc.error().message, errcat::kSyntax);
-            }
-            m.deps.depends.emplace_back(dep.value(), d.version);
+            auto vc = VersionConstraint::parse(d.version);
+            if (!vc.ok()) return fail("bad depends version: " + vc.error().message, errcat::kSyntax);
+            m.deps.depends.emplace_back(dep.value(), std::move(vc).value());
         }
     }
 
@@ -383,16 +381,6 @@ Result<ModManifest> parse_manifest(const std::string& text) {
         return Result<ModManifest>::fail(Error{"parse-manifest", "", raw.error().category, raw.error().message});
     }
     return validate_manifest(raw.value());
-}
-
-int compare_versions(const std::string& a, const std::string& b) {
-    // Malformed side sorts as 0.0.0 rather than throwing or aborting: this
-    // helper only exists for loose display callers. Validated paths parse
-    // versions with Version::parse and get a real Error instead.
-    auto va = Version::parse(a);
-    auto vb = Version::parse(b);
-    const Version zero = Version::parse("").value();
-    return (va.ok() ? va.value() : zero).compare(vb.ok() ? vb.value() : zero);
 }
 
 } // namespace ttmod

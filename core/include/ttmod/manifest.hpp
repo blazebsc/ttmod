@@ -9,6 +9,7 @@
 #include "ttmod/profile.hpp"
 #include "ttmod/modid.hpp"
 #include "ttmod/result.hpp"
+#include "ttmod/version.hpp"
 
 namespace ttmod {
 
@@ -28,7 +29,7 @@ namespace ttmod {
 // here, Lua-visible shapes are built field-by-field by callers.
 struct ModIdentity {
     ModId id;
-    std::string version;
+    Version version;
 };
 struct ModCompatibility {
     std::vector<std::string> games;
@@ -36,8 +37,8 @@ struct ModCompatibility {
     int api = 0;
 };
 struct DependencySpec {
-    // depends entries {mod id, minimum version ("" = any)}.
-    std::vector<std::pair<ModId, std::string>> depends;
+    // depends entries {mod id, version constraint ("" = any)}.
+    std::vector<std::pair<ModId, VersionConstraint>> depends;
     // conflicts entries (mod ids that must NOT be present+enabled).
     std::vector<ModId> conflicts;
 };
@@ -252,11 +253,5 @@ Result<ModManifest> validate_manifest(const RawManifest& raw);
 
 // Convenience: both layers, in order. This is what every caller wants.
 Result<ModManifest> parse_manifest(const std::string& text);
-
-// Dotted-numeric version compare: -1/0/+1, using the bounded grammar in
-// version.hpp. Unparseable versions compare as equal to "0" on that side
-// (a malformed manifest version is rejected at parse time anyway); this
-// stays for callers that only need an ordering.
-int compare_versions(const std::string& a, const std::string& b);
 
 } // namespace ttmod

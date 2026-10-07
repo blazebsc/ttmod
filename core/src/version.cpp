@@ -67,14 +67,31 @@ Result<VersionConstraint> VersionConstraint::parse(std::string_view spec) {
     VersionConstraint c;
     c.raw_ = std::string(spec);
     if (spec.empty()) return Result<VersionConstraint>::ok(std::move(c)); // matches anything
-    static const char* ops[] = {">=", "<=", "=", ">", "<"};
-    for (auto* o : ops) {
-        std::string_view p(o);
-        if (spec.size() >= p.size() && spec.compare(0, p.size(), p) == 0) {
-            c.op_ = p;
-            spec = spec.substr(p.size());
-            break;
-        }
+    bool has_operator = false;
+    if (spec.starts_with(">=")) {
+        c.op_ = Op::Ge;
+        spec.remove_prefix(2);
+        has_operator = true;
+    } else if (spec.starts_with("<=")) {
+        c.op_ = Op::Le;
+        spec.remove_prefix(2);
+        has_operator = true;
+    } else if (spec.starts_with("=")) {
+        c.op_ = Op::Eq;
+        spec.remove_prefix(1);
+        has_operator = true;
+    } else if (spec.starts_with(">")) {
+        c.op_ = Op::Gt;
+        spec.remove_prefix(1);
+        has_operator = true;
+    } else if (spec.starts_with("<")) {
+        c.op_ = Op::Lt;
+        spec.remove_prefix(1);
+        has_operator = true;
+    }
+    if (has_operator && spec.empty()) {
+        return Result<VersionConstraint>::fail(
+            Error{"parse-version-constraint", c.raw_, errcat::kSyntax, "missing version after operator"});
     }
     auto base = Version::parse(spec);
     if (!base.ok())
@@ -88,11 +105,19 @@ Result<VersionConstraint> VersionConstraint::parse(std::string_view spec) {
 bool VersionConstraint::satisfied_by(const Version& v) const {
     if (empty_) return true;
     int c = v.compare(base_);
-    if (op_ == ">=") return c >= 0;
-    if (op_ == "<=") return c <= 0;
-    if (op_ == ">") return c > 0;
-    if (op_ == "<") return c < 0;
-    return c == 0; // "="
+    switch (op_) {
+    case Op::Ge:
+        return c >= 0;
+    case Op::Le:
+        return c <= 0;
+    case Op::Eq:
+        return c == 0;
+    case Op::Gt:
+        return c > 0;
+    case Op::Lt:
+        return c < 0;
+    }
+    return false;
 }
 
 } // namespace ttmod

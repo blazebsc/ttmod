@@ -73,12 +73,12 @@ void mods_store_menu(const std::vector<ScannedMod>& enabled, const std::vector<t
     std::lock_guard<std::mutex> l(g_menu_mtx);
     g_menu.clear();
     for (auto& s : enabled)
-        g_menu.push_back({s.manifest.identity.id.str(), s.manifest.identity.version, true, s.has_dll, s.packaged,
+        g_menu.push_back({s.manifest.identity.id.str(), s.manifest.identity.version.str(), true, s.has_dll, s.packaged,
                           s.manifest.presentation.name, s.manifest.presentation.description,
                           s.manifest.presentation.config, s.manifest});
     for (auto& d : disabled)
-        g_menu.push_back({d.id.str(), d.manifest.identity.version, false, !d.manifest.plugin.path.empty(), d.packaged,
-                          d.manifest.presentation.name, d.manifest.presentation.description,
+        g_menu.push_back({d.id.str(), d.manifest.identity.version.str(), false, !d.manifest.plugin.path.empty(),
+                          d.packaged, d.manifest.presentation.name, d.manifest.presentation.description,
                           d.manifest.presentation.config, d.manifest});
     std::sort(g_menu.begin(), g_menu.end(), [](const MenuEntry& a, const MenuEntry& b) { return a.id < b.id; });
 }

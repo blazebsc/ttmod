@@ -4,6 +4,7 @@
 #include "ttmod/version.hpp"
 #include <cassert>
 #include <cstdio>
+#include <utility>
 
 // Test helper: every id here is a literal we control, so parse must succeed.
 static ttmod::ModId mid(const char* s) {
@@ -12,16 +13,22 @@ static ttmod::ModId mid(const char* s) {
     return r.value();
 }
 
+static ttmod::VersionConstraint con(const char* s) {
+    auto r = ttmod::VersionConstraint::parse(s);
+    assert(r.ok());
+    return std::move(r).value();
+}
+
 int main() {
     auto good = ttmod::parse_manifest("{ \"id\": \"hello.mcsm\", \"version\": \"1.0.0\", \"api\": 1, "
                                       "\"games\": [\"minecraft-story-mode:s1\"], \"extra\": {\"a\":1} }")
                     .value();
-    assert(good.identity.id == mid("hello.mcsm") && good.identity.version == "1.0.0");
+    assert(good.identity.id == mid("hello.mcsm") && good.identity.version.str() == "1.0.0");
     assert(good.compat.api == 1 && good.compat.games.size() == 1 && good.compat.games[0] == "minecraft-story-mode:s1");
     assert(good.overrides.priority == 100 && good.enabled && good.overrides.files.empty()); // defaults
 
     auto multi = ttmod::parse_manifest("{\"id\":\"x\",\"api\":2,\"games\":[\"a\",\"b\"]}").value();
-    assert(multi.compat.games.size() == 2 && multi.identity.version.empty());
+    assert(multi.compat.games.size() == 2 && multi.identity.version.str().empty());
 
     auto res = ttmod::parse_manifest("{\"id\":\"r.mod\",\"api\":1,\"priority\":200,\"enabled\":false,"
                                      "\"files\":{\"archives/x.lua\":\"files/archives/x.lua\",\"a/b\":\"c/d\"}}")
@@ -53,7 +60,7 @@ int main() {
                    "\"conflicts\":[\"rival\"]}")
                    .value();
     assert(dep.deps.depends.size() == 2 && dep.deps.conflicts.size() == 1);
-    assert(dep.deps.depends[0].first == mid("base") && dep.deps.depends[0].second == "2.0");
+    assert(dep.deps.depends[0].first == mid("base") && dep.deps.depends[0].second.str() == "2.0");
     assert(dep.deps.depends[1].first == mid("opt") && dep.deps.depends[1].second.empty());
     assert(dep.deps.conflicts[0] == mid("rival"));
     assert(!ttmod::parse_manifest("{\"id\":\"m\",\"api\":1,\"depends\":[{\"version\":\"1\"}]}").ok());
@@ -62,19 +69,16 @@ int main() {
     assert(!ttmod::parse_manifest("{\"id\":\"m\",\"api\":1,\"depends\":[{\"id\":\"../evil\"}]}").ok());
     assert(!ttmod::parse_manifest("{\"id\":\"m\",\"api\":1,\"conflicts\":[\"..\\\\evil\"]}").ok());
 
-    assert(ttmod::compare_versions("1.0.0", "1.0.0") == 0);
-    assert(ttmod::compare_versions("1.2", "1.2.0") == 0);
-    assert(ttmod::compare_versions("2.0", "1.9.9") > 0);
-    assert(ttmod::compare_versions("1.9", "1.10") < 0);
-    assert(ttmod::compare_versions("1.0.0-beta", "1.0.0") == 0);
-    assert(ttmod::compare_versions("", "0.0.1") < 0);
-
     // Version + VersionConstraint are parsed, never constructed raw.
     {
         auto v = [](const char* s) { return ttmod::Version::parse(s).value(); };
         auto c = [](const char* s) { return ttmod::VersionConstraint::parse(s).value(); };
-        assert(v("1.2.0").compare(v("1.2")) == 0);
-        assert(v("1.10").compare(v("1.9")) > 0);
+        assert(v("1.0.0").compare(v("1.0.0")) == 0);
+        assert(v("1.2").compare(v("1.2.0")) == 0);
+        assert(v("2.0").compare(v("1.9.9")) > 0);
+        assert(v("1.9").compare(v("1.10")) < 0);
+        assert(v("1.0.0-beta").compare(v("1.0.0")) == 0);
+        assert(v("").compare(v("0.0.1")) < 0);
         assert(c("").satisfied_by(v("9.9")));
         assert(c("2.0").satisfied_by(v("2.1.0")));
         assert(!c("3.0").satisfied_by(v("2.1.0")));
@@ -91,18 +95,19 @@ int main() {
     assert(!ttmod::parse_manifest("{\"id\":\"x\",\"api\":1,\"version\":1}").ok());
     // A malformed dependency constraint also fails the manifest.
     assert(!ttmod::parse_manifest("{\"id\":\"m\",\"api\":1,\"depends\":[{\"id\":\"b\",\"version\":\">=x.y\"}]}").ok());
+    assert(!ttmod::parse_manifest("{\"id\":\"m\",\"api\":1,\"depends\":[{\"id\":\"b\",\"version\":\">=\"}]}").ok());
 
     // Dependency graph over a present set (replaces per-mod string checks).
     auto mk = [](const char* id, const char* ver) {
         ttmod::ModManifest m;
         m.identity.id = mid(id);
-        m.identity.version = ver;
+        m.identity.version = ttmod::Version::parse(ver).value();
         return m;
     };
     {
         ttmod::ModManifest base = mk("base", "2.1.0"), addon = mk("addon", "1.0"), opt = mk("opt", "1.0"),
                            rival = mk("rival", "1.0");
-        addon.deps.depends = {{mid("base"), "2.0"}, {mid("opt"), ""}};
+        addon.deps.depends = {{mid("base"), con("2.0")}, {mid("opt"), con("")}};
         auto r = ttmod::resolve_dependencies({base, addon, opt, rival});
         assert(r.blocked(mid("addon")) == false);
         assert(r.load_order.front() == mid("base")); // deps first
@@ -110,7 +115,7 @@ int main() {
     {
         // missing dependency blocks the dependent only
         ttmod::ModManifest a = mk("a", "1.0");
-        a.deps.depends = {{mid("ghost"), ""}};
+        a.deps.depends = {{mid("ghost"), con("")}};
         auto r = ttmod::resolve_dependencies({a, mk("b", "1.0")});
         assert(r.blocked(mid("a")) && !r.blocked(mid("b")));
         bool found = false;
@@ -120,20 +125,23 @@ int main() {
     }
     {
         // version mismatch + conflict + cycle + duplicate
-        ttmod::ModManifest a = mk("a", "1.0"), b = mk("b", "2.1.0"), c = mk("c", "1.0");
-        b.deps.depends = {{mid("a"), "3.0"}};
+        ttmod::ModManifest a = mk("a", "2.1.0"), b = mk("b", "2.1.0"), c = mk("c", "1.0");
+        b.deps.depends = {{mid("a"), con("<2.0")}};
         auto r1 = ttmod::resolve_dependencies({a, b});
         assert(r1.blocked(mid("b")));
         bool ver = false;
         for (auto& p : r1.problems)
-            if (p.mod == mid("b") && p.category == "version") ver = true;
+            if (p.mod == mid("b") && p.category == "version") {
+                ver = true;
+                assert(p.message.find("does not satisfy <2.0") != std::string::npos);
+            }
         assert(ver);
         c.deps.conflicts = {mid("a")};
         auto r2 = ttmod::resolve_dependencies({a, c});
         assert(r2.blocked(mid("c")));
         ttmod::ModManifest x = mk("x", "1.0"), y = mk("y", "1.0");
-        x.deps.depends = {{mid("y"), ""}};
-        y.deps.depends = {{mid("x"), ""}};
+        x.deps.depends = {{mid("y"), con("")}};
+        y.deps.depends = {{mid("x"), con("")}};
         auto r3 = ttmod::resolve_dependencies({x, y});
         assert(r3.blocked(mid("x")) && r3.blocked(mid("y")));
         auto r4 = ttmod::resolve_dependencies({mk("d", "1.0"), mk("d", "2.0")});
