@@ -78,8 +78,7 @@ void mods_store_menu(const std::vector<ScannedMod>& enabled, const std::vector<t
                           s.manifest.presentation.config, s.manifest});
     for (auto& d : disabled)
         g_menu.push_back({d.id.str(), d.manifest.identity.version.str(), false, !d.manifest.plugin.path.empty(),
-                          d.packaged,
-                          d.manifest.presentation.name, d.manifest.presentation.description,
+                          d.packaged, d.manifest.presentation.name, d.manifest.presentation.description,
                           d.manifest.presentation.config, d.manifest});
     std::sort(g_menu.begin(), g_menu.end(), [](const MenuEntry& a, const MenuEntry& b) { return a.id < b.id; });
 }

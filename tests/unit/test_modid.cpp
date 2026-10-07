@@ -91,8 +91,7 @@ int main() {
     assert(ver("01.002") == ver("1.2"));
     assert(!Version::parse(" 1.0").ok());
     assert(!Version::parse("1.0 ").ok());
-    const std::string max64 =
-        "999999999.999999999.999999999.999999999-" + std::string(24, 'a');
+    const std::string max64 = "999999999.999999999.999999999.999999999-" + std::string(24, 'a');
     assert(max64.size() == 64 && Version::parse(max64).ok());
     assert(!Version::parse(max64 + "a").ok());
     // Malformed / overflowing versions never become a Version.
@@ -121,8 +120,7 @@ int main() {
         assert(!r.ok() && r.error().category == ttmod::errcat::kSyntax &&
                r.error().message == "missing version after operator");
     }
-    for (const char* malformed : {"==1.0", ">=>=1.0", ">= 1.0"})
-        assert(!VersionConstraint::parse(malformed).ok());
+    for (const char* malformed : {"==1.0", ">=>=1.0", ">= 1.0"}) assert(!VersionConstraint::parse(malformed).ok());
     assert(!ttmod::VersionConstraint::parse(">=x.y").ok());
 
     // Hashing matches equality (used as an unordered key elsewhere).

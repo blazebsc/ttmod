@@ -48,9 +48,8 @@ DepResolution resolve_dependencies(const std::vector<ModManifest>& mods) {
                     break;
                 }
                 if (!spec.satisfied_by(it->second->identity.version)) {
-                    block("version",
-                          "dependency " + dep.str() + " version " + it->second->identity.version.str() +
-                              " does not satisfy " + spec.str());
+                    block("version", "dependency " + dep.str() + " version " + it->second->identity.version.str() +
+                                         " does not satisfy " + spec.str());
                     break;
                 }
             }
