@@ -7,14 +7,9 @@
 namespace ttmod {
 
 RuntimeOwner::RuntimeOwner(const char* profile_id, const char* log_path)
-    : profile_id_(profile_id ? profile_id : "unknown"),
-      log_path_(log_path ? log_path : ""),
-      lua_rt_(),
+    : profile_id_(profile_id ? profile_id : "unknown"), log_path_(log_path ? log_path : ""), lua_rt_(),
       dispatch_(std::this_thread::get_id()), // game thread ID injected here
-      api_(),
-      vm_(nullptr),
-      safe_mode_(false),
-      prepared_(false) {
+      api_(), vm_(nullptr), safe_mode_(false), prepared_(false) {
     // Wire dispatcher to runtime for typed ops
     dispatch_.set_lua_runtime(&lua_rt_);
 

@@ -51,7 +51,8 @@ struct LuaStateEntry {
     int order = 0;          // capture sequence, 1-based (diagnostics only)
     LuaStateRole role = LuaStateRole::Unknown;
     int scripts_seen = 0;
-    std::string first_script; // what identified the role ("" if none)
+    std::string first_script;                // what identified the role ("" if none)
+    bool menu_add_wrapper_installed = false; // one-shot guard for Menu_Add wrapper
 };
 
 // Thread-safe registry. All methods are safe to call from any thread: the

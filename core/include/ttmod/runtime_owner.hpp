@@ -19,7 +19,7 @@
 namespace ttmod {
 
 class RuntimeOwner {
-public:
+  public:
     // Constructs with profile + log path. Does NOT start observing states yet.
     explicit RuntimeOwner(const char* profile_id, const char* log_path);
     ~RuntimeOwner();
@@ -33,23 +33,35 @@ public:
 
     // Safe mode: blocks third-party mods, but framework runtime stays active.
     void set_safe_mode(bool on);
-    [[nodiscard]] bool safe_mode() const noexcept { return safe_mode_; }
+    [[nodiscard]] bool safe_mode() const noexcept {
+        return safe_mode_;
+    }
 
     // Accessors for native plugins (host ABI).
-    GameDispatcher& dispatcher() noexcept { return dispatch_; }
-    GameLuaRuntime& runtime() noexcept { return lua_rt_; }
-    ScriptApiRegistry& api_registry() noexcept { return api_; }
+    GameDispatcher& dispatcher() noexcept {
+        return dispatch_;
+    }
+    GameLuaRuntime& runtime() noexcept {
+        return lua_rt_;
+    }
+    ScriptApiRegistry& api_registry() noexcept {
+        return api_;
+    }
 
     // Get or create the shared ScriptVm. Returns null if safe_mode or no runtime.
-    ScriptVm* vm() noexcept { return safe_mode_ ? nullptr : vm_.get(); }
+    ScriptVm* vm() noexcept {
+        return safe_mode_ ? nullptr : vm_.get();
+    }
 
     // Pump dispatcher (call from game thread, e.g. LoadResource hook).
-    void pump_dispatcher() { dispatch_.pump(); }
+    void pump_dispatcher() {
+        dispatch_.pump();
+    }
 
     // Shutdown sequence: stop dispatcher, clear runtime, release VM.
     void shutdown();
 
-private:
+  private:
     const char* profile_id_;
     const char* log_path_;
     GameLuaRuntime lua_rt_;

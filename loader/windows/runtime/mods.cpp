@@ -43,7 +43,8 @@ static void emit(const std::string& msg) {
 
 } // namespace
 
-void mods_init(const std::vector<ScannedMod>& all, const char* game_root, const char* log_path) {
+void mods_init(const std::vector<ScannedMod>& all, const char* game_root, const char* log_path,
+               ttmod::RuntimeOwner* owner) {
     g_logpath = log_path ? log_path : "";
     g_verbose = GetEnvironmentVariableA("TTMOD_RESOLVE_VERBOSE", nullptr, 0) > 0;
     g_resolver.set_game_root(game_root ? game_root : "");

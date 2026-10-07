@@ -14,8 +14,9 @@
 #pragma once
 #ifdef _WIN32
 #include "lua_abi.hpp"
+#include "ttmod/runtime_owner.hpp"
 namespace ttmod_win {
-void menumods_init(const char* game_dir, const char* log_path);
+void menumods_init(const char* game_dir, const char* log_path, ttmod::RuntimeOwner* owner);
 // v5 plugin API thunk: queue a Lua chunk for the bridge to run on the
 // game's script thread at the next script load. 0 queued, -1 dropped.
 int menumods_queue_ui_chunk(const char* code);
@@ -24,9 +25,8 @@ int menumods_queue_ui_chunk(const char* code);
 bool menumods_button_enabled();
 // Register the three C functions + define the UI chunk on state L.
 // Function pointers are the verified Lua ABI (same table as the bridge).
-void menumods_register(lua_State* L, LuaLoadstringFn loadstring, LuaPcallkFn pcallk,
-                       LuaGettopFn gettop, LuaTolstringFn tolstring,
-                       LuaPushCClosureFn pushcclosure, LuaSetglobalFn setglobal);
+void menumods_register(lua_State* L, LuaLoadstringFn loadstring, LuaPcallkFn pcallk, LuaGettopFn gettop,
+                       LuaTolstringFn tolstring, LuaPushCClosureFn pushcclosure, LuaSetglobalFn setglobal);
 // Game-idiom menu Lua chunks (loader-owned; moved from core — core keeps
 // only portable RVA/anchor validation). Single source of truth, pinned by
 // tests/test_menuadd_wrap.py + tests/test_menumods_chunk.py.
@@ -37,12 +37,11 @@ inline constexpr const char* kMenuModsPressed = "ttmod_mods_pressed";
 // Markers distinguish exists (type(Menu_Mods)=="function"), called
 // (ttmod_mods_calls increments), returned (chunk pcall==0 in harness).
 // The guarded Menu_Options transition reuses the proven-safe target.
-inline constexpr const char* kMenuModsChunk =
-    "function Menu_Mods() "
-    "ttmod_mods_calls = (ttmod_mods_calls or 0) + 1 "
-    "ttmod_mods_pressed = true "
-    "if Menu_Options then Menu_Options() end "
-    "end";
+inline constexpr const char* kMenuModsChunk = "function Menu_Mods() "
+                                              "ttmod_mods_calls = (ttmod_mods_calls or 0) + 1 "
+                                              "ttmod_mods_pressed = true "
+                                              "if Menu_Options then Menu_Options() end "
+                                              "end";
 // Menu_Add wrapper: installed once when Menu.lua finishes loading (it
 // defines Menu_Add). Census: reports every call whose id matches a known
 // main-menu row (zero library calls — plain == only, safe in bare states).
@@ -110,8 +109,7 @@ inline constexpr const char* kMenuAddWrapChunk =
 // refresh/ui-defs runs. Callers pass their own ABI fns; failures log the
 // pcall error MESSAGE (tolstring), not just the code - click-path errors are
 // swallowed by the engine, so this line is the only diagnostic.
-void bridge_run_chunk(lua_State* L, LuaLoadstringFn loadstring, LuaPcallkFn pcallk,
-                      LuaGettopFn gettop, LuaSetglobalFn setglobal, LuaTolstringFn tolstring,
-                      const char* what, const char* chunk);
+void bridge_run_chunk(lua_State* L, LuaLoadstringFn loadstring, LuaPcallkFn pcallk, LuaGettopFn gettop,
+                      LuaSetglobalFn setglobal, LuaTolstringFn tolstring, const char* what, const char* chunk);
 } // namespace ttmod_win
 #endif

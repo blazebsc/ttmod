@@ -40,9 +40,17 @@ class GameLuaRuntime {
     // Returns the capture order (1-based) or -1 on failure.
     int observe(void* handle);
 
+    // Called from LoadResource hook when a state is created.
+    // Convenience wrapper that calls observe() then note_script().
+    // Returns true when this script identified the state's role.
+    bool observe_state(void* handle, const char* filename);
+
     // Called from LoadResource hook when a script finishes loading.
     // Returns true when this script identified the state's role.
     bool note_script(void* handle, const char* filename);
+
+    // Install Menu_Add wrapper on a newly-captured Menu state (idempotent).
+    void maybe_install_menu_add_wrapper(void* handle);
 
     // GameLuaRegistry delegation (thin facade; registry stays the source of truth).
     [[nodiscard]] std::vector<LuaStateEntry> entries() const;

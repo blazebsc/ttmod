@@ -11,8 +11,9 @@
 // Surface: the raw lua_State* stays framework-internal (no ABI exposure).
 #pragma once
 #ifdef _WIN32
+#include "ttmod/runtime_owner.hpp"
 namespace ttmod_win {
-void lua_bridge_init(const char* profile_id, const char* log_path);
+void lua_bridge_init(const char* profile_id, const char* log_path, ttmod::RuntimeOwner* owner);
 void lua_bridge_shutdown();
 } // namespace ttmod_win
 #endif

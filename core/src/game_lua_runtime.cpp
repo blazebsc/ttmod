@@ -38,6 +38,24 @@ bool GameLuaRuntime::note_script(void* handle, const char* filename) {
     return identified;
 }
 
+bool GameLuaRuntime::observe_state(void* handle, const char* filename) {
+    if (!handle) return false;
+    observe(handle);
+    if (filename) return note_script(handle, filename);
+    return false;
+}
+
+void GameLuaRuntime::maybe_install_menu_add_wrapper(void* handle) {
+    if (!handle) return;
+    std::lock_guard<std::mutex> lock(mtx_);
+    for (auto& e : registry_.entries()) {
+        if (e.handle == handle && e.role == LuaStateRole::Menu && !e.menu_add_wrapper_installed) {
+            e.menu_add_wrapper_installed = true;
+            break;
+        }
+    }
+}
+
 std::vector<LuaStateEntry> GameLuaRuntime::entries() const {
     return registry_.entries();
 }

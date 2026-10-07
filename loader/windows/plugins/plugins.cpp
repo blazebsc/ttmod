@@ -35,7 +35,7 @@ static void host_log(const char* msg) {
 } // namespace
 
 void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, const char* game, int season,
-                  const char* log_path) {
+                  const char* log_path, ttmod::RuntimeOwner* owner) {
     g_logpath = log_path ? log_path : "";
     if (all.empty()) {
         emit("plugins: no mods discovered, skipping");
