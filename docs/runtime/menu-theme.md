@@ -32,11 +32,20 @@ covers widgets returned before their label child exists. Verified in-game
 
 **Layer 2 — native substitute** (`loader/windows/lua/lua_bridge.cpp`, `hook_scol`
 on the engine color setter at RVA `0x168430`, thiscall, anchor-verified,
-retry-installed): near-gray-bright color structs are rewritten to the accent
-in place. This catches engine-side writes that bypass Lua entirely (select
-white, stock restores). Gated on a valid accent in config *and* the mod being
-enabled in `config/mods.json`; black fills, disabled gray, and real tints pass
-through. Kill-switch: `TTMOD_SETCOLOR=0`.
+retry-installed): near-gray-bright color structs become the accent via a
+local copy passed to the original setter — the caller's buffer is never
+written through. This catches engine-side writes that bypass Lua entirely
+(select white, stock restores). Gated on a valid accent in config *and* the
+mod being enabled in `config/mods.json`; black fills, disabled gray, and
+real tints pass through. Kill-switch: `TTMOD_SETCOLOR=0`.
+
+The copy matters: the engine passes pointers into its own *persistent*
+color structs. An earlier version rewrote the accent in place, which
+poisoned the engine's palette until process restart — hovering a colour
+option in this menu turned its text the accent and no repaint or menu
+rebuild restored it, because every later setter call round-tripped the
+polluted struct. Substituting on a stack copy leaves the engine's data
+intact, so its own restore/repaint paths still see the real colours.
 
 Lua-side guards (`theme_wrap_asp/roll/tc`, log-only) and a read-only audit
 (`theme-audit`, attribution `own:`/`menu:`) ship in the UI chunk for diagnosis.

@@ -393,17 +393,16 @@ static bool scol_accent(float* out) {
 }
 static volatile LONG g_scolBsub = 0;
 static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* color, int flag) {
-    // Substitution (2026-10-05): REA proved 0x5684B0 (scolB) is a property
-    // GETTER - its "substitute" edited a buffer the getter overwrites, i.e.
-    // it never did anything. THIS setter (0x568430) is the real write path:
-    // near-gray-bright color structs become the accent. Broad by necessity:
-    // descriptors are per-agent-instance (agent+0x58 per the binding
-    // callsite), so identity learning would churn every menu rebuild.
-    // Scope instead by value shape (gray+bright only; black, disabled gray,
-    // real tints pass) + theme gate (config accent + mod enabled).
-    // scolB stays as the traffic witness.
-    float* c = (float*)color;
+    // NEVER mutate the caller's color buffer. The engine passes pointers into
+    // its own persistent color structs, so writing through them poisons the
+    // engine's palette until process restart - the "hover turns the text my
+    // accent and it never turns back" bug. Substitute via a local copy and
+    // hand the COPY to the original setter; the caller's struct stays intact
+    // so the engine's un-hover restore still has the real previous color.
+    float substitute[3] = {0, 0, 0};
+    void* pass = color;
     if (color && desc) {
+        float* c = (float*)color;
         float acc[3] = {};
         bool haveAcc = scol_accent(acc);
         bool sub = haveAcc && ttmod::should_substitute(c[0], c[1], c[2]);
@@ -414,16 +413,17 @@ static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* col
                 snprintf(m, sizeof m, "scol-sub: %.3f,%.3f,%.3f -> accent", c[0], c[1], c[2]);
                 emit(m);
             }
-            c[0] = acc[0];
-            c[1] = acc[1];
-            c[2] = acc[2];
+            substitute[0] = acc[0];
+            substitute[1] = acc[1];
+            substitute[2] = acc[2];
+            pass = substitute;
         } else if (haveAcc && !(c[0] <= 0.001f && c[1] <= 0.001f && c[2] <= 0.001f)) {
             scol_log("scol", &g_uiprobes[0].hits, g_uiprobes[0].cap, color);
         } else {
             InterlockedIncrement(&g_uiprobes[0].hits);
         }
     }
-    if (g_origScol) return g_origScol(self, desc, color, flag);
+    if (g_origScol) return g_origScol(self, desc, pass, flag);
     return 0;
 }
 
