@@ -14,6 +14,11 @@
 //
 // The dispatcher has no idea a scripting language exists. That is deliberate:
 // it is a typed generalization of uiqueue, not a script facility.
+//
+// Typed operations (run_on_state, create_mod_env, queue_plugin_chunk,
+// install_c_function) resolve role->handle at PUMP TIME, not enqueue time.
+// This is critical: the game creates/destroys states asynchronously, so a
+// handle captured at enqueue time may be dead by pump time.
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
@@ -23,6 +28,12 @@
 #include <queue>
 #include <thread>
 
+// Forward declaration to break circular dependency: GameLuaRuntime includes
+// GameDispatcher for options, GameDispatcher needs GameLuaRuntime* for typed ops.
+class GameLuaRuntime;
+
+#include "ttmod/game_lua_runtime.hpp"
+#include "ttmod/modid.hpp"
 #include "ttmod/result.hpp"
 #include "ttmod/script_value.hpp"
 
@@ -67,6 +78,36 @@ class GameDispatcher {
     [[nodiscard]] size_t pending() const;
     [[nodiscard]] bool on_game_thread() const;
 
+    // ===== Typed operations for common game-thread tasks =====
+    //
+    // These resolve role -> handle AT PUMP TIME (inside the game thread).
+    // This is critical: the game creates/destroys states asynchronously,
+    // so a handle captured at enqueue time may be dead by pump time.
+
+    // Run a Lua chunk on the state matching `role`.
+    // The op captures the state handle at pump time, not at enqueue time.
+    Result<Value> run_on_state(LuaStateRole role,
+                               std::string_view chunk,
+                               const Value& env = Value::nil());
+
+    // Get a snapshot of the Lua state registry.
+    Result<std::vector<LuaStateEntry>> get_state_snapshot();
+
+    // Queue a plugin chunk (same as uiqueue_push but via dispatcher).
+    bool queue_plugin_chunk(std::string_view code);
+
+    // Create isolated _ENV for a mod on the game's Menu state.
+    // Returns the environment Value (or error).
+    Result<Value> create_mod_env(const ModId& mod_id);
+
+    // Install a C function on a specific game state (for framework functions).
+    Result<void> install_c_function(LuaStateRole role,
+                                    const char* name,
+                                    void* c_fn); // lua_CFunction
+
+    // Not owned; set by RuntimeOwner after both are constructed.
+    void set_lua_runtime(GameLuaRuntime* rt) { lua_runtime_ = rt; }
+
   private:
     // Per-waiting-caller state. Heap-allocated and shared_ptr-owned so a
     // caller that times out cannot leave the pump writing into freed memory.
@@ -90,6 +131,9 @@ class GameDispatcher {
     std::queue<Task> queue_;
     size_t dropped_ = 0;
     bool stopped_ = false;
+
+    // Not owned; set by RuntimeOwner after both are constructed.
+    GameLuaRuntime* lua_runtime_ = nullptr;
 };
 
 } // namespace ttmod
