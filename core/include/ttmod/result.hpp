@@ -68,8 +68,12 @@ template <class T> class [[nodiscard]] Result {
         std::abort();
     }
     const T* try_value() const noexcept { return std::get_if<T>(&data_); }
-    T* try_value() noexcept { return std::get_if<T>(&data_); }
-    T value_or(T fallback) const& { return ok() ? value() : std::move(fallback); }
+    T* try_value() noexcept {
+        return std::get_if<T>(&data_);
+    }
+    T value_or(T fallback) const& {
+        return ok() ? value() : std::move(fallback);
+    }
     T value_or(T fallback) && {
         return ok() ? std::move(*this).value() : std::move(fallback);
     }
