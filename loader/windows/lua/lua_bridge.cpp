@@ -1,6 +1,7 @@
 // See lua_bridge.hpp for the design contract.
 #ifdef _WIN32
 #include <windows.h>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <mutex>
@@ -52,6 +53,11 @@ static GettopFn g_fnGettop = nullptr;
 static TolstringFn g_fnTolstring = nullptr;
 static PushCClosureFn g_fnPushCClosure = nullptr;
 static SetglobalFn g_fnSetglobal = nullptr;
+// Engine colour getter sibling of the hooked setter (see kScolBRva): reads a
+// descriptor's current colour. thiscall, ret $0xc, args
+// (descriptor, float out[4], flag), returns nonzero on success.
+using ScolBFn = unsigned char(__attribute__((thiscall)) *)(void*, void*, float*, int);
+static ScolBFn g_fnScolB = nullptr;
 // Game Lua state registry (see LuaStateInfo below): the game owns every
 // state; g_state/g_states_seen removed in favor of identity + role.
 static volatile LONG g_test_done = 0;
@@ -392,6 +398,7 @@ static bool scol_accent(float* out) {
     return true;
 }
 static volatile LONG g_scolBsub = 0;
+static volatile LONG g_scolKeep = 0;
 static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* color, int flag) {
     // The substitution MUST write through to the caller's color struct, not a
     // copy. Two failure modes were proven in-game, in both directions:
@@ -407,14 +414,54 @@ static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* col
     // engine's persistent struct for the highlight paths that never pass
     // through scol. The struct stays accent for the process lifetime, which
     // is what makes the theme hold at rest, on hover, AND after mouse-off.
-    // The last-touched-row keeping the highlight is the engine's own
-    // selection model (documented in docs/runtime/menu-theme.md) - stock
-    // behaves identically, it is just invisible white-on-white.
+    //
+    // But that same struct is re-applied CONTINUOUSLY to whichever row is
+    // selected - the log shows hundreds of scol calls per hover burst, every
+    // one carrying the once-substituted accent - so it also overwrites a
+    // palette swatch's deliberate colour, and the stick model (no mouse-off
+    // deselect) means it never comes back until process restart. Fix: before
+    // substituting, ASK the engine for this widget's current colour through
+    // the setter's sibling getter (kScolBRva; ABI verified from the unpacked
+    // dump, anchor-checked before use). A saturated current colour that is
+    // not ours is deliberate content: rewrite the write to it - IN PLACE,
+    // same load-bearing rule - so the engine's re-application carries the
+    // widget's own colour. Themed rows (current = gray/white/our accent)
+    // substitute to the accent exactly as before.
     float* c = (float*)color;
     if (color && desc) {
         float acc[3] = {};
         bool haveAcc = scol_accent(acc);
         bool sub = haveAcc && ttmod::should_substitute(c[0], c[1], c[2]);
+        // Our own accent coming back through the setter = the engine
+        // re-applying the substituted selection colour (the hover flood).
+        bool ours = haveAcc && !sub && fabsf(c[0] - acc[0]) < 0.01f && fabsf(c[1] - acc[1]) < 0.01f &&
+                    fabsf(c[2] - acc[2]) < 0.01f;
+        if (sub || ours) {
+            float cur[4] = {0, 0, 0, 0};
+            if (g_fnScolB && g_fnScolB(self, desc, cur, flag)) {
+                float mn = cur[0], mx = cur[0];
+                if (cur[1] < mn) mn = cur[1];
+                if (cur[2] < mn) mn = cur[2];
+                if (cur[1] > mx) mx = cur[1];
+                if (cur[2] > mx) mx = cur[2];
+                bool cur_ours = haveAcc && fabsf(cur[0] - acc[0]) < 0.01f && fabsf(cur[1] - acc[1]) < 0.01f &&
+                                fabsf(cur[2] - acc[2]) < 0.01f;
+                if (mx - mn >= 0.05f && !cur_ours) {
+                    LONG n = InterlockedIncrement(&g_scolKeep);
+                    if (n <= 200) {
+                        char m[160];
+                        snprintf(m, sizeof m, "scol-keep: %.3f,%.3f,%.3f stays (widget's own colour)", cur[0], cur[1],
+                                 cur[2]);
+                        emit(m);
+                    }
+                    c[0] = cur[0];
+                    c[1] = cur[1];
+                    c[2] = cur[2];
+                    if (g_origScol) return g_origScol(self, desc, color, flag);
+                    return 0;
+                }
+            }
+        }
         if (sub) {
             LONG n = InterlockedIncrement(&g_scolBsub);
             if (n <= 400) {
@@ -522,6 +569,16 @@ static DWORD WINAPI late_hook_thread(LPVOID p) {
     g_fnTolstring = (TolstringFn)(base + addrs.tolstring);
     g_fnPushCClosure = (PushCClosureFn)(base + addrs.pushcclosure);
     g_fnSetglobal = (SetglobalFn)(base + addrs.setglobal);
+    // Colour getter sibling of the scol setter (kScolBRva): resolved for
+    // CALLING, not hooking. Anchor-verified against live memory first - an
+    // unverified engine call with a wrong ABI would corrupt the stack, so
+    // a mismatch leaves it null and the substitute simply falls back to
+    // accent-only behaviour.
+    if (memcmp(base + ttmod::kScolBRva, ttmod::kScolBAnchor, sizeof ttmod::kScolBAnchor) == 0) {
+        g_fnScolB = (ScolBFn)(base + ttmod::kScolBRva);
+    } else {
+        emit("scolB: getter anchor mismatch, colour reads unavailable");
+    }
     void* target = (void*)(base + addrs.newstate);
     if (MH_CreateHook(target, (LPVOID)hook_lua_newstate, (LPVOID*)&g_origNewstate) != MH_OK) {
         emit("lua: MH_CreateHook(newstate) failed, installing nothing");

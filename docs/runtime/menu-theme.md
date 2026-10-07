@@ -38,16 +38,29 @@ white, stock restores). Gated on a valid accent in config *and* the mod being
 enabled in `config/mods.json`; black fills, disabled gray, and real tints pass
 through. Kill-switch: `TTMOD_SETCOLOR=0`.
 
-**The in-place write is load-bearing - do not "fix" it to a copy.** The
+**The in-place write is load-bearing — do not "fix" it to a copy.** The
 engine's mouse-off "stay" path reads its own persistent color struct
 directly, bypassing this setter entirely. Both failure modes were proven
 in-game, in both directions: substituting via a stack copy leaves the
 engine's struct stock-white, so the hovered row turns WHITE after mouse-off;
 substituting in place puts the accent into the struct, which is the only
-thing the bypass path ever reads. The struct holds the accent for the
-process lifetime - that is the mechanism, not a leak. The last-touched
-row keeping its highlight after mouse-off is the engine's own selection
-model (stock behaves identically; invisible when everything is white).
+thing the bypass path ever reads.
+
+**Swatch preservation via the engine getter (2026-10-07).** The log proved
+the engine RE-APPLIES its selection color struct continuously — hundreds of
+scol calls per hover burst, every one carrying the once-substituted accent —
+so a palette swatch's deliberate colour was overwritten every frame and,
+because the stick model never deselects, it never came back until process
+restart. No Lua-side repaint can win against that rate. The hook now reads
+the widget's CURRENT colour through the setter's sibling getter at
+`kScolBRva` (`0x1684B0`), whose ABI was verified from the unpacked dump —
+thiscall, `ret $0xC`, args `[descriptor, float out[4], flag]`, returns
+`al` — and anchor-checked before it is ever called. A saturated current
+colour that is not the accent is deliberate content: the write is rewritten
+to it, in place, so the engine's own re-application carries the widget's
+colour. Themed rows (current = gray/white/accent) substitute exactly as
+before, and the getter resolving to null (anchor mismatch) falls back to
+accent-only behaviour. Log marker: `scol-keep:`.
 
 Lua-side guards (`theme_wrap_asp/roll/tc`, log-only) and a read-only audit
 (`theme-audit`, attribution `own:`/`menu:`) ship in the UI chunk for diagnosis.

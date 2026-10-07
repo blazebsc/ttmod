@@ -62,7 +62,7 @@ SAFETY: mods with native plugins log a WARNING on load and can run arbitrary
 code - only use mods you trust. Trouble? Set TTMOD_SAFE_MODE=1 or create an
 empty file config/safe-mode to launch with all mods disabled.
 
-Docs: https://github.com/anomalyco/opencode (Meta Muse Spark build)
+Docs: up ma ass lmao
 Full documentation ships with the source tree under docs/.
 EOF
 echo "--- verify ---"
