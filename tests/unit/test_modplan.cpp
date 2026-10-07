@@ -27,8 +27,7 @@ static Discovery disc_of(std::vector<ModManifest> mods) {
     Discovery d;
     for (auto& m : mods) {
         std::string path = "/mods/" + m.identity.id.str();
-        d.mods.push_back(
-            {m.identity.id, ModSource{m.identity.id.str(), path, ModSourceKind::Directory}, m});
+        d.mods.push_back({m.identity.id, ModSource{m.identity.id.str(), path, ModSourceKind::Directory}, m});
     }
     return d;
 }

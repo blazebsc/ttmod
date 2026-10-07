@@ -43,7 +43,9 @@ struct Discovered {
     ModId id;
     ModSource source;
     ModManifest manifest;
-    [[nodiscard]] bool packaged() const noexcept { return source.kind == ModSourceKind::Package; }
+    [[nodiscard]] bool packaged() const noexcept {
+        return source.kind == ModSourceKind::Package;
+    }
 };
 
 // Invalid entries stay visible (CLI lists them) instead of vanishing.

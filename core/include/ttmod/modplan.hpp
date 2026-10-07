@@ -34,7 +34,9 @@ struct LoadedMod {
     ModSource source;
     std::string dir; // effective dir: unpacked dir or ttmod/cache/<id>
     ModManifest manifest;
-    [[nodiscard]] bool packaged() const noexcept { return source.kind == ModSourceKind::Package; }
+    [[nodiscard]] bool packaged() const noexcept {
+        return source.kind == ModSourceKind::Package;
+    }
 };
 
 struct ModPlan {

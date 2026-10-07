@@ -18,8 +18,8 @@ std::vector<Listed> scan_mods_dir(const std::string& gamedir) {
         const bool is_dir = src.kind == ttmod::ModSourceKind::Directory;
         const std::string label = src.name + (is_dir ? "/" : "");
         if (!result.ok()) {
-            out.push_back({"?", "?", label + " [INVALID: " + result.error().message + "]", "",
-                           ttmod::ModManifest{}, false});
+            out.push_back(
+                {"?", "?", label + " [INVALID: " + result.error().message + "]", "", ttmod::ModManifest{}, false});
             continue;
         }
         auto manifest = std::move(result).value();
