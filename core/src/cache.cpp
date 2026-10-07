@@ -6,6 +6,7 @@
 
 #include <cstdio>
 #include <filesystem>
+#include <optional>
 #include <string_view>
 
 namespace ttmod {
@@ -54,17 +55,22 @@ std::string retired_dir(const std::string& dir) {
     return dir + std::string(kRetiredSuffix);
 }
 
-// id for a cache entry dir, or "" when the name is not one of our suffixes.
-std::string entry_id(const std::string& name) {
-    if (name.size() > kRetiredSuffix.size() && name.ends_with(kRetiredSuffix))
-        return name.substr(0, name.size() - kRetiredSuffix.size());
-    return "";
+bool has_retired_suffix(const std::string& name) {
+    return name.size() > kRetiredSuffix.size() && name.ends_with(kRetiredSuffix);
+}
+
+// Parsed id for a retired cache entry dir, or no value when the name is not ours.
+std::optional<ModId> entry_id(const std::string& name) {
+    if (!has_retired_suffix(name)) return std::nullopt;
+    auto id = ModId::parse(name.substr(0, name.size() - kRetiredSuffix.size()));
+    if (!id.ok()) return std::nullopt;
+    return id.value();
 }
 
 } // namespace
 
 Result<CacheSync> sync_package_cache(const std::string& cache_dir,
-                                     const std::vector<std::pair<std::string, std::string>>& packaged) {
+                                     const std::vector<std::pair<ModId, std::string>>& packaged) {
     CacheSync out;
     std::error_code ec;
     fs::create_directories(cache_dir, ec);
@@ -78,12 +84,12 @@ Result<CacheSync> sync_package_cache(const std::string& cache_dir,
         if (ec) break;
         if (!e.is_directory(ec)) continue;
         std::string name = e.path().filename().string();
-        std::string id = entry_id(name);
-        if (!id.empty()) {
-            std::string live = (fs::path(cache_dir) / id).string();
+        auto id = entry_id(name);
+        if (id) {
+            std::string live = (fs::path(cache_dir) / id->str()).string();
             if (!fs::exists(live, ec)) {
                 fs::rename(e.path(), live, ec); // restore the good copy
-                out.log.push_back(id + ": cache restored after crash");
+                out.log.push_back(id->str() + ": cache restored after crash");
             } else {
                 fs::remove_all(e.path(), ec); // live copy is fine; old is junk
             }
@@ -92,10 +98,10 @@ Result<CacheSync> sync_package_cache(const std::string& cache_dir,
         }
     }
 
-    std::map<std::string, bool> wanted;
+    std::map<ModId, bool> wanted;
     for (auto& [id, pkg] : packaged) {
         wanted[id] = true;
-        std::string dir = (fs::path(cache_dir) / id).string();
+        std::string dir = (fs::path(cache_dir) / id.str()).string();
         std::string marker_path = (fs::path(dir) / ".ttmod-cache").string();
         std::string want_marker = marker_for(pkg);
         std::string have_marker = read_file(marker_path);
@@ -112,7 +118,7 @@ Result<CacheSync> sync_package_cache(const std::string& cache_dir,
         fs::remove_all(stage, ec);
         fs::remove_all(retired, ec);
         auto fail_stage = [&](const std::string& why) {
-            out.log.push_back(id + ": cache refresh failed: " + why);
+            out.log.push_back(id.str() + ": cache refresh failed: " + why);
             fs::remove_all(stage, ec);
         };
         auto ex = extract_package(pkg, stage);
@@ -143,7 +149,7 @@ Result<CacheSync> sync_package_cache(const std::string& cache_dir,
             continue;
         }
         if (had_live) fs::remove_all(retired, ec);
-        out.log.push_back(id + ": cached from package");
+        out.log.push_back(id.str() + ": cached from package");
         out.effective[id] = dir;
     }
     // Stale cleanup: our-marker dirs with no source package go away.
@@ -153,9 +159,11 @@ Result<CacheSync> sync_package_cache(const std::string& cache_dir,
         std::string marker = (e.path() / ".ttmod-cache").string();
         if (!fs::exists(marker, ec)) continue; // not ours: never touch
         std::string id = e.path().filename().string();
-        if (wanted.find(id) == wanted.end()) {
+        if (has_retired_suffix(id) && !entry_id(id)) continue;
+        auto parsed_id = ModId::parse(id);
+        if (!parsed_id.ok() || wanted.find(parsed_id.value()) == wanted.end()) {
             fs::remove_all(e.path(), ec);
-            out.log.push_back(id + ": stale cache removed");
+            out.log.push_back((parsed_id.ok() ? parsed_id.value().str() : id) + ": stale cache removed");
         }
     }
     return Result<CacheSync>::ok(std::move(out));

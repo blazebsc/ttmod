@@ -51,8 +51,7 @@ int main() {
         assert(!vbad.ok() && vbad.error().category == ttmod::errcat::kIO);
         auto made = ttmod::make_error("o", "b", ttmod::errcat::kMissing, "m");
         assert(made.operation == "o" && made.category == ttmod::errcat::kMissing);
-        auto attributed = ttmod::with_operation(
-            Error{"inner", "object", ttmod::errcat::kSyntax, "message"}, "outer");
+        auto attributed = ttmod::with_operation(Error{"inner", "object", ttmod::errcat::kSyntax, "message"}, "outer");
         assert(attributed.operation == "outer" && attributed.object == "object" &&
                attributed.category == ttmod::errcat::kSyntax && attributed.message == "message");
     } catch (...) {
@@ -68,8 +67,7 @@ int main() {
         std::unique_ptr<int> extracted_or = std::move(held_or).value_or(nullptr);
         assert(extracted_or && *extracted_or == 17);
 
-        auto failed_or = Result<std::unique_ptr<int>>::fail(
-            Error{"op", "", ttmod::errcat::kMissing, "missing"});
+        auto failed_or = Result<std::unique_ptr<int>>::fail(Error{"op", "", ttmod::errcat::kMissing, "missing"});
         std::unique_ptr<int> fallback = std::move(failed_or).value_or(nullptr);
         assert(!fallback);
 
@@ -100,9 +98,10 @@ int main() {
     assert(!missing_digest.ok() && missing_digest.error().category == ttmod::errcat::kIO); // io
     assert(missing_digest.error().operation == "hash-file" &&
            missing_digest.error().object == "/nonexistent-ttmod-hash");
-    assert(!ttmod::sync_package_cache("/tmp/opencode_ttmod_result_cache", {{"ghost", "/nonexistent-ttmod-pkg"}})
+    assert(!ttmod::sync_package_cache("/tmp/opencode_ttmod_result_cache",
+                                      {{ttmod::ModId::parse("ghost").value(), "/nonexistent-ttmod-pkg"}})
                 .value()
-                .effective.count("ghost")); // per-mod failure is logged, not fatal
+                .effective.count(ttmod::ModId::parse("ghost").value())); // per-mod failure is logged, not fatal
     auto synced = ttmod::sync_package_cache("/tmp/opencode_ttmod_result_cache", {});
     assert(synced.ok()); // hard failure only on cache-dir creation
 

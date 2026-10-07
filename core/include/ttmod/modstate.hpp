@@ -1,6 +1,8 @@
 #pragma once
 #include <map>
 #include <string>
+#include <vector>
+#include "ttmod/modid.hpp"
 #include "ttmod/result.hpp"
 
 namespace ttmod {
@@ -14,12 +16,12 @@ namespace ttmod {
 struct ModManifest; // fwd (manifest.hpp); keeps this header light
 
 struct ModState {
-    // id -> enabled override present in the file
-    std::map<std::string, bool> overrides;
-    bool enabled_for(const std::string& id, bool manifest_default) const;
-    // Overrides are keyed by raw text from config/mods.json; validated ids
-    // resolve through the same map via id.str().
-    void set(const std::string& id, bool enabled);
+    std::map<ModId, bool> overrides;
+    // Every mod id is validated, so rejected keys cannot match one; they are
+    // not serialized and are dropped on the next write.
+    std::vector<std::string> rejected_keys;
+    bool enabled_for(const ModId& id, bool manifest_default) const;
+    void set(const ModId& id, bool enabled);
     std::string serialize() const; // deterministic (sorted keys)
 };
 

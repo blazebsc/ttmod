@@ -112,7 +112,7 @@ int main() {
     // sorted
     for (size_t i = 1; i < d.mods.size(); ++i) assert(d.mods[i - 1].id < d.mods[i].id);
     // disabled via state
-    st.set("pkg.mod", false);
+    st.set(ttmod::ModId::parse("pkg.mod").value(), false);
     auto d2 = ttmod::discover_mods(kD, st, "minecraft-story-mode", 1);
     assert(!has_id(d2, "pkg.mod") && has_id(d2, "dev.mod"));
     assert(skipped_has(d2, "pkg.mod: disabled"));

@@ -220,9 +220,9 @@ static void safe_mode_gate(InitCtx& ctx) {
 
 static void sync_cache(InitCtx& ctx) {
     // Packaged mods extract to ttmod/cache/<id> (stale entries cleaned).
-    std::vector<std::pair<std::string, std::string>> pkgs;
+    std::vector<std::pair<ttmod::ModId, std::string>> pkgs;
     for (auto& m : ctx.disc.mods)
-        if (m.packaged) pkgs.emplace_back(m.id.str(), m.source);
+        if (m.packaged) pkgs.emplace_back(m.id, m.source);
     auto synced = ttmod::sync_package_cache(ttmod_win::join(ctx.gamedir, "ttmod\\cache"), pkgs);
     if (synced.ok()) {
         ctx.cache = synced.value();

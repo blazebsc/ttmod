@@ -361,13 +361,17 @@ std::string build_menu_literal(const std::vector<MenuModSnapshot>& mods, unsigne
 }
 
 Result<std::string> apply_enabled_change(const std::string& mods_json, const std::string& id, bool enabled) {
+    auto parsed_id = ModId::parse(id);
+    if (!parsed_id.ok()) {
+        return Result<std::string>::fail(with_operation(parsed_id.error(), "apply-enabled-change"));
+    }
     ModState st;
     auto sf = parse_state(mods_json);
     if (!sf.ok()) {
         return Result<std::string>::fail(with_operation(sf.error(), "apply-enabled-change"));
     }
     st = sf.value();
-    st.set(id, enabled);
+    st.set(parsed_id.value(), enabled);
     return Result<std::string>::ok(st.serialize());
 }
 

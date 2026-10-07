@@ -39,7 +39,7 @@ ModPlan build_plan(const Discovery& disc, const CacheSync& cache, const ModPlanO
         m.packaged = d.packaged;
         m.dir = d.source;
         if (d.packaged) {
-            auto it = cache.effective.find(d.id.str());
+            auto it = cache.effective.find(d.id);
             if (it == cache.effective.end()) {
                 plan.skipped.push_back(d.id.str() + ": cache unavailable, not loaded");
                 continue;

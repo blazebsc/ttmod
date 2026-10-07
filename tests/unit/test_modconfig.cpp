@@ -1,4 +1,5 @@
 #include "ttmod/manifest.hpp"
+#include "ttmod/modid.hpp"
 #include "ttmod/modconfig.hpp"
 #include "ttmod/modstate.hpp"
 #include <cassert>
@@ -148,8 +149,11 @@ int main() {
     auto st4 = ttmod::apply_enabled_change(st2.value(), "other.config", false);
     assert(st4.ok());
     auto sf = ttmod::parse_state(st4.value());
-    assert(sf.ok() && sf.value().enabled_for("demo.config", false));
-    assert(!sf.value().enabled_for("other.config", true));
+    assert(sf.ok() && sf.value().enabled_for(ttmod::ModId::parse("demo.config").value(), false));
+    assert(!sf.value().enabled_for(ttmod::ModId::parse("other.config").value(), true));
+    auto invalid_id = ttmod::apply_enabled_change("", "../invalid", true);
+    assert(!invalid_id.ok() && invalid_id.error().operation == "apply-enabled-change" &&
+           invalid_id.error().object == "../invalid" && invalid_id.error().category == ttmod::errcat::kSyntax);
     const std::string corrupt = "{oops";
     auto refused = ttmod::apply_enabled_change(corrupt, "a.b", false);
     assert(!refused.ok() && refused.error().category == ttmod::errcat::kSyntax);

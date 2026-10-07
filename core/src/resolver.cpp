@@ -10,7 +10,7 @@ void Resolver::set_game_root(const std::string& abs_native) {
 
 bool Resolver::add_mod(const ModDef& mod, ExistsFn exists) {
     if (!mod.enabled) return false; // disabled: invisible to the index
-    if (mod.id.empty()) {
+    if (!mod.id.valid()) {
         problems_.push_back("mod rejected: empty id");
         return false;
     }
@@ -24,7 +24,7 @@ bool Resolver::add_mod(const ModDef& mod, ExistsFn exists) {
         if (key_src.size() > 1 && key_src[1] == ':') {
             auto k = relative_key(normalize_win_path(key_src), root_);
             if (!k.ok()) {
-                problems_.push_back("mod " + mod.id + ": game path outside root: " + gp);
+                problems_.push_back("mod " + mod.id.str() + ": game path outside root: " + gp);
                 continue;
             }
             key = k.value();
@@ -33,11 +33,11 @@ bool Resolver::add_mod(const ModDef& mod, ExistsFn exists) {
         }
         auto rep = join_checked(mdir, rel);
         if (!rep.ok()) {
-            problems_.push_back("mod " + mod.id + ": replacement escapes mod dir: " + rel);
+            problems_.push_back("mod " + mod.id.str() + ": replacement escapes mod dir: " + rel);
             continue;
         }
         if (exists && !exists(rep.value())) {
-            problems_.push_back("mod " + mod.id + ": replacement missing: " + rel);
+            problems_.push_back("mod " + mod.id.str() + ": replacement missing: " + rel);
             continue;
         }
         index_[key].push_back(Entry{rep.value(), mod.id, mod.priority});

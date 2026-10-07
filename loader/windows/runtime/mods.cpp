@@ -54,7 +54,7 @@ void mods_init(const std::vector<ScannedMod>& all, const char* game_root, const 
     for (auto& s : all) {
         const ttmod::ModManifest& m = s.manifest;
         if (m.overrides.files.empty()) continue; // native-only; plugins loader owns it
-        ttmod::ModDef def{m.identity.id.str(), s.dir, m.overrides.priority, true, m.overrides.files};
+        ttmod::ModDef def{m.identity.id, s.dir, m.overrides.priority, true, m.overrides.files};
         size_t before = g_resolver.problems().size();
         bool used = g_resolver.add_mod(def, exists);
         char sum[192];
@@ -128,20 +128,20 @@ bool mods_try(const wchar_t* requested, std::string& out_requested, std::string&
     if (g_verbose) {
         char m[768];
         snprintf(m, sizeof m, "resolve: found=%d reason=%s winner=%s shadowed=%u", (int)r.found, r.reason.c_str(),
-                 r.winner.c_str(), (unsigned)r.shadowed.size());
+                 r.winner.str().c_str(), (unsigned)r.shadowed.size());
         emit(m);
     }
     if (!r.found) return false;
     out_replacement = r.replacement;
-    out_winner = r.winner;
+    out_winner = r.winner.str();
     if (!r.shadowed.empty()) {
         std::string c = "RESOURCE CONFLICT path shadows:";
-        for (auto& s : r.shadowed) c += " " + s;
-        c += " | winner: " + r.winner + " — losers remain visible here, game uses winner";
+        for (auto& s : r.shadowed) c += " " + s.str();
+        c += " | winner: " + r.winner.str() + " — losers remain visible here, game uses winner";
         emit(c);
     }
     char m[768];
-    snprintf(m, sizeof m, "override: %s -> [%s] req=[%s] %s", r.winner.c_str(), r.replacement.c_str(),
+    snprintf(m, sizeof m, "override: %s -> [%s] req=[%s] %s", r.winner.str().c_str(), r.replacement.c_str(),
              out_requested.c_str(), r.shadowed.empty() ? "" : "(conflict, see above)");
     emit(m);
     return true;

@@ -3,8 +3,10 @@
 // dependency graph and discovery both sort by it).
 #include <cassert>
 #include <cstdio>
+#include <functional>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 #include "ttmod/manifest.hpp"
 #include "ttmod/modid.hpp"
@@ -35,6 +37,12 @@ int main() {
         assert(!ModId::parse(b).ok());
         assert(!ttmod::is_valid_mod_id(b));
     }
+    std::string too_long(65, 'a');
+    for (const std::string& bad :
+         std::vector<std::string>{"", too_long, ".", "..", "a..b", " a", "a ", "a/b", "a\\b", "é"}) {
+        auto r = ModId::parse(bad);
+        assert(!r.ok() && r.error().operation == "parse-mod-id" && r.error().category == ttmod::errcat::kSyntax);
+    }
     // Embedded NUL: built with an explicit length, since a const char* literal
     // would truncate to "a" and be valid.
     {
@@ -54,7 +62,13 @@ int main() {
     auto b = ModId::parse("b.mod").value();
     assert(a == a2 && a != b);
     assert(a < b && !(b < a));
+    assert((a < b) == (a.str() < b.str()));
     assert(!(a < a2));
+    auto mixed_case = ModId::parse("Mod.A").value();
+    auto lower_case = ModId::parse("mod.a").value();
+    assert(mixed_case.str() == "Mod.A" && mixed_case != lower_case);
+    assert(ModId::parse(mixed_case.str()).value() == mixed_case);
+    assert(!ModId::parse(" a").ok()); // no trimming
 
     // Versions: bounded grammar, no overflow, total order.
     auto ver = [](const char* s) {
@@ -93,6 +107,7 @@ int main() {
     set.insert(a2);
     set.insert(b);
     assert(set.size() == 2 && set.count(a2) == 1);
+    assert(std::hash<ModId>{}(a) == std::hash<ModId>{}(a2));
 
     // Default-constructed is an explicit invalid placeholder, not an id.
     {
