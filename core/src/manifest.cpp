@@ -47,8 +47,9 @@ bool valid_game_entry(std::string_view game) {
 
     if (colon == std::string_view::npos) return true;
     const std::string_view season = game.substr(colon + 1);
-    if (season.size() < 2 || season.size() > 4 || season.front() != 's') return false;
-    for (char c : season.substr(1))
+    if (season.size() < 2 || season.size() > 4 || season.front() != 's' || season[1] < '1' || season[1] > '9')
+        return false;
+    for (char c : season.substr(2))
         if (c < '0' || c > '9') return false;
     return true;
 }
