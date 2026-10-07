@@ -25,7 +25,7 @@ std::vector<Listed> scan_mods_dir(const std::string& gamedir) {
             auto pm = ttmod::parse_manifest(insp.value().manifest_text);
             if (!pm.ok()) continue; // inspect validated; defensive
             auto m = pm.value();
-            out.push_back({m.identity.id.str(), m.identity.version, src.name, "", m});
+            out.push_back({m.identity.id.str(), m.identity.version.str(), src.name, "", m});
         } else {
             std::string mf = (fs::path(src.path) / "manifest.json").string();
             std::error_code ec;
@@ -38,7 +38,7 @@ std::vector<Listed> scan_mods_dir(const std::string& gamedir) {
                 continue;
             }
             auto m = pm.value();
-            out.push_back({m.identity.id.str(), m.identity.version, src.name + "/", "", m});
+            out.push_back({m.identity.id.str(), m.identity.version.str(), src.name + "/", "", m});
         }
     }
     std::sort(out.begin(), out.end(), [](const Listed& a, const Listed& b) { return a.id < b.id; });

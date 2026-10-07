@@ -30,6 +30,7 @@ inline constexpr int kApiVersion = 5; // mirrors TTMOD_PLUGIN_API_VERSION
 inline constexpr size_t kMaxVersionLen = 64;
 inline constexpr size_t kMaxVersionParts = 4;
 inline constexpr uint64_t kMaxVersionPart = 999999999ull;
+static_assert(kMaxVersionPart == 999999999ull);
 inline constexpr size_t kMaxPrereleaseLen = 32;
 
 class Version {
@@ -38,7 +39,7 @@ class Version {
     static Result<Version> parse(std::string_view s);
 
     // Dotted-numeric compare: -1/0/+1. Total order, no overflow.
-    int compare(const Version& o) const;
+    [[nodiscard]] int compare(const Version& o) const;
     [[nodiscard]] const std::string& str() const noexcept {
         return raw_;
     }
@@ -60,7 +61,7 @@ class VersionConstraint {
   public:
     static Result<VersionConstraint> parse(std::string_view spec);
 
-    bool satisfied_by(const Version& v) const;
+    [[nodiscard]] bool satisfied_by(const Version& v) const;
     [[nodiscard]] bool empty() const {
         return empty_;
     }
@@ -69,8 +70,10 @@ class VersionConstraint {
     }
 
   private:
+    enum class Op : uint8_t { Ge, Le, Eq, Gt, Lt };
+
     bool empty_ = true;
-    std::string op_ = ">=";
+    Op op_ = Op::Ge;
     Version base_; // 0.0.0 when empty_
     std::string raw_;
 };

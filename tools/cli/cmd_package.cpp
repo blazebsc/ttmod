@@ -20,7 +20,7 @@ static void print_packinfo(const std::string& path) {
     auto m = pm.value();
     const auto& files = insp.value().files;
     std::printf("id: %s\nname: %s\nversion: %s\napi: %d\npackage_format: %d\ngames:",
-                m.identity.id.str().c_str(), "(see manifest)", m.identity.version.c_str(),
+                m.identity.id.str().c_str(), "(see manifest)", m.identity.version.str().c_str(),
                 m.compat.api, m.package_format);
     for (auto& g : m.compat.games) std::printf(" %s", g.c_str());
     std::printf("\npriority: %d\nenabled-field: %s\nfiles: %u\nplugin: %s\narch: %s\nentries: %u\n",
@@ -34,7 +34,7 @@ static void print_packinfo(const std::string& path) {
     if (!m.deps.depends.empty()) {
         std::printf("depends:");
         for (auto& [id, ver] : m.deps.depends)
-            std::printf(" %s%s%s", id.str().c_str(), ver.empty() ? "" : ">=", ver.c_str());
+            std::printf(" %s%s%s", id.str().c_str(), ver.empty() ? "" : " ", ver.str().c_str());
         std::printf("\n");
     }
     if (!m.deps.conflicts.empty()) {
@@ -81,7 +81,7 @@ int cmd_package(int argc, char** argv) {
         }
         auto m = pm.value();
         std::printf("valid: %s %s (%u files)\n", m.identity.id.str().c_str(),
-                    m.identity.version.c_str(), (unsigned)insp.value().files.size());
+                    m.identity.version.str().c_str(), (unsigned)insp.value().files.size());
         return 0;
     }
     if (sub == "info" && argc == 2) {

@@ -2,11 +2,18 @@
 #include <cassert>
 #include <cstdio>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ttmod/modplan.hpp"
 
 using namespace ttmod;
+
+static VersionConstraint con(const char* spec) {
+    auto r = VersionConstraint::parse(spec);
+    assert(r.ok());
+    return std::move(r).value();
+}
 
 static ModManifest mk(const char* id, const char* ver, const char* api = "1") {
     std::string text =
@@ -28,7 +35,7 @@ int main() {
     {
         auto d = disc_of({mk("zebra", "1.0"), mk("apple", "1.0"), mk("base", "1.0")});
         d.mods[2].manifest.deps.depends.clear();
-        d.mods[0].manifest.deps.depends = {{ModId::parse("base").value(), ""}};
+        d.mods[0].manifest.deps.depends = {{ModId::parse("base").value(), con("")}};
         ModPlan p = build_plan(d, CacheSync{});
         assert(p.load_order.size() == 3);
         assert(p.find(ModId::parse("base").value()) != nullptr);
@@ -44,7 +51,7 @@ int main() {
     // Blocked mods are excluded from load order but reported.
     {
         auto d = disc_of({mk("needs.ghost", "1.0"), mk("fine", "1.0")});
-        d.mods[0].manifest.deps.depends = {{ModId::parse("ghost").value(), ""}};
+        d.mods[0].manifest.deps.depends = {{ModId::parse("ghost").value(), con("")}};
         ModPlan p = build_plan(d, CacheSync{});
         assert(p.load_order.size() == 1);
         assert(p.load_order[0].id == ModId::parse("fine").value());

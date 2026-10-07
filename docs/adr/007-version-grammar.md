@@ -70,3 +70,10 @@ must use `Version::parse`.
 - Mods cannot declare more than four parts or a part above 999999999.
 - Grammar constants live in `core/include/ttmod/version.hpp` next to the
   type, so parser and policy cannot drift.
+
+## Amendment (PR 4)
+
+This supersedes the earlier note: `compare_versions` has been removed in
+favor of `Version::compare`. `ModIdentity` and `DependencySpec` now hold
+`Version` and `VersionConstraint` values, and operator-only constraints are
+rejected.
