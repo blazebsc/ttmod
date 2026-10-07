@@ -1,4 +1,5 @@
 #include "ttmod/manifest.hpp"
+#include "ttmod/modid.hpp"
 #include "ttmod/modconfig.hpp"
 #include "ttmod/modstate.hpp"
 #include <cassert>
@@ -138,14 +139,25 @@ int main() {
     fclose(lf);
 
     // enable/disable transitions (pure text in/out)
-    std::string st1 = ttmod::apply_enabled_change("", "demo.config", false);
-    assert(st1.find("\"demo.config\"") != std::string::npos && st1.find("false") != std::string::npos);
-    std::string st2 = ttmod::apply_enabled_change(st1, "demo.config", true);
-    auto sf = ttmod::parse_state(st2);
-    assert(sf.ok() && sf.value().enabled_for("demo.config", false));
-    // garbage input tolerated, other entries preserved
-    std::string st3 = ttmod::apply_enabled_change("{oops", "a.b", false);
-    assert(ttmod::parse_state(st3).ok());
+    auto st1 = ttmod::apply_enabled_change("", "demo.config", false);
+    assert(st1.ok() && st1.value().find("\"demo.config\"") != std::string::npos &&
+           st1.value().find("false") != std::string::npos);
+    auto st2 = ttmod::apply_enabled_change(st1.value(), "demo.config", true);
+    assert(st2.ok());
+    auto st3 = ttmod::apply_enabled_change(" \n\t", "blank.config", true);
+    assert(st3.ok() && ttmod::parse_state(st3.value()).ok());
+    auto st4 = ttmod::apply_enabled_change(st2.value(), "other.config", false);
+    assert(st4.ok());
+    auto sf = ttmod::parse_state(st4.value());
+    assert(sf.ok() && sf.value().enabled_for(ttmod::ModId::parse("demo.config").value(), false));
+    assert(!sf.value().enabled_for(ttmod::ModId::parse("other.config").value(), true));
+    auto invalid_id = ttmod::apply_enabled_change("", "../invalid", true);
+    assert(!invalid_id.ok() && invalid_id.error().operation == "apply-enabled-change" &&
+           invalid_id.error().object == "../invalid" && invalid_id.error().category == ttmod::errcat::kSyntax);
+    const std::string corrupt = "{oops";
+    auto refused = ttmod::apply_enabled_change(corrupt, "a.b", false);
+    assert(!refused.ok() && refused.error().category == ttmod::errcat::kSyntax);
+    assert(refused.error().operation == "apply-enabled-change" && corrupt == "{oops");
 
     // config value transitions
     auto sv = ttmod::apply_config_value(m.presentation.config, "", "fancy", "0");

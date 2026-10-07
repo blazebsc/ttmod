@@ -70,15 +70,19 @@ size_t count_components(const std::string& raw) {
     return n;
 }
 
-bool read_entry(mz_zip_archive& zip, mz_uint idx, std::string& out) {
+Result<std::string> read_entry(mz_zip_archive& zip, mz_uint idx) {
     mz_zip_archive_file_stat st;
-    if (!mz_zip_reader_file_stat(&zip, idx, &st)) return false;
+    if (!mz_zip_reader_file_stat(&zip, idx, &st))
+        return Result<std::string>::fail(
+            Error{"read-entry", std::to_string(idx), errcat::kIO, "cannot read zip entry"});
     size_t n = 0;
     void* p = mz_zip_reader_extract_to_heap(&zip, idx, &n, 0);
-    if (!p) return false;
-    out.assign((const char*)p, n);
+    if (!p)
+        return Result<std::string>::fail(
+            Error{"read-entry", std::to_string(idx), errcat::kIO, "cannot read zip entry"});
+    std::string out((const char*)p, n);
     mz_free(p);
-    return true;
+    return Result<std::string>::ok(std::move(out));
 }
 
 } // namespace
@@ -154,9 +158,11 @@ Result<PackView> inspect_package(const std::string& path) {
             if (st.m_uncomp_size > packlimits::kMaxManifestBytes) {
                 return fail("manifest too large", errcat::kLimit);
             }
-            if (!read_entry(z.zip, i, manifest)) {
+            auto entry = read_entry(z.zip, i);
+            if (!entry.ok()) {
                 return fail("cannot read manifest.json", errcat::kIO);
             }
+            manifest = std::move(entry).value();
             continue;
         }
         v.files.push_back({norm, st.m_uncomp_size});

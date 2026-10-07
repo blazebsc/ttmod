@@ -4,16 +4,16 @@
 
 namespace ttmod {
 
-bool ModState::enabled_for(const std::string& id, bool manifest_default) const {
+bool ModState::enabled_for(const ModId& id, bool manifest_default) const {
     auto it = overrides.find(id);
     return it == overrides.end() ? manifest_default : it->second;
 }
 
 bool effective_enabled(const ModManifest& manifest, const ModState& state) {
-    return state.enabled_for(manifest.identity.id.str(), manifest.enabled);
+    return state.enabled_for(manifest.identity.id, manifest.enabled);
 }
 
-void ModState::set(const std::string& id, bool enabled) {
+void ModState::set(const ModId& id, bool enabled) {
     overrides[id] = enabled;
 }
 
@@ -23,7 +23,8 @@ std::string ModState::serialize() const {
     for (auto& [id, en] : overrides) {
         if (!first) o += ",\n";
         first = false;
-        o += "    \"" + id + "\": {\"enabled\": " + (en ? "true" : "false") + "}";
+        // ModId's validated charset needs no JSON escaping, so keys cannot inject JSON.
+        o += "    \"" + id.str() + "\": {\"enabled\": " + (en ? "true" : "false") + "}";
     }
     o += first ? "}" : "\n}";
     return o;
@@ -122,6 +123,8 @@ Result<ModState> parse_state(const std::string& text) {
         if (!p.str(id) || !p.lit(':') || !p.lit('{')) {
             return fail("bad entry");
         }
+        auto parsed_id = ModId::parse(id);
+        if (!parsed_id.ok()) st.rejected_keys.push_back(id);
         bool enabled = true, seen = false;
         while (true) {
             p.ws();
@@ -157,7 +160,7 @@ Result<ModState> parse_state(const std::string& text) {
             }
             return fail("entry unterminated");
         }
-        if (seen) st.overrides[id] = enabled;
+        if (seen && parsed_id.ok()) st.overrides[parsed_id.value()] = enabled;
     }
     return Result<ModState>::ok(std::move(st));
 }

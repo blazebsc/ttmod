@@ -3,12 +3,13 @@
 #include <map>
 #include <string>
 #include <vector>
+#include "ttmod/modid.hpp"
 
 namespace ttmod {
 
 // One mod's override declarations (from its manifest; paths raw).
 struct ModDef {
-    std::string id;
+    ModId id;
     std::string dir; // absolute, native separators
     int priority = 100;
     bool enabled = true;
@@ -19,9 +20,9 @@ struct ModDef {
 struct ResolveResult {
     bool found = false;
     std::string replacement; // normalized abs (internal '/' seps) when found
-    std::string winner;
+    ModId winner;
     int priority = 0;
-    std::vector<std::string> shadowed; // other enabled claimants, high->low
+    std::vector<ModId> shadowed; // other enabled claimants, high->low
     std::string reason; // "hit", "miss", "outside-root", ...
 };
 
@@ -47,7 +48,7 @@ public:
 private:
     struct Entry {
         std::string replacement;
-        std::string mod;
+        ModId mod;
         int priority = 0;
     };
     std::string root_;

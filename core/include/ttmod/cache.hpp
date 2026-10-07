@@ -2,6 +2,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include "ttmod/modid.hpp"
 #include "ttmod/result.hpp"
 
 namespace ttmod {
@@ -19,13 +20,13 @@ namespace ttmod {
 inline constexpr int kCacheSchema = 1;
 struct CacheSync {
     // id -> effective dir (cache dir for packages). Empty when nothing synced.
-    std::map<std::string, std::string> effective;
+    std::map<ModId, std::string> effective;
     std::vector<std::string> log; // human lines for diagnostics
 };
 
 // packaged: vector of (mod id, package file path). Per-mod failures are
 // logged, not fatal; only cache-dir creation failure is a hard Error.
 Result<CacheSync> sync_package_cache(const std::string& cache_dir,
-                                     const std::vector<std::pair<std::string, std::string>>& packaged);
+                                     const std::vector<std::pair<ModId, std::string>>& packaged);
 
 } // namespace ttmod

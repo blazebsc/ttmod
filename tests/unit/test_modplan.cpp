@@ -70,7 +70,7 @@ int main() {
         assert(p.load_order.empty());
         assert(!p.skipped.empty());
         CacheSync cs;
-        cs.effective["pkg.mod"] = "/cache/pkg.mod";
+        cs.effective[ttmod::ModId::parse("pkg.mod").value()] = "/cache/pkg.mod";
         ModPlan p2 = build_plan(d, cs);
         assert(p2.load_order.size() == 1);
         assert(p2.load_order[0].dir == "/cache/pkg.mod");

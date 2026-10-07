@@ -93,7 +93,7 @@ Discovery discover_mods(const std::string& mods_dir, const ModState& state, cons
             continue;
         }
         if (!pm.value().identity.id.valid()) continue; // dir without manifest.json
-        cands.push_back({pm.value().identity.id, src.path, std::move(pm.value()), packaged});
+        cands.push_back({pm.value().identity.id, src.path, std::move(pm).value(), packaged});
     }
     // Validate api/game, apply state, dedupe (unpacked dir beats package).
     struct Item {

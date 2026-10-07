@@ -86,8 +86,7 @@ std::map<std::string, ConfigValue> config_effective(const std::vector<ConfigOpti
 // Pure state transitions for the menu setters (file I/O stays caller-side,
 // fully unit-testable here).
 // Enable/disable: rewrite of config/mods.json content.
-std::string apply_enabled_change(const std::string& mods_json, const std::string& id,
-                                 bool enabled);
+Result<std::string> apply_enabled_change(const std::string& mods_json, const std::string& id, bool enabled);
 // Config value: coerce valstr per the option type (bool: 1/0/true/false;
 // int/float: strict numeric; string/enum: raw, with "" resetting strings
 // to default), validate, merge over the existing file content.

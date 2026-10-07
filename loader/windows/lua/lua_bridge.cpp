@@ -341,10 +341,13 @@ static bool scol_accent(float* out) {
     char hex[8] = {};
     strncpy(hex, q + 1, 7);
     auto parsed = ttmod::parse_accent(hex);
-    if (!parsed) return false;
-    out[0] = parsed->r;
-    out[1] = parsed->g;
-    out[2] = parsed->b;
+    if (!parsed.ok()) {
+        emit(std::string("theme: invalid accent: ") + parsed.error().message);
+        return false;
+    }
+    out[0] = parsed.value().r;
+    out[1] = parsed.value().g;
+    out[2] = parsed.value().b;
     rgb[0] = out[0];
     rgb[1] = out[1];
     rgb[2] = out[2];

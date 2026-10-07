@@ -97,7 +97,8 @@ int main() {
         assert(!after.ok());
         assert(after.error().category == errcat::kMissing);
         called = false;
-        reg.invoke(t.value(), nullptr, 0, &fw); // must not run the revoked fn
+        auto revoked = reg.invoke(t.value(), nullptr, 0, &fw);
+        assert(!revoked.ok()); // must not run the revoked fn
         assert(!called);
         assert(reg.find(revocable) == nullptr); // gone from lookup
         assert(reg.size() == before - 1);       // tombstoned: removed from the key index

@@ -38,7 +38,9 @@ Names for the seams. Use these terms exactly; do not invent synonyms.
   (ADR-006); the game owns every state.
 - **mod id** — validated identity (`ModId`, parsed once at the manifest
   boundary; ADR-007 for the version grammar that rides alongside it).
-  Everything downstream trusts it and never re-validates.
+  Everything downstream trusts it and never re-validates. Strings appear
+  only at serialization/UI boundaries (mods.json, menu snapshot, lifecycle
+  status, C-ABI/event strings, logs).
 - **TTMod VM** — the scripting VM TTMod owns and destroys (doc §2, §71).
   Never the game's. Lua today; the same six-operation `ScriptVm` contract is
   what a Luau backend implements later.

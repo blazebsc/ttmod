@@ -8,9 +8,9 @@ namespace ttmod {
 static uint16_t rd16(const uint8_t* p) { uint16_t v; memcpy(&v, p, 2); return v; }
 static uint32_t rd32(const uint8_t* p) { uint32_t v; memcpy(&v, p, 4); return v; }
 
-uint64_t fnv1a_file(const std::string& path, uint64_t* out_size) {
+Result<FileDigest> fnv1a_file(const std::string& path) {
     FILE* f = ttmod::file_io::open_read(path);
-    if (!f) return 0;
+    if (!f) return Result<FileDigest>::fail(Error{"hash-file", path, errcat::kIO, "cannot open file"});
     uint64_t h = 14695981039346656037ull;
     uint64_t n = 0;
     char buf[65536];
@@ -22,9 +22,12 @@ uint64_t fnv1a_file(const std::string& path, uint64_t* out_size) {
             h *= 1099511628211ull;
         }
     }
+    if (ferror(f)) {
+        fclose(f);
+        return Result<FileDigest>::fail(Error{"hash-file", path, errcat::kIO, "cannot read file"});
+    }
     fclose(f);
-    if (out_size) *out_size = n;
-    return h;
+    return Result<FileDigest>::ok(FileDigest{h, n});
 }
 
 Result<ExeInfo> parse_pe(const std::string& path) {
@@ -42,8 +45,10 @@ Result<ExeInfo> parse_pe(const std::string& path) {
     }
     fclose(f);
     // Identity needs the whole file (hash); headers parse from the prefix.
-    e.file_size = 0;
-    e.fnv1a64 = fnv1a_file(path, &e.file_size);
+    auto digest = fnv1a_file(path);
+    if (!digest.ok()) return Result<ExeInfo>::fail(digest.error());
+    e.file_size = digest.value().size;
+    e.fnv1a64 = digest.value().fnv1a64;
     auto h = parse_pe_bytes(std::span<const std::byte>((const std::byte*)hdr, sizeof hdr));
     if (!h.ok()) return h;
     e.machine = h.value().machine;

@@ -149,8 +149,12 @@ static int __cdecl fn_set_enabled(lua_State* L) {
     if (!id || !id[0] || !v) return 0;
     bool en = v[0] == '1';
     std::string path = g_gamedir + "\\config\\mods.json";
-    std::string next = ttmod::apply_enabled_change(read_file(path), id, en);
-    if (!write_file(path, next)) {
+    auto next = ttmod::apply_enabled_change(read_file(path), id, en);
+    if (!next.ok()) {
+        emit(std::string("menumods: enabled write REFUSED for ") + id + ": " + next.error().message);
+        return 0;
+    }
+    if (!write_file(path, next.value())) {
         emit(std::string("menumods: enabled write FAILED for ") + id);
         return 0;
     }

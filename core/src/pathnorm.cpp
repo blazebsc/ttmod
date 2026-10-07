@@ -1,5 +1,6 @@
 #include "ttmod/pathnorm.hpp"
 #include <cctype>
+#include <utility>
 #include <vector>
 
 namespace ttmod {
@@ -87,27 +88,30 @@ std::string normalize_win_path(const std::string& raw) {
     return o;
 }
 
-std::optional<std::string> relative_key(const std::string& norm_abs, const std::string& norm_root) {
-    if (norm_abs == norm_root) return std::string("");
+Result<std::string> relative_key(const std::string& norm_abs, const std::string& norm_root) {
+    if (norm_abs == norm_root) return Result<std::string>::ok("");
     if (norm_abs.size() > norm_root.size() && starts_with(norm_abs, norm_root) &&
         norm_abs[norm_root.size()] == '/')
-        return norm_abs.substr(norm_root.size() + 1);
-    return std::nullopt;
+        return Result<std::string>::ok(norm_abs.substr(norm_root.size() + 1));
+    return Result<std::string>::fail(Error{"relative-key", norm_abs, errcat::kTraversal, "path is outside root"});
 }
 
-std::optional<std::string> join_checked(const std::string& norm_mod_dir, const std::string& rel) {
-    if (rel.empty()) return std::nullopt;
+Result<std::string> join_checked(const std::string& norm_mod_dir, const std::string& rel) {
+    auto fail = [&](const std::string& message) {
+        return Result<std::string>::fail(Error{"join-path", rel, errcat::kTraversal, message});
+    };
+    if (rel.empty()) return fail("path is empty");
     // Manifest values must be relative subpaths: no drive/UNC/absolute forms.
     // (':' never occurs in a legal relative component; also blocks "c:/..." smuggling.)
-    if (rel.find(':') != std::string::npos) return std::nullopt;
-    if (rel[0] == '/' || rel[0] == '\\') return std::nullopt;
-    if (rel.size() > 512) return std::nullopt;
+    if (rel.find(':') != std::string::npos) return fail("path is not relative");
+    if (rel[0] == '/' || rel[0] == '\\') return fail("path is not relative");
+    if (rel.size() > 512) return fail("path is too long");
     std::string joined = normalize_win_path(norm_mod_dir + "/" + rel);
-    if (joined == norm_mod_dir) return joined;
+    if (joined == norm_mod_dir) return Result<std::string>::ok(std::move(joined));
     if (joined.size() > norm_mod_dir.size() && starts_with(joined, norm_mod_dir) &&
         joined[norm_mod_dir.size()] == '/')
-        return joined;
-    return std::nullopt; // escaped
+        return Result<std::string>::ok(std::move(joined));
+    return fail("path escapes mod directory");
 }
 
 } // namespace ttmod

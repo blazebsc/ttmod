@@ -7,6 +7,11 @@
 
 namespace ttmod {
 
+struct FileDigest {
+    uint64_t fnv1a64 = 0;
+    uint64_t size = 0;
+};
+
 // Minimal PE identity. No Windows headers so it builds on Linux for offline tooling.
 struct ExeInfo {
     std::string path;
@@ -24,7 +29,7 @@ Result<ExeInfo> parse_pe(const std::string& path);
 // fills identity + hash around it.
 Result<ExeInfo> parse_pe_bytes(std::span<const std::byte> bytes);
 // FNV-1a 64 over whole file, streamed.
-uint64_t fnv1a_file(const std::string& path, uint64_t* out_size = nullptr);
+Result<FileDigest> fnv1a_file(const std::string& path);
 
 inline const char* arch_name(uint16_t machine) {
     return machine == 0x014C ? "x86" : machine == 0x8664 ? "x64" : "unknown";

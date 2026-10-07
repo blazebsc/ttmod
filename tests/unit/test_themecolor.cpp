@@ -14,15 +14,16 @@ int main() {
     // Golden vectors. tests/test_menumods_ui.py asserts these SAME values
     // through the Lua path (see "golden" there); change both together.
     auto acc = parse_accent("#FF8000");
-    assert(acc && near(acc->r, 1.0f) && near(acc->g, 128 / 255.0f) && near(acc->b, 0.0f));
+    assert(acc.ok() && near(acc.value().r, 1.0f) && near(acc.value().g, 128 / 255.0f) && near(acc.value().b, 0.0f));
     acc = parse_accent("#00ff00");
-    assert(acc && near(acc->r, 0.0f) && near(acc->g, 1.0f) && near(acc->b, 0.0f));
+    assert(acc.ok() && near(acc.value().r, 0.0f) && near(acc.value().g, 1.0f) && near(acc.value().b, 0.0f));
     acc = parse_accent("#0080FF");
-    assert(acc && near(acc->r, 0.0f) && near(acc->g, 128 / 255.0f) && near(acc->b, 1.0f));
-    assert(!parse_accent("blue"));
-    assert(!parse_accent("#FFF"));
-    assert(!parse_accent("#GGGGGG"));
-    assert(!parse_accent(""));
+    assert(acc.ok() && near(acc.value().r, 0.0f) && near(acc.value().g, 128 / 255.0f) && near(acc.value().b, 1.0f));
+    for (const std::string input : {"blue", "#FFF", "#GGGGGG", ""}) {
+        auto failure = parse_accent(input);
+        assert(!failure.ok() && failure.error().category == ttmod::errcat::kSyntax);
+        assert(failure.error().operation == "parse-accent" && failure.error().object == input);
+    }
     // Floats: white / stock gray substitute; black / disabled / tints pass.
     assert(should_substitute(1, 1, 1));
     assert(should_substitute(0.878f, 0.878f, 0.878f));
