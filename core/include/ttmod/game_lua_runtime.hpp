@@ -1,3 +1,4 @@
+#pragma once
 // GameLuaRuntime: authoritative game Lua state lifecycle (doc §§27, 30, 57).
 //
 // The game creates and destroys every Lua state; TTMod observes, never owns.

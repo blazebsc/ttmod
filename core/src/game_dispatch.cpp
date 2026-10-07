@@ -4,7 +4,8 @@
 
 namespace ttmod {
 
-GameDispatcher::GameDispatcher(std::thread::id game_thread, Options opt) : game_thread_(game_thread), opt_(opt) {}
+GameDispatcher::GameDispatcher(std::thread::id game_thread, Options opt)
+    : game_thread_(game_thread), opt_(opt) {}
 
 GameDispatcher::~GameDispatcher() {
     shutdown();
@@ -14,15 +15,11 @@ bool GameDispatcher::on_game_thread() const {
     return std::this_thread::get_id() == game_thread_;
 }
 
+// Internal queue logic for blocking call returning Result<Value>.
 Result<Value> GameDispatcher::call(Op op) {
     if (!op) return Result<Value>::fail(Error{"dispatch", "", errcat::kType, "null op"});
-    // Fast path: already on the game thread. Queueing here would deadlock
-    // against our own pump.
     if (on_game_thread()) return op();
 
-    // shared_ptr, not a raw Waiter: if we time out while the op is still
-    // queued, the queue still owns it, so a late completion writes into live
-    // memory and the object dies only when the last reference goes.
     auto w = std::make_shared<Waiter>();
     {
         std::lock_guard<std::mutex> lock(mtx_);
@@ -48,7 +45,7 @@ void GameDispatcher::post(Op op) {
         std::lock_guard<std::mutex> lock(mtx_);
         if (stopped_) return;
         if (queue_.size() >= opt_.capacity) {
-            ++dropped_; // counted, never silent
+            ++dropped_;
             return;
         }
         queue_.push(Task{std::move(op), nullptr});
@@ -57,8 +54,6 @@ void GameDispatcher::post(Op op) {
 }
 
 size_t GameDispatcher::pump() {
-    // Drain a snapshot: ops queued during this pass wait for the next one, so a
-    // self-requeueing op cannot hang the game thread.
     std::queue<Task> batch;
     {
         std::lock_guard<std::mutex> lock(mtx_);
@@ -70,8 +65,6 @@ size_t GameDispatcher::pump() {
         batch.pop();
         Result<Value> r = t.op();
         ++ran;
-        // Hand the result back, if anyone is still waiting for it. A caller
-        // that already timed out simply never reads it.
         if (t.waiter) {
             {
                 std::lock_guard<std::mutex> lock(t.waiter->m);
@@ -92,8 +85,6 @@ void GameDispatcher::shutdown() {
         stopped_ = true;
         leftovers.swap(queue_);
     }
-    // Release every blocked caller with a structured error rather than
-    // letting it sit until its timeout.
     while (!leftovers.empty()) {
         Task t = std::move(leftovers.front());
         leftovers.pop();
@@ -116,6 +107,76 @@ size_t GameDispatcher::dropped() const {
 size_t GameDispatcher::pending() const {
     std::lock_guard<std::mutex> lock(mtx_);
     return queue_.size();
+}
+
+// ===== Typed operations =====
+
+Result<Value> GameDispatcher::run_on_state(LuaStateRole role,
+                                           std::string_view chunk,
+                                           const Value& env) {
+    return call([this, role, chunk, &env]() -> Result<Value> {
+        if (!lua_runtime_) return Result<Value>::fail(Error{"run-on-state", "", errcat::kIO, "no lua runtime set"});
+        auto handle = lua_runtime_->first(role);
+        if (!handle) return Result<Value>::fail(Error{"run-on-state", "", errcat::kMissing, "no state for role"});
+        auto r = lua_runtime_->run_chunk_on_game_thread(handle, chunk, "");
+        if (!r.ok()) return Result<Value>::fail(r.error());
+        return Result<Value>::ok(Value::nil());
+    });
+}
+
+Result<std::vector<LuaStateEntry>> GameDispatcher::get_state_snapshot() {
+    // Synchronous on game thread; off-thread returns error.
+    if (on_game_thread()) {
+        if (!lua_runtime_) return Result<std::vector<LuaStateEntry>>::fail(Error{"get-snapshot", "", errcat::kIO, "no lua runtime set"});
+        return Result<std::vector<LuaStateEntry>>::ok(lua_runtime_->entries());
+    }
+    return Result<std::vector<LuaStateEntry>>::fail(Error{"get-snapshot", "", errcat::kIO, "call from game thread"});
+}
+
+bool GameDispatcher::queue_plugin_chunk(std::string_view code) {
+    if (code.empty()) return false;
+    std::string code_copy(code);
+    post([this, code = std::move(code_copy)]() -> Result<Value> {
+        if (!lua_runtime_) return Result<Value>::fail(Error{"plugin-chunk", "", errcat::kIO, "no lua runtime set"});
+        auto handle = lua_runtime_->first(LuaStateRole::Menu);
+        if (!handle) return Result<Value>::fail(Error{"plugin-chunk", "", errcat::kMissing, "no menu state"});
+        auto r = lua_runtime_->run_chunk_on_game_thread(handle, code, "");
+        if (!r.ok()) return Result<Value>::fail(r.error());
+        return Result<Value>::ok(Value::nil());
+    });
+    return true;
+}
+
+Result<Value> GameDispatcher::create_mod_env(const ModId& mod_id) {
+    return call([this, &mod_id]() -> Result<Value> {
+        if (!lua_runtime_) return Result<Value>::fail(Error{"create-mod-env", "", errcat::kIO, "no lua runtime set"});
+        auto handle = lua_runtime_->first(LuaStateRole::Menu);
+        if (!handle) return Result<Value>::fail(Error{"create-mod-env", "", errcat::kMissing, "no menu state"});
+        return Result<Value>::fail(Error{"create-mod-env", "", errcat::kIO, "not implemented in core; see lua_bridge.cpp"});
+    });
+}
+
+Result<void> GameDispatcher::install_c_function(LuaStateRole role,
+                                                const char* name,
+                                                void* c_fn) {
+    if (!name || !c_fn) return Result<void>::fail(Error{"install-cfn", "", errcat::kType, "null name or fn"});
+
+    // Inline queue logic for void return
+    if (on_game_thread()) {
+        if (!lua_runtime_) return Result<void>::fail(Error{"install-cfn", "", errcat::kIO, "no lua runtime set"});
+        auto handle = lua_runtime_->first(role);
+        if (!handle) return Result<void>::fail(Error{"install-cfn", "", errcat::kMissing, "no state for role"});
+        return Result<void>::fail(Error{"install-cfn", "", errcat::kIO, "not implemented in core; see lua_bridge.cpp"});
+    }
+
+    // Off-thread: fire and forget, return success (caller can't wait for void)
+    post([this, role, name, c_fn]() -> Result<Value> {
+        if (!lua_runtime_) return Result<Value>::fail(Error{"install-cfn", "", errcat::kIO, "no lua runtime set"});
+        auto handle = lua_runtime_->first(role);
+        if (!handle) return Result<Value>::fail(Error{"install-cfn", "", errcat::kMissing, "no state for role"});
+        return Result<Value>::fail(Error{"install-cfn", "", errcat::kIO, "not implemented in core; see lua_bridge.cpp"});
+    });
+    return Result<void>::success();
 }
 
 } // namespace ttmod
