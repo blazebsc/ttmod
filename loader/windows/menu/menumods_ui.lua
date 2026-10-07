@@ -1435,9 +1435,16 @@ function Menu_Mods_PickColor(id, key, page)
             local r = Menu_Add(ListButton, 'sw_' .. tostring(i), 'label_OK',
                 'Menu_Mods_SetColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '","' ..
                 hex .. '")')
-            -- setlabel returns the label agent it used, so the swatch paints
-            -- the same clone the hex text went to.
-            paint(setlabel(r, hex .. mark), hex)
+            -- Paint the swatch colour on the row's LABEL and its BUTTON
+            -- agent. The engine renders a selected row from the button's
+            -- colour slots (the sweep found Text Color AND Selection Color
+            -- live there), and TTMOD_THEME_WIDGET paints that button accent
+            -- at Menu_Add time - so painting only the label leaves the
+            -- selected-state render sourced from accent, which is exactly
+            -- the stuck-accent symptom on hover.
+            local lab = setlabel(r, hex .. mark)
+            paint(lab, hex)
+            if r ~= nil and r.agent ~= nil then paint(r.agent, hex) end
         end
         if page > 1 then
             local p = Menu_Add(ListButton, 'prevpage', 'label_OK',

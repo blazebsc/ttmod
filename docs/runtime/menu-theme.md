@@ -56,11 +56,25 @@ the widget's CURRENT colour through the setter's sibling getter at
 `kScolBRva` (`0x1684B0`), whose ABI was verified from the unpacked dump —
 thiscall, `ret $0xC`, args `[descriptor, float out[4], flag]`, returns
 `al` — and anchor-checked before it is ever called. A saturated current
-colour that is not the accent is deliberate content: the write is rewritten
-to it, in place, so the engine's own re-application carries the widget's
-colour. Themed rows (current = gray/white/accent) substitute exactly as
-before, and the getter resolving to null (anchor mismatch) falls back to
-accent-only behaviour. Log marker: `scol-keep:`.
+colour that is not the accent is deliberate content: the write is
+redirected to it. Themed rows (current = gray/white/accent) substitute
+exactly as before, and the getter resolving to null (anchor mismatch)
+falls back to accent-only behaviour. Log marker: `scol-keep:`.
+
+Two subtleties proven by the same log session:
+
+- **The button agent is the selected-state render source.** The sweep found
+  `Text Color` AND `Selection Color` on the row's *button* agent, and
+  `TTMOD_THEME_WIDGET` paints that button accent at `Menu_Add` time — so
+  painting only the label leaves hover rendering sourced from accent
+  (exactly the stuck-accent symptom). `Menu_Mods_PickColor` now paints the
+  swatch colour on the row's button agent as well as its label.
+- **The keep redirect is a COPY, the accent an in-place write — the
+  asymmetry is load-bearing.** The accent must live in the engine's struct
+  for the stay path, but a swatch colour written through the same struct
+  would poison it for every other row. Per-call redirect through the getter
+  is sufficient: every flood call re-derives the target's real colour, so
+  the copy wins without touching shared state.
 
 Lua-side guards (`theme_wrap_asp/roll/tc`, log-only) and a read-only audit
 (`theme-audit`, attribution `own:`/`menu:`) ship in the UI chunk for diagnosis.

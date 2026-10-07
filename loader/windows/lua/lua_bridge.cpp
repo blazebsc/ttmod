@@ -454,10 +454,18 @@ static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* col
                                  cur[2]);
                         emit(m);
                     }
-                    c[0] = cur[0];
-                    c[1] = cur[1];
-                    c[2] = cur[2];
-                    if (g_origScol) return g_origScol(self, desc, color, flag);
+                    // COPY, deliberately NOT in place - the asymmetry with the
+                    // accent substitution below is load-bearing. The accent
+                    // must live in the engine's struct for the stay path, but
+                    // a swatch colour written through the same struct would
+                    // poison it for every other row (the next main-menu
+                    // flood call would pass the swatch colour through
+                    // unsubstituted). Redirecting per call is enough: every
+                    // flood call re-derives the target's real colour through
+                    // the getter, so the copy wins without touching shared
+                    // state.
+                    float keep[4] = {cur[0], cur[1], cur[2], c[3]};
+                    if (g_origScol) return g_origScol(self, desc, keep, flag);
                     return 0;
                 }
             }
