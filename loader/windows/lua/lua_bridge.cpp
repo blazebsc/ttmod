@@ -399,6 +399,7 @@ static bool scol_accent(float* out) {
 }
 static volatile LONG g_scolBsub = 0;
 static volatile LONG g_scolKeep = 0;
+static volatile LONG g_scolReads = 0;
 static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* color, int flag) {
     // The substitution MUST write through to the caller's color struct, not a
     // copy. Two failure modes were proven in-game, in both directions:
@@ -436,9 +437,25 @@ static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* col
         // re-applying the substituted selection colour (the hover flood).
         bool ours = haveAcc && !sub && fabsf(c[0] - acc[0]) < 0.01f && fabsf(c[1] - acc[1]) < 0.01f &&
                     fabsf(c[2] - acc[2]) < 0.01f;
-        if (sub || ours) {
+        // Consult the getter on EVERY themed write, not just near-gray-white
+        // and accent ones: the engine also writes its own saturated hover
+        // yellow (1,1,0.6, seen in the audit sample) which fails both gates,
+        // and that write is the first thing a hover does to a row. If the
+        // getter reads the widget's real colour, preserving it there stops
+        // the whole cycle before the flood even starts.
+        {
             float cur[4] = {0, 0, 0, 0};
-            if (g_fnScolB && g_fnScolB(self, desc, cur, flag)) {
+            bool got = g_fnScolB && g_fnScolB(self, desc, cur, flag);
+            if (!got) cur[0] = cur[1] = cur[2] = -1; // sentinel: getter failed
+            LONG rn = InterlockedIncrement(&g_scolReads);
+            if (rn <= 60) {
+                char m[192];
+                snprintf(m, sizeof m,
+                         "scol-read: #%ld in=%.3f,%.3f,%.3f flag=%d got=%d cur=%.3f,%.3f,%.3f", (long)rn, c[0], c[1],
+                         c[2], flag, got ? 1 : 0, cur[0], cur[1], cur[2]);
+                emit(m);
+            }
+            if (got) {
                 float mn = cur[0], mx = cur[0];
                 if (cur[1] < mn) mn = cur[1];
                 if (cur[2] < mn) mn = cur[2];

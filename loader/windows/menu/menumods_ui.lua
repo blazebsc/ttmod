@@ -1487,6 +1487,23 @@ function Menu_Mods_PickColor(id, key, page)
         local ag = (e[2] ~= nil and e[2].agent ~= nil) and e[2].agent or e[2]
         if ag ~= nil then paint(ag, e[3]) end
     end
+    -- Post-push read-back (diagnostic, bounded: 6 lines per push): proves
+    -- whether the repaint landed on the stable widget state or was wiped
+    -- again - the next session's log answers this definitively.
+    if AgentGetProperty ~= nil then
+        for i, e in ipairs(painted) do
+            if e[1] ~= nil then
+                pcall(function()
+                    local ok, v = pcall(AgentGetProperty, e[1], 'Text Color')
+                    local cur = '?'
+                    if ok and type(v) == 'table' then
+                        cur = string.format('%.3f,%.3f,%.3f', v.r or -1, v.g or -1, v.b or -1)
+                    end
+                    mlog('color: verify sw_' .. tostring(i) .. ' want=' .. tostring(e[3]) .. ' read=' .. cur)
+                end)
+            end
+        end
+    end
     TTMOD_OWN_BUILD = nil
     mlog('color: pushed grid rows=' .. tostring(Menu_Mods_RowCount()) ..
          ' repainted=' .. tostring(#painted))
