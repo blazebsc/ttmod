@@ -1423,6 +1423,13 @@ function Menu_Mods_PickColor(id, key, page)
     if menu == nil then mlog('color: create failed') return end
     menu.align = 'left'
     menu.background = {}
+    -- Swatch rows captured for the post-push repaint below: the engine
+    -- applies each row's template during its realization pass, which runs
+    -- AFTER Populate returns - everything painted inside Populate is
+    -- overwritten (the in-session audit read every swatch back as template
+    -- 0.878). Repainting AFTER Menu_Push lands on the final, stable widget
+    -- state - the same state the accent holds on every other screen.
+    local painted = {}
     menu.Populate = function(self)
         local h = Menu_Add(Header, nil, 'header_settings')
         setlabel(h, tostring(key) .. ' color')
@@ -1445,6 +1452,7 @@ function Menu_Mods_PickColor(id, key, page)
             local lab = setlabel(r, hex .. mark)
             paint(lab, hex)
             if r ~= nil and r.agent ~= nil then paint(r.agent, hex) end
+            painted[#painted + 1] = { lab, r, hex }
         end
         if page > 1 then
             local p = Menu_Add(ListButton, 'prevpage', 'label_OK',
@@ -1466,8 +1474,22 @@ function Menu_Mods_PickColor(id, key, page)
     -- (single thread), so everything painted here tags as 'own'.
     TTMOD_OWN_BUILD = true
     Menu_Push(menu)
+    -- Post-push repaint: the engine's realization pass (template chore) runs
+    -- during/after Menu_Push and overwrites everything painted inside
+    -- Populate - proven in-game by the audit reading each swatch back as
+    -- template 0.878 while the in-Populate paints all "succeeded". This is
+    -- the moment that survives: after the push, nothing restyles the rows
+    -- again (the accent holds on every other screen from exactly this
+    -- ordering), so the swatch colours land for good, and the native
+    -- getter-based substitution finally reads a deliberate colour on hover.
+    for _, e in ipairs(painted) do
+        if e[1] ~= nil then paint(e[1], e[3]) end
+        local ag = (e[2] ~= nil and e[2].agent ~= nil) and e[2].agent or e[2]
+        if ag ~= nil then paint(ag, e[3]) end
+    end
     TTMOD_OWN_BUILD = nil
-    mlog('color: pushed grid rows=' .. tostring(Menu_Mods_RowCount()))
+    mlog('color: pushed grid rows=' .. tostring(Menu_Mods_RowCount()) ..
+         ' repainted=' .. tostring(#painted))
 end
 
 function Menu_Mods_SetColor(id, key, hex)
