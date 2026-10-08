@@ -58,6 +58,32 @@ static SetglobalFn g_fnSetglobal = nullptr;
 // (descriptor, float out[4], flag), returns nonzero on success.
 using ScolBFn = unsigned char(__attribute__((thiscall)) *)(void*, void*, float*, int);
 static ScolBFn g_fnScolB = nullptr;
+
+// Calls the engine colour getter with ecx forced to `self`. A plain C++ call
+// through the function pointer cannot be trusted to reproduce ecx: the detour
+// itself arrived via thiscall, but the compiler is free to pass the first
+// argument however it likes at an indirect call site - and the getter's
+// internal validation (call 0x23110 reads the `this` pointer) fails closed
+// on a wrong `this`, returning 0 with no crash. That failure mode is
+// indistinguishable in the log from "getter works, property absent", which is
+// exactly the got=0-everywhere we shipped. Callee contract verified from the
+// dump: ret 0xC (it pops its 3 stack args), result in al.
+static unsigned char call_scolb(void* self, void* desc, float* out, int flag) {
+    unsigned char r = 0;
+    ScolBFn fn = g_fnScolB;
+    // The three pushes read straight from memory ("m") so the template needs
+    // only eax + two general registers; five "r" inputs plus the ecx clobber
+    // over-constrains i386's allocator ("impossible constraints").
+    __asm__ volatile("movl %1, %%ecx\n\t"
+                     "pushl %4\n\t"
+                     "pushl %3\n\t"
+                     "pushl %2\n\t"
+                     "call *%5\n\t"
+                     : "=a"(r)
+                     : "r"(self), "m"(desc), "m"(out), "m"(flag), "r"(fn)
+                     : "ecx", "edx", "memory", "cc");
+    return r;
+}
 // Game Lua state registry (see LuaStateInfo below): the game owns every
 // state; g_state/g_states_seen removed in favor of identity + role.
 static volatile LONG g_test_done = 0;
@@ -445,14 +471,30 @@ static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* col
         // the whole cycle before the flood even starts.
         {
             float cur[4] = {0, 0, 0, 0};
-            bool got = g_fnScolB && g_fnScolB(self, desc, cur, flag);
+            // ecx is forced inside call_scolb (see above); then probe the
+            // flag the lookup accepts. From the dump, flag==1 selects slot 4
+            // and anything else selects slot 1 - the engine's own getter
+            // callers may use either, so try the incoming flag first and
+            // fall back to the other. The getter is a pure read (16 bytes to
+            // our stack buffer, al=result), so a second probe is side-effect
+            // free and cannot corrupt engine state.
+            bool got = false;
+            int used_flag = flag;
+            if (g_fnScolB) {
+                got = call_scolb(self, desc, cur, flag) != 0;
+                if (!got && flag != 0) {
+                    used_flag = 0;
+                    got = call_scolb(self, desc, cur, 0) != 0;
+                }
+            }
             if (!got) cur[0] = cur[1] = cur[2] = -1; // sentinel: getter failed
             LONG rn = InterlockedIncrement(&g_scolReads);
             if (rn <= 60) {
-                char m[192];
+                char m[256];
                 snprintf(m, sizeof m,
-                         "scol-read: #%ld in=%.3f,%.3f,%.3f flag=%d got=%d cur=%.3f,%.3f,%.3f", (long)rn, c[0], c[1],
-                         c[2], flag, got ? 1 : 0, cur[0], cur[1], cur[2]);
+                         "scol-read: #%ld in=%.3f,%.3f,%.3f flag=%d used=%d got=%d cur=%.3f,%.3f,%.3f self=%p desc=%p",
+                         (long)rn, c[0], c[1], c[2], flag, used_flag, got ? 1 : 0, cur[0], cur[1], cur[2],
+                         self, desc);
                 emit(m);
             }
             if (got) {
