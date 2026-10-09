@@ -432,15 +432,16 @@ static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* col
             return (BYTE*)GetModuleHandleA(nullptr) + ttmod::kScolLightStructRva;
         }();
         if (color == (void*)light_struct && menumods_palette_open()) {
-            // Belt and braces: the struct itself is blacked while the picker
-            // is open, so these writes already carry black - but log them
-            // (capped) so the log proves whether hover re-runs the styling
-            // function at all.
+            // Belt and braces: the struct itself is WHITED while the picker
+            // is open (identity lighting - see lua_bridge_set_light_palette),
+            // so these writes already carry white; redirect any straggler to
+            // white as well and log (capped) so the log proves whether hover
+            // re-runs the styling function at all.
             static volatile LONG glow_hits = 0;
             LONG gn = InterlockedIncrement(&glow_hits);
-            if (gn <= 40) emit("scol-glow: light write blacked on picker");
-            float glow_off[4] = {0.0f, 0.0f, 0.0f, c[3]};
-            if (g_origScol) return g_origScol(self, desc, glow_off, flag);
+            if (gn <= 40) emit("scol-glow: light write whited on picker");
+            float glow_white[4] = {1.0f, 1.0f, 1.0f, c[3]};
+            if (g_origScol) return g_origScol(self, desc, glow_white, flag);
             return 0;
         }
         float acc[3] = {};
@@ -601,9 +602,13 @@ void lua_bridge_set_light_palette(bool picker_open) {
     float* light = scol_light_struct();
     if (!light) return;
     if (picker_open) {
-        light[0] = 0.0f;
-        light[1] = 0.0f;
-        light[2] = 0.0f;
+        // WHITE, not black: the light is a MULTIPLICATIVE illuminant -
+        // render = Text Color x Light Color. Black light turns every row's
+        // text black (proven in-game: the whole picker rendered black);
+        // white is the identity, so each row shows exactly its own colour -
+        // swatches, accent nav rows, everything. Hover then keeps the row's
+        // colour (the selection chore still scales/glows for feedback).
+        light[0] = light[1] = light[2] = 1.0f;
         light[3] = 1.0f;
         return;
     }

@@ -225,11 +225,12 @@ static int __cdecl fn_palette(lua_State* L) {
     const char* s = g_tolstring ? g_tolstring(L, 1, nullptr) : nullptr;
     LONG v = (s && s[0] == '1') ? 1 : 0;
     InterlockedExchange(&g_palette_open, v);
-    // The light struct itself goes black for the picker (and back to the
-    // accent on close): build-time styling reads its colour from this
-    // struct, and rows keep whatever glow they were built with, so gating
-    // only the hover-time writes is too late for rows styled before the
-    // flag existed.
+    // The light struct itself goes WHITE for the picker (and back to the
+    // accent on close): the light is a multiplicative illuminant, so white
+    // is the identity - every row renders exactly its own colour. Build-
+    // time styling reads its colour from this struct, and rows keep
+    // whatever light they were built with, so it must be set before the
+    // picker's Populate runs.
     ttmod_win::lua_bridge_set_light_palette(v != 0);
     emit(v ? "palette: glow suppressed (picker open)" : "palette: glow restored");
     return 0;

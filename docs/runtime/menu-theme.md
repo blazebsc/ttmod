@@ -46,40 +46,22 @@ engine's struct stock-white, so the hovered row turns WHITE after mouse-off;
 substituting in place puts the accent into the struct, which is the only
 thing the bypass path ever reads.
 
-**Per-row palette colours: impossible from inside the process (2026-10-09).**
-The colour picker originally painted each row its own swatch colour. Seven
-instrumented in-game rounds proved that cannot survive hover, and WHY, with
-every avenue closed by direct evidence rather than inference:
-
-- The engine re-applies its selection colour struct CONTINUOUSLY to the
-  hovered row (hundreds of scol calls per burst, all accent after the first
-  substitution) and never deselects - anything else in the row is
-  overwritten every frame.
-- Lua hover events never fire (`theme-roll` count 0 across sessions) - the
-  hover cycle is entirely native, invisible to every Lua wrapper.
-- Lua agents are unmappable to native descriptors: they stringify to
-  template names and Lua-table addresses, never engine pointers.
-- The engine getter (`kScolBRva`) declines our descriptors even with ecx
-  forced and both flags probed: its flag mapping yields selectors {1,4}
-  while the setter writes slot 2.
-- Replicating the getter's internal read path with explicit selectors
-  {0..8} (anchor-verified lookup `kPropLookupRva`, `ret 0x10`; ctx
-  `kPropCtxRva`, plain ret) returns nothing for these descriptors - the
-  property store has no readable entry under any slot.
-- Saturated colours never pass through scol (traffic = white/accent/black
-  only), so the hook cannot learn row colours from traffic.
-
-**The decision:** the palette paints rows the accent, like every other
-row. Hover then writes accent onto accent and nothing can ever stick -
-the same construction that makes the rest of the theme reliable. The hex
-code in each row's label text identifies the colour; `' *'` marks the
-current choice. `Menu_Mods_PickColor` contains no per-row colour paint,
-and the hook contains no per-row logic: near-gray-white becomes the
-accent, in place, and that is the whole substitution.
-
-The negative results above are recorded so the next person does not
-re-derive them: each was instrumented, shipped, and disproven in the
-user's game (scol-read/scol-probe/swatchmap markers, since removed).
+**The light is a multiplicative illuminant (2026-10-09, proven in-game).**
+The final model, closed by the black-light experiment: rows render as
+`Text Color x Light Color Diffuse`. Stock light is white (identity), so
+text shows its own colour; the accent substitution recolours the global
+light struct, multiplying every menu row toward the accent - that IS the
+theme, at rest and on hover alike. Setting the struct BLACK for the
+picker rendered the ENTIRE menu's text black, confirming multiplication.
+The picker therefore sets the struct WHITE (identity lighting) before
+its rows are built: each row - swatch or accent nav row - renders
+exactly its own colour, and hover keeps it (the selection chore's
+scale/shear animation still gives hover feedback). `ttmod_menu_palette`
+sets this before `Menu_Push`; the `Menu_Pop` wrapper and every other
+screen builder restore the accent on exit, and `lua_bridge_set_light_palette`
+rewrites the struct (accent, or stock white when unthemed). The scol
+hook's pointer-recognised redirect (light-struct writes -> white copy)
+remains as belt and braces, logged `scol-glow:` (capped).
 
 ## Proven behaviour (screenshot-verified)
 
