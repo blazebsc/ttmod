@@ -373,17 +373,6 @@ local TT_STATE_COLOUR_PROPS = { 'Selection Color' }
 local function paint(agent, hex)
     if agent == nil or pcall == nil or AgentSetProperty == nil then return false end
     if theme_winner == nil then return false end
-    -- Mapping diagnostic (2026-10-08): the native scol hook sees descriptor
-    -- pointers but not colours; Lua sees colours but not descriptors. If
-    -- engine agents stringify to addresses comparable with the scol descs
-    -- in the same session log, a precise native swatch map becomes possible.
-    -- Zero behaviour change: one log line per paint while the palette's
-    -- mapping flag is set. REMOVE once the mapping question is settled.
-    if TT_SWATCHMAP == 1 then
-        pcall(function()
-            mlog('swatchmap: agent=' .. tostring(agent) .. ' hex=' .. tostring(hex))
-        end)
-    end
     -- Record the intended colour BEFORE the write: the AgentSetProperty
     -- wrapper reads theme_custom to decide preserve-vs-accent, and a pale
     -- swatch's own near-gray-white paint must be preserved by this very
@@ -1484,7 +1473,6 @@ function Menu_Mods_PickColor(id, key, page)
     -- Own-build window: Populate runs synchronously inside Menu_Push
     -- (single thread), so everything painted here tags as 'own'.
     TTMOD_OWN_BUILD = true
-    TT_SWATCHMAP = 1
     Menu_Push(menu)
     -- Post-push repaint: the engine's realization pass (template chore) runs
     -- during/after Menu_Push and overwrites everything painted inside
@@ -1517,7 +1505,6 @@ function Menu_Mods_PickColor(id, key, page)
         end
     end
     TTMOD_OWN_BUILD = nil
-    TT_SWATCHMAP = nil
     mlog('color: pushed grid rows=' .. tostring(Menu_Mods_RowCount()) ..
          ' repainted=' .. tostring(#painted))
 end

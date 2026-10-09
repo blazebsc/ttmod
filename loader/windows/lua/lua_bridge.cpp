@@ -2,6 +2,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <mutex>
@@ -53,37 +54,6 @@ static GettopFn g_fnGettop = nullptr;
 static TolstringFn g_fnTolstring = nullptr;
 static PushCClosureFn g_fnPushCClosure = nullptr;
 static SetglobalFn g_fnSetglobal = nullptr;
-// Engine colour getter sibling of the hooked setter (see kScolBRva): reads a
-// descriptor's current colour. thiscall, ret $0xc, args
-// (descriptor, float out[4], flag), returns nonzero on success.
-using ScolBFn = unsigned char(__attribute__((thiscall)) *)(void*, void*, float*, int);
-static ScolBFn g_fnScolB = nullptr;
-
-// Calls the engine colour getter with ecx forced to `self`. A plain C++ call
-// through the function pointer cannot be trusted to reproduce ecx: the detour
-// itself arrived via thiscall, but the compiler is free to pass the first
-// argument however it likes at an indirect call site - and the getter's
-// internal validation (call 0x23110 reads the `this` pointer) fails closed
-// on a wrong `this`, returning 0 with no crash. That failure mode is
-// indistinguishable in the log from "getter works, property absent", which is
-// exactly the got=0-everywhere we shipped. Callee contract verified from the
-// dump: ret 0xC (it pops its 3 stack args), result in al.
-static unsigned char call_scolb(void* self, void* desc, float* out, int flag) {
-    unsigned char r = 0;
-    ScolBFn fn = g_fnScolB;
-    // The three pushes read straight from memory ("m") so the template needs
-    // only eax + two general registers; five "r" inputs plus the ecx clobber
-    // over-constrains i386's allocator ("impossible constraints").
-    __asm__ volatile("movl %1, %%ecx\n\t"
-                     "pushl %4\n\t"
-                     "pushl %3\n\t"
-                     "pushl %2\n\t"
-                     "call *%5\n\t"
-                     : "=a"(r)
-                     : "r"(self), "m"(desc), "m"(out), "m"(flag), "r"(fn)
-                     : "ecx", "edx", "memory", "cc");
-    return r;
-}
 // Game Lua state registry (see LuaStateInfo below): the game owns every
 // state; g_state/g_states_seen removed in favor of identity + role.
 static volatile LONG g_test_done = 0;
@@ -425,7 +395,74 @@ static bool scol_accent(float* out) {
 }
 static volatile LONG g_scolBsub = 0;
 static volatile LONG g_scolKeep = 0;
-static volatile LONG g_scolReads = 0;
+static volatile LONG g_scolProbes = 0;
+static void* g_fnLookup = nullptr; // base + kPropLookupRva, anchor-verified
+static void* g_fnCtx = nullptr;    // base + kPropCtxRva, anchor-verified
+
+using CtxFn = void* (*)();
+
+// Reads a widget's live colour through the property store with an explicit
+// slot selector. This replicates the engine getter's read path (0x1684B0
+// tail) instruction for instruction, minus the flag-to-selector mapping:
+// every check the engine performs is replicated, and any failure returns 0
+// without reading. Contracts verified from the unpacked dump:
+//   - lookup (0x2B150): ecx=self, 4 stack args, ret 0x10 (cleans its args)
+//   - ctx (0x23110): no stack args, plain ret
+// Why this exists: the setter writes slot 2 (push 0x2 in its disasm) but the
+// getter's flag mapping only yields {1,4}, which both fail on our
+// descriptors (got=0 everywhere, both flags, forced ecx - proven in-game).
+// Probing the slot directly is the same risk profile as code that already
+// runs hundreds of times per second: the calls execute and fail closed,
+// and the walk only runs on engine-validated entries.
+static int probe_slot(void* self, void* desc, int sel, float* out) {
+    void* slots[2] = {nullptr, nullptr};
+    void* plo = &slots[0];
+    void* phi = &slots[1];
+    void* fn = g_fnLookup;
+    void* ctxfn = g_fnCtx;
+    if (!fn || !ctxfn) return 0;
+    __asm__ volatile("movl %0, %%ecx\n\t"
+                     "pushl %4\n\t"
+                     "pushl %3\n\t"
+                     "pushl %2\n\t"
+                     "pushl %1\n\t"
+                     "call *%5\n\t"
+                     :
+                     : "r"(self), "m"(desc), "m"(plo), "m"(phi), "m"(sel), "r"(fn)
+                     : "eax", "ecx", "edx", "memory", "cc");
+    void* lo = slots[0];
+    if (!lo) return 0;
+    uint8_t* esi = (uint8_t*)lo + 0x18;
+    if (!esi) return 0;
+    void* head = nullptr;
+    memcpy(&head, esi, sizeof head);
+    if (!head) return 0;
+    void* c0 = ((CtxFn)ctxfn)();
+    void* ecx2 = nullptr;
+    memcpy(&ecx2, esi, sizeof ecx2);
+    if (ecx2 != c0) {
+        if (!ecx2 || !c0) return 0;
+        uint32_t f = 0;
+        memcpy(&f, (uint8_t*)ecx2 + 0x10, sizeof f);
+        if ((f & 0x200) == 0) return 0;
+        void* c1 = ((CtxFn)ctxfn)();
+        if (!c1) return 0;
+        memcpy(&f, (uint8_t*)c1 + 0x10, sizeof f);
+        if ((f & 0x200) == 0) return 0;
+    }
+    void* p = nullptr;
+    memcpy(&p, esi, sizeof p);
+    if (!p) return 0;
+    uint32_t sz = 0;
+    memcpy(&sz, (uint8_t*)p + 0x14, sizeof sz);
+    if (sz > 0x1c)
+        memcpy(&esi, esi + 4, sizeof esi);
+    else
+        esi += 4;
+    if (!esi) return 0;
+    memcpy(out, esi, 16);
+    return 1;
+}
 static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* color, int flag) {
     // The substitution MUST write through to the caller's color struct, not a
     // copy. Two failure modes were proven in-game, in both directions:
@@ -446,87 +483,73 @@ static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* col
     // selected - the log shows hundreds of scol calls per hover burst, every
     // one carrying the once-substituted accent - so it also overwrites a
     // palette swatch's deliberate colour, and the stick model (no mouse-off
-    // deselect) means it never comes back until process restart. Fix: before
-    // substituting, ASK the engine for this widget's current colour through
-    // the setter's sibling getter (kScolBRva; ABI verified from the unpacked
-    // dump, anchor-checked before use). A saturated current colour that is
-    // not ours is deliberate content: rewrite the write to it - IN PLACE,
-    // same load-bearing rule - so the engine's re-application carries the
-    // widget's own colour. Themed rows (current = gray/white/our accent)
-    // substitute to the accent exactly as before.
+    // deselect) means it never comes back until process restart.
+    //
+    // Fix: decide on the widget's LIVE colour, read through the setter's own
+    // slot (sel=2, push 0x2 in the setter disasm) via probe_slot above -
+    // not on the incoming write. The incoming write is what the engine
+    // wants to put; the live colour is what the widget actually shows.
+    // A saturated live colour that is not ours is deliberate content: the
+    // write is redirected to it (COPY, see below), so the flood carries the
+    // widget's own colour. Anything else falls through to the substitution
+    // below exactly as before.
     float* c = (float*)color;
     if (color && desc) {
         float acc[3] = {};
         bool haveAcc = scol_accent(acc);
         bool sub = haveAcc && ttmod::should_substitute(c[0], c[1], c[2]);
-        // Our own accent coming back through the setter = the engine
-        // re-applying the substituted selection colour (the hover flood).
-        bool ours = haveAcc && !sub && fabsf(c[0] - acc[0]) < 0.01f && fabsf(c[1] - acc[1]) < 0.01f &&
-                    fabsf(c[2] - acc[2]) < 0.01f;
-        // Consult the getter on EVERY themed write, not just near-gray-white
-        // and accent ones: the engine also writes its own saturated hover
-        // yellow (1,1,0.6, seen in the audit sample) which fails both gates,
-        // and that write is the first thing a hover does to a row. If the
-        // getter reads the widget's real colour, preserving it there stops
-        // the whole cycle before the flood even starts.
-        {
-            float cur[4] = {0, 0, 0, 0};
-            // ecx is forced inside call_scolb (see above); then probe the
-            // flag the lookup accepts. From the dump, flag==1 selects slot 4
-            // and anything else selects slot 1 - the engine's own getter
-            // callers may use either, so try the incoming flag first and
-            // fall back to the other. The getter is a pure read (16 bytes to
-            // our stack buffer, al=result), so a second probe is side-effect
-            // free and cannot corrupt engine state.
-            bool got = false;
-            int used_flag = flag;
-            if (g_fnScolB) {
-                got = call_scolb(self, desc, cur, flag) != 0;
-                if (!got && flag != 0) {
-                    used_flag = 0;
-                    got = call_scolb(self, desc, cur, 0) != 0;
+        if (haveAcc) {
+            // Selector sweep: 2 is the setter's own slot (strong prior);
+            // the rest cover the getter's {1,4} and neighbours in case the
+            // slot for a given descriptor kind differs. First saturated
+            // non-accent win redirects; logging is capped.
+            static const int kOrder[] = {2, 1, 4, 0, 3, 5, 6, 7, 8};
+            float live[4] = {0, 0, 0, 0};
+            int won = -1;
+            for (int s = 0; s < 9; ++s) {
+                float tmp[4] = {0, 0, 0, 0};
+                if (!probe_slot(self, desc, kOrder[s], tmp)) continue;
+                float mn = tmp[0], mx = tmp[0];
+                if (tmp[1] < mn) mn = tmp[1];
+                if (tmp[2] < mn) mn = tmp[2];
+                if (tmp[1] > mx) mx = tmp[1];
+                if (tmp[2] > mx) mx = tmp[2];
+                bool tmp_ours = fabsf(tmp[0] - acc[0]) < 0.01f && fabsf(tmp[1] - acc[1]) < 0.01f &&
+                                fabsf(tmp[2] - acc[2]) < 0.01f;
+                if (mx - mn >= 0.05f && !tmp_ours) {
+                    memcpy(live, tmp, sizeof live);
+                    won = kOrder[s];
+                    break;
                 }
             }
-            if (!got) cur[0] = cur[1] = cur[2] = -1; // sentinel: getter failed
-            LONG rn = InterlockedIncrement(&g_scolReads);
-            if (rn <= 60) {
-                char m[256];
-                snprintf(m, sizeof m,
-                         "scol-read: #%ld in=%.3f,%.3f,%.3f flag=%d used=%d got=%d cur=%.3f,%.3f,%.3f self=%p desc=%p",
-                         (long)rn, c[0], c[1], c[2], flag, used_flag, got ? 1 : 0, cur[0], cur[1], cur[2],
-                         self, desc);
+            LONG pn = InterlockedIncrement(&g_scolProbes);
+            if (pn <= 150) {
+                char m[192];
+                snprintf(m, sizeof m, "scol-probe: #%ld in=%.3f,%.3f,%.3f won=%d live=%.3f,%.3f,%.3f", (long)pn,
+                         c[0], c[1], c[2], won, live[0], live[1], live[2]);
                 emit(m);
             }
-            if (got) {
-                float mn = cur[0], mx = cur[0];
-                if (cur[1] < mn) mn = cur[1];
-                if (cur[2] < mn) mn = cur[2];
-                if (cur[1] > mx) mx = cur[1];
-                if (cur[2] > mx) mx = cur[2];
-                bool cur_ours = haveAcc && fabsf(cur[0] - acc[0]) < 0.01f && fabsf(cur[1] - acc[1]) < 0.01f &&
-                                fabsf(cur[2] - acc[2]) < 0.01f;
-                if (mx - mn >= 0.05f && !cur_ours) {
-                    LONG n = InterlockedIncrement(&g_scolKeep);
-                    if (n <= 200) {
-                        char m[160];
-                        snprintf(m, sizeof m, "scol-keep: %.3f,%.3f,%.3f stays (widget's own colour)", cur[0], cur[1],
-                                 cur[2]);
-                        emit(m);
-                    }
-                    // COPY, deliberately NOT in place - the asymmetry with the
-                    // accent substitution below is load-bearing. The accent
-                    // must live in the engine's struct for the stay path, but
-                    // a swatch colour written through the same struct would
-                    // poison it for every other row (the next main-menu
-                    // flood call would pass the swatch colour through
-                    // unsubstituted). Redirecting per call is enough: every
-                    // flood call re-derives the target's real colour through
-                    // the getter, so the copy wins without touching shared
-                    // state.
-                    float keep[4] = {cur[0], cur[1], cur[2], c[3]};
-                    if (g_origScol) return g_origScol(self, desc, keep, flag);
-                    return 0;
+            if (won >= 0) {
+                LONG n = InterlockedIncrement(&g_scolKeep);
+                if (n <= 200) {
+                    char m[160];
+                    snprintf(m, sizeof m, "scol-keep: %.3f,%.3f,%.3f stays (widget's own colour)", live[0], live[1],
+                             live[2]);
+                    emit(m);
                 }
+                // COPY, deliberately NOT in place - the asymmetry with the
+                // accent substitution below is load-bearing. The accent
+                // must live in the engine's struct for the stay path, but
+                // a swatch colour written through the same struct would
+                // poison it for every other row (the next main-menu
+                // flood call would pass the swatch colour through
+                // unsubstituted). Redirecting per call is enough: every
+                // flood call re-derives the target's real colour through
+                // the probe, so the copy wins without touching shared
+                // state.
+                float keep[4] = {live[0], live[1], live[2], c[3]};
+                if (g_origScol) return g_origScol(self, desc, keep, flag);
+                return 0;
             }
         }
         if (sub) {
@@ -636,15 +659,17 @@ static DWORD WINAPI late_hook_thread(LPVOID p) {
     g_fnTolstring = (TolstringFn)(base + addrs.tolstring);
     g_fnPushCClosure = (PushCClosureFn)(base + addrs.pushcclosure);
     g_fnSetglobal = (SetglobalFn)(base + addrs.setglobal);
-    // Colour getter sibling of the scol setter (kScolBRva): resolved for
-    // CALLING, not hooking. Anchor-verified against live memory first - an
-    // unverified engine call with a wrong ABI would corrupt the stack, so
-    // a mismatch leaves it null and the substitute simply falls back to
-    // accent-only behaviour.
-    if (memcmp(base + ttmod::kScolBRva, ttmod::kScolBAnchor, sizeof ttmod::kScolBAnchor) == 0) {
-        g_fnScolB = (ScolBFn)(base + ttmod::kScolBRva);
+    // Property lookup + ctx for the live-colour probe (see probe_slot):
+    // same functions the scol setter/getter call internally. Anchor-verified
+    // against live memory first - an unverified engine call with a wrong ABI
+    // would corrupt the stack, so a mismatch leaves them null and probing
+    // is skipped (substitution behaviour unchanged).
+    if (memcmp(base + ttmod::kPropLookupRva, ttmod::kPropLookupAnchor, sizeof ttmod::kPropLookupAnchor) == 0 &&
+        memcmp(base + ttmod::kPropCtxRva, ttmod::kPropCtxAnchor, sizeof ttmod::kPropCtxAnchor) == 0) {
+        g_fnLookup = (void*)(base + ttmod::kPropLookupRva);
+        g_fnCtx = (void*)(base + ttmod::kPropCtxRva);
     } else {
-        emit("scolB: getter anchor mismatch, colour reads unavailable");
+        emit("probe: lookup/ctx anchor mismatch, live-colour reads unavailable");
     }
     void* target = (void*)(base + addrs.newstate);
     if (MH_CreateHook(target, (LPVOID)hook_lua_newstate, (LPVOID*)&g_origNewstate) != MH_OK) {
