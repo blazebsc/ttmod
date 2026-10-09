@@ -395,74 +395,7 @@ static bool scol_accent(float* out) {
 }
 static volatile LONG g_scolBsub = 0;
 static volatile LONG g_scolKeep = 0;
-static volatile LONG g_scolProbes = 0;
-static void* g_fnLookup = nullptr; // base + kPropLookupRva, anchor-verified
-static void* g_fnCtx = nullptr;    // base + kPropCtxRva, anchor-verified
 
-using CtxFn = void* (*)();
-
-// Reads a widget's live colour through the property store with an explicit
-// slot selector. This replicates the engine getter's read path (0x1684B0
-// tail) instruction for instruction, minus the flag-to-selector mapping:
-// every check the engine performs is replicated, and any failure returns 0
-// without reading. Contracts verified from the unpacked dump:
-//   - lookup (0x2B150): ecx=self, 4 stack args, ret 0x10 (cleans its args)
-//   - ctx (0x23110): no stack args, plain ret
-// Why this exists: the setter writes slot 2 (push 0x2 in its disasm) but the
-// getter's flag mapping only yields {1,4}, which both fail on our
-// descriptors (got=0 everywhere, both flags, forced ecx - proven in-game).
-// Probing the slot directly is the same risk profile as code that already
-// runs hundreds of times per second: the calls execute and fail closed,
-// and the walk only runs on engine-validated entries.
-static int probe_slot(void* self, void* desc, int sel, float* out) {
-    void* slots[2] = {nullptr, nullptr};
-    void* plo = &slots[0];
-    void* phi = &slots[1];
-    void* fn = g_fnLookup;
-    void* ctxfn = g_fnCtx;
-    if (!fn || !ctxfn) return 0;
-    __asm__ volatile("movl %0, %%ecx\n\t"
-                     "pushl %4\n\t"
-                     "pushl %3\n\t"
-                     "pushl %2\n\t"
-                     "pushl %1\n\t"
-                     "call *%5\n\t"
-                     :
-                     : "r"(self), "m"(desc), "m"(plo), "m"(phi), "m"(sel), "r"(fn)
-                     : "eax", "ecx", "edx", "memory", "cc");
-    void* lo = slots[0];
-    if (!lo) return 0;
-    uint8_t* esi = (uint8_t*)lo + 0x18;
-    if (!esi) return 0;
-    void* head = nullptr;
-    memcpy(&head, esi, sizeof head);
-    if (!head) return 0;
-    void* c0 = ((CtxFn)ctxfn)();
-    void* ecx2 = nullptr;
-    memcpy(&ecx2, esi, sizeof ecx2);
-    if (ecx2 != c0) {
-        if (!ecx2 || !c0) return 0;
-        uint32_t f = 0;
-        memcpy(&f, (uint8_t*)ecx2 + 0x10, sizeof f);
-        if ((f & 0x200) == 0) return 0;
-        void* c1 = ((CtxFn)ctxfn)();
-        if (!c1) return 0;
-        memcpy(&f, (uint8_t*)c1 + 0x10, sizeof f);
-        if ((f & 0x200) == 0) return 0;
-    }
-    void* p = nullptr;
-    memcpy(&p, esi, sizeof p);
-    if (!p) return 0;
-    uint32_t sz = 0;
-    memcpy(&sz, (uint8_t*)p + 0x14, sizeof sz);
-    if (sz > 0x1c)
-        memcpy(&esi, esi + 4, sizeof esi);
-    else
-        esi += 4;
-    if (!esi) return 0;
-    memcpy(out, esi, 16);
-    return 1;
-}
 static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* color, int flag) {
     // The substitution MUST write through to the caller's color struct, not a
     // copy. Two failure modes were proven in-game, in both directions:
@@ -479,79 +412,21 @@ static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* col
     // through scol. The struct stays accent for the process lifetime, which
     // is what makes the theme hold at rest, on hover, AND after mouse-off.
     //
-    // But that same struct is re-applied CONTINUOUSLY to whichever row is
-    // selected - the log shows hundreds of scol calls per hover burst, every
-    // one carrying the once-substituted accent - so it also overwrites a
-    // palette swatch's deliberate colour, and the stick model (no mouse-off
-    // deselect) means it never comes back until process restart.
-    //
-    // Fix: decide on the widget's LIVE colour, read through the setter's own
-    // slot (sel=2, push 0x2 in the setter disasm) via probe_slot above -
-    // not on the incoming write. The incoming write is what the engine
-    // wants to put; the live colour is what the widget actually shows.
-    // A saturated live colour that is not ours is deliberate content: the
-    // write is redirected to it (COPY, see below), so the flood carries the
-    // widget's own colour. Anything else falls through to the substitution
-    // below exactly as before.
+    // That same struct is re-applied CONTINUOUSLY to whichever row is
+    // selected (hundreds of scol calls per hover burst, all accent), so any
+    // per-row colour is overwritten on hover and never restored (no
+    // mouse-off deselect exists). Per-row colours were proven unreachable
+    // in seven instrumented rounds - getter, slot probe {0..8}, Lua events,
+    // agent mapping, traffic learning all dead (see menu-theme.md). The
+    // working answer is upstream: the palette paints rows accent, so the
+    // flood writes accent onto accent and nothing can stick. This hook
+    // therefore does ONE thing: near-gray-white becomes the accent, in
+    // place.
     float* c = (float*)color;
     if (color && desc) {
         float acc[3] = {};
         bool haveAcc = scol_accent(acc);
         bool sub = haveAcc && ttmod::should_substitute(c[0], c[1], c[2]);
-        if (haveAcc) {
-            // Selector sweep: 2 is the setter's own slot (strong prior);
-            // the rest cover the getter's {1,4} and neighbours in case the
-            // slot for a given descriptor kind differs. First saturated
-            // non-accent win redirects; logging is capped.
-            static const int kOrder[] = {2, 1, 4, 0, 3, 5, 6, 7, 8};
-            float live[4] = {0, 0, 0, 0};
-            int won = -1;
-            for (int s = 0; s < 9; ++s) {
-                float tmp[4] = {0, 0, 0, 0};
-                if (!probe_slot(self, desc, kOrder[s], tmp)) continue;
-                float mn = tmp[0], mx = tmp[0];
-                if (tmp[1] < mn) mn = tmp[1];
-                if (tmp[2] < mn) mn = tmp[2];
-                if (tmp[1] > mx) mx = tmp[1];
-                if (tmp[2] > mx) mx = tmp[2];
-                bool tmp_ours = fabsf(tmp[0] - acc[0]) < 0.01f && fabsf(tmp[1] - acc[1]) < 0.01f &&
-                                fabsf(tmp[2] - acc[2]) < 0.01f;
-                if (mx - mn >= 0.05f && !tmp_ours) {
-                    memcpy(live, tmp, sizeof live);
-                    won = kOrder[s];
-                    break;
-                }
-            }
-            LONG pn = InterlockedIncrement(&g_scolProbes);
-            if (pn <= 150) {
-                char m[192];
-                snprintf(m, sizeof m, "scol-probe: #%ld in=%.3f,%.3f,%.3f won=%d live=%.3f,%.3f,%.3f", (long)pn,
-                         c[0], c[1], c[2], won, live[0], live[1], live[2]);
-                emit(m);
-            }
-            if (won >= 0) {
-                LONG n = InterlockedIncrement(&g_scolKeep);
-                if (n <= 200) {
-                    char m[160];
-                    snprintf(m, sizeof m, "scol-keep: %.3f,%.3f,%.3f stays (widget's own colour)", live[0], live[1],
-                             live[2]);
-                    emit(m);
-                }
-                // COPY, deliberately NOT in place - the asymmetry with the
-                // accent substitution below is load-bearing. The accent
-                // must live in the engine's struct for the stay path, but
-                // a swatch colour written through the same struct would
-                // poison it for every other row (the next main-menu
-                // flood call would pass the swatch colour through
-                // unsubstituted). Redirecting per call is enough: every
-                // flood call re-derives the target's real colour through
-                // the probe, so the copy wins without touching shared
-                // state.
-                float keep[4] = {live[0], live[1], live[2], c[3]};
-                if (g_origScol) return g_origScol(self, desc, keep, flag);
-                return 0;
-            }
-        }
         if (sub) {
             LONG n = InterlockedIncrement(&g_scolBsub);
             if (n <= 400) {
@@ -659,18 +534,6 @@ static DWORD WINAPI late_hook_thread(LPVOID p) {
     g_fnTolstring = (TolstringFn)(base + addrs.tolstring);
     g_fnPushCClosure = (PushCClosureFn)(base + addrs.pushcclosure);
     g_fnSetglobal = (SetglobalFn)(base + addrs.setglobal);
-    // Property lookup + ctx for the live-colour probe (see probe_slot):
-    // same functions the scol setter/getter call internally. Anchor-verified
-    // against live memory first - an unverified engine call with a wrong ABI
-    // would corrupt the stack, so a mismatch leaves them null and probing
-    // is skipped (substitution behaviour unchanged).
-    if (memcmp(base + ttmod::kPropLookupRva, ttmod::kPropLookupAnchor, sizeof ttmod::kPropLookupAnchor) == 0 &&
-        memcmp(base + ttmod::kPropCtxRva, ttmod::kPropCtxAnchor, sizeof ttmod::kPropCtxAnchor) == 0) {
-        g_fnLookup = (void*)(base + ttmod::kPropLookupRva);
-        g_fnCtx = (void*)(base + ttmod::kPropCtxRva);
-    } else {
-        emit("probe: lookup/ctx anchor mismatch, live-colour reads unavailable");
-    }
     void* target = (void*)(base + addrs.newstate);
     if (MH_CreateHook(target, (LPVOID)hook_lua_newstate, (LPVOID*)&g_origNewstate) != MH_OK) {
         emit("lua: MH_CreateHook(newstate) failed, installing nothing");

@@ -228,7 +228,10 @@ Menu_Mods_PickColor('demo.config', 'accent', 1)
 -- the in-game-proven name. The shipped mod must theme the menu with no debug
 -- flag present - it used to depend on config/probe-props existing.
 local base0, state0 = color_props(calls)
-assert(base0 == 24, 'six swatches x two agents x two passes (populate + post-push) painted, got ' .. base0)
+-- No accent configured at this point in the suite: palette rows are themed
+-- ONLY through the standard accent path, so with no accent there are zero
+-- colour writes (the no-theme = stock-appearance contract).
+assert(base0 == 0, 'no accent configured: no palette colour writes, got ' .. base0)
 -- run the probe against a real label clone (TTMOD_PROBE_PROPS arms it)
 calls = {}
 TTMOD_PROBE_PROPS = 1
@@ -252,8 +255,8 @@ TTMOD_PROBE_PROPS = nil
 calls = {}
 Menu_Mods_PickColor('demo.config', 'accent', 1)
 local painted_base, painted_states = color_props(calls)
-assert(painted_base == 24, 'six swatches x two agents x two passes painted after the probe, got ' .. painted_base)
-assert(painted_states >= 12, 'state variants painted too, got ' .. painted_states)
+assert(painted_base == 0, 'no accent configured: probe arms names but paints nothing, got ' .. painted_base)
+assert(painted_states == 0, 'no accent configured: state variants not painted either, got ' .. painted_states)
 for _, c in ipairs(calls) do
   if c:sub(1, 7) == 'setprop' and not c:find('Text String', 1, true) then
     assert(c:find('|Text Color', 1, true) or c:find('|Selection Color|', 1, true),
@@ -398,45 +401,29 @@ AgentSetProperty({ of = 'sub_u' }, 'Text Color', { r = 1, g = 1, b = 1, a = 1 })
 assert(_color['sub_u//Text Color'].r == 1 and _color['sub_u//Text Color'].g == 1,
   'ttmod scope leaves game widgets alone')
 TTMOD_THEME_SCOPE = 'all'
--- SWATCH PRESERVATION (2026-10-07): the colour picker paints each palette
--- row's label with that swatch's own colour; the engine's hover
--- select/deselect cycle then writes stock white / 0.878 gray at the same
--- label. The substitution must restore the SWATCH colour, never the accent -
--- the reported bug was the row sticking accent until game restart.
+-- PALETTE ROWS ARE ACCENT (2026-10-09): seven instrumented rounds proved a
+-- per-row swatch colour cannot survive the engine's hover selection flood
+-- (see docs/runtime/menu-theme.md). The palette therefore paints rows
+-- accent like every other screen: hover writes accent onto accent and
+-- nothing can ever stick. The hex code in the label text identifies the
+-- colour; ' *' marks the current choice. This block pins that contract.
 TTMOD_ACCENT = '#FF8000'
 TTMOD_THEME_SCOPE = 'all'
 calls = {}
 TT_TC_ALL = {}
 TT_LAST_TC_AGENT = nil
 Menu_Mods_PickColor('demo.config', 'accent', 1)
--- The Back row is themed accent AFTER the swatches (setlabel themes every
--- label), so pick the last SWATCH agent from the capture list, not the
--- absolute last write.
-local sw = nil
-for i = #TT_TC_ALL, 1, -1 do
-  if tostring(TT_TC_ALL[i].of):sub(1, 3) == 'sw_' then sw = TT_TC_ALL[i] break end
+-- No swatch row may receive a per-row colour paint: the only Text Color
+-- writes at palette labels are the accent theming every row gets.
+for _, a in ipairs(TT_TC_ALL) do
+  if tostring(a.of):sub(1, 3) == 'sw_' then
+    local k = tostring(a.of) .. '/' .. (a.clone or '') .. '/Text Color'
+    local v = _color[k]
+    assert(type(v) == 'table', 'palette row themed')
+    assert(math.abs(v.r - 1) < 1e-6 and math.abs(v.g - (128 / 255)) < 1e-6 and v.b == 0,
+      'palette row carries the ACCENT, not a per-row swatch colour: ' .. tostring(v.r))
+  end
 end
-assert(sw ~= nil, 'palette paint captured a swatch label agent')
-local swk = tostring(sw.of) .. '/' .. (sw.clone or '') .. '/Text Color'
--- '#FFB000' (page 1, last swatch painted) as 0..1 floats; its green channel
--- (176/255) is distinct from the '#FF8000' accent (128/255), so a wrong
--- substitution shows up in the assert.
-local swg = 176 / 255
-assert(_color[swk] ~= nil and math.abs(_color[swk].g - swg) < 1e-6,
-  'swatch painted its own colour, not the accent')
-calls = {}
-AgentSetProperty(sw, 'Text Color', { r = 1, g = 1, b = 1, a = 1 })
-assert(_color[swk] ~= nil and math.abs(_color[swk].g - swg) < 1e-6,
-  'hover white write preserves the swatch colour')
-calls = {}
-AgentSetProperty(sw, 'Text Color', { r = 0.878, g = 0.878, b = 0.878, a = 1 })
-assert(_color[swk] ~= nil and math.abs(_color[swk].g - swg) < 1e-6,
-  'deselect stock-gray write restores the swatch colour')
-local saw_keep = false
-for _, c in ipairs(calls) do
-  if c:find('theme-sub: preserving custom colour', 1, true) then saw_keep = true end
-end
-assert(saw_keep, 'preservation logged')
 -- theme_roll: the hover fix, end to end. The stub models the engine: hover
 -- writes white, unhover restores stock gray, both bypassing the
 -- AgentSetProperty global. The wrapper must repaint accent either way.

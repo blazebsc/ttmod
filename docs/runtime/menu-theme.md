@@ -46,60 +46,40 @@ engine's struct stock-white, so the hovered row turns WHITE after mouse-off;
 substituting in place puts the accent into the struct, which is the only
 thing the bypass path ever reads.
 
-**Swatch preservation via the engine getter (2026-10-07).** The log proved
-the engine RE-APPLIES its selection color struct continuously — hundreds of
-scol calls per hover burst, every one carrying the once-substituted accent —
-so a palette swatch's deliberate colour was overwritten every frame and,
-because the stick model never deselects, it never came back until process
-restart. No Lua-side repaint can win against that rate. The hook now reads
-the widget's CURRENT colour through the setter's sibling getter at
-`kScolBRva` (`0x1684B0`), whose ABI was verified from the unpacked dump —
-thiscall, `ret $0xC`, args `[descriptor, float out[4], flag]`, returns
-`al` — and anchor-checked before it is ever called. A saturated current
-colour that is not the accent is deliberate content: the write is
-redirected to it. Themed rows (current = gray/white/accent) substitute
-exactly as before, and the getter resolving to null (anchor mismatch)
-falls back to accent-only behaviour. Log marker: `scol-keep:`.
+**Per-row palette colours: impossible from inside the process (2026-10-09).**
+The colour picker originally painted each row its own swatch colour. Seven
+instrumented in-game rounds proved that cannot survive hover, and WHY, with
+every avenue closed by direct evidence rather than inference:
 
-Two subtleties proven by the same log session:
+- The engine re-applies its selection colour struct CONTINUOUSLY to the
+  hovered row (hundreds of scol calls per burst, all accent after the first
+  substitution) and never deselects - anything else in the row is
+  overwritten every frame.
+- Lua hover events never fire (`theme-roll` count 0 across sessions) - the
+  hover cycle is entirely native, invisible to every Lua wrapper.
+- Lua agents are unmappable to native descriptors: they stringify to
+  template names and Lua-table addresses, never engine pointers.
+- The engine getter (`kScolBRva`) declines our descriptors even with ecx
+  forced and both flags probed: its flag mapping yields selectors {1,4}
+  while the setter writes slot 2.
+- Replicating the getter's internal read path with explicit selectors
+  {0..8} (anchor-verified lookup `kPropLookupRva`, `ret 0x10`; ctx
+  `kPropCtxRva`, plain ret) returns nothing for these descriptors - the
+  property store has no readable entry under any slot.
+- Saturated colours never pass through scol (traffic = white/accent/black
+  only), so the hook cannot learn row colours from traffic.
 
-- **The button agent is the selected-state render source.** The sweep found
-  `Text Color` AND `Selection Color` on the row's *button* agent, and
-  `TTMOD_THEME_WIDGET` paints that button accent at `Menu_Add` time — so
-  painting only the label leaves hover rendering sourced from accent
-  (exactly the stuck-accent symptom). `Menu_Mods_PickColor` now paints the
-  swatch colour on the row's button agent as well as its label.
-- **Paint must land AFTER `Menu_Push`, not inside `Populate`.** The audit
-  read every swatch back as template `0.878` at the very next `Menu_Add`:
-  the engine applies each row's template during its realization pass, which
-  overwrites everything painted inside `Populate` (and the retry queue's
-  repairs). Post-push widget state is stable — it is where the accent holds
-  on every other screen — so `Menu_Mods_PickColor` captures the swatch rows
-  and repaints them after the push. This ordering is also what unblocks the
-  getter substitution: with the property actually holding the swatch colour
-  at rest, `scol-keep` finally reads a deliberate colour on hover.
-- **The keep redirect is a COPY, the accent an in-place write — the
-  asymmetry is load-bearing.** The accent must live in the engine's struct
-  for the stay path, but a swatch colour written through the same struct
-  would poison it for every other row. Per-call redirect through the getter
-  is sufficient: every flood call re-derives the target's real colour, so
-  the copy wins without touching shared state.
+**The decision:** the palette paints rows the accent, like every other
+row. Hover then writes accent onto accent and nothing can ever stick -
+the same construction that makes the rest of the theme reliable. The hex
+code in each row's label text identifies the colour; `' *'` marks the
+current choice. `Menu_Mods_PickColor` contains no per-row colour paint,
+and the hook contains no per-row logic: near-gray-white becomes the
+accent, in place, and that is the whole substitution.
 
-Lua-side guards (`theme_wrap_asp/roll/tc`, log-only) and a read-only audit
-(`theme-audit`, attribution `own:`/`menu:`) ship in the UI chunk for diagnosis.
-They have never fired on a live write path; the native hook does the work.
-
-**Swatch preservation (2026-10-07).** The colour picker paints each palette
-row's label with that swatch's own colour. The engine's hover cycle then
-writes stock white / 0.878 gray at the same label — and both the Lua
-wrappers and the native substitute used to rewrite those writes to the
-accent, so a hovered swatch stuck accent until game restart. `paint()`
-now records each agent's intended colour in `theme_custom` *before* the
-write; `apply_theme` repaints that colour instead of the accent (which
-makes every repaint path — rollover wrapper, retry queue, THEME_WIDGET —
-preserve it), and the `AgentSetProperty`/`TextSetColor` wrappers restore
-it on stock writes. The audit compares against the agent's *intended*
-colour, so correct swatches never false-flag.
+The negative results above are recorded so the next person does not
+re-derive them: each was instrumented, shipped, and disproven in the
+user's game (scol-read/scol-probe/swatchmap markers, since removed).
 
 ## Proven behaviour (screenshot-verified)
 
