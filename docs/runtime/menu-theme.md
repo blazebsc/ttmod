@@ -46,22 +46,33 @@ engine's struct stock-white, so the hovered row turns WHITE after mouse-off;
 substituting in place puts the accent into the struct, which is the only
 thing the bypass path ever reads.
 
-**The light is a multiplicative illuminant (2026-10-09, proven in-game).**
-The final model, closed by the black-light experiment: rows render as
-`Text Color x Light Color Diffuse`. Stock light is white (identity), so
-text shows its own colour; the accent substitution recolours the global
-light struct, multiplying every menu row toward the accent - that IS the
-theme, at rest and on hover alike. Setting the struct BLACK for the
-picker rendered the ENTIRE menu's text black, confirming multiplication.
-The picker therefore sets the struct WHITE (identity lighting) before
-its rows are built: each row - swatch or accent nav row - renders
-exactly its own colour, and hover keeps it (the selection chore's
-scale/shear animation still gives hover feedback). `ttmod_menu_palette`
-sets this before `Menu_Push`; the `Menu_Pop` wrapper and every other
-screen builder restore the accent on exit, and `lua_bridge_set_light_palette`
-rewrites the struct (accent, or stock white when unthemed). The scol
-hook's pointer-recognised redirect (light-struct writes -> white copy)
-remains as belt and braces, logged `scol-glow:` (capped).
+**The global default-colour register (2026-10-09, model closed).** The
+static struct at `kScolLightStructRva` (0x9893E4, stock RGBA 1,1,1,1) is
+the engine's GLOBAL DEFAULT-COLOUR REGISTER. Three consumers, all proven:
+
+- **Material creation** copies it into every new material's light
+  (`movq [reg+0x58]` from the struct, found at many sites). Render is
+  multiplicative: `Text Color x Light`. The theme IS this register,
+  recoloured to the accent - every menu material created afterwards
+  renders accent-tinted, at rest and on hover alike.
+- **The styling writes** (the two `caller=002980E3/0029811B` flood sites)
+  push this register as the colour they write ('Light Color Diffuse'/
+  'Specular', plus scalar material state via the second setter).
+- **The unhover restore** reads it as the colour a deselected row reverts
+  to - one global, by design, on every screen. This is the original bug:
+  the register was poisoned accent, so unhovered rows stuck accent until
+  restart. Blacking it turned the whole menu black (multiplication);
+  whiting it made restores stick white.
+
+**Per-row palette preview colours are therefore impossible, by engine
+design**: a preview survives exactly until the first unhover, because the
+restore rewrites the row to the one global register. The picker ships
+accent-painted rows (hex codes + `' *'` identify colours) and phases the
+register: WHITE while its rows are built (identity creation light), back
+to the ACCENT once built - so the restore rewrites accent onto
+accent-painted rows and the revert is invisible. `ttmod_menu_palette`
+carries the phases ('1' build / '2' built / '0' closed); the
+`Menu_Pop` wrapper and every other screen builder clear the gate.
 
 ## Proven behaviour (screenshot-verified)
 

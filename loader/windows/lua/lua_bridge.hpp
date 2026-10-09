@@ -15,12 +15,13 @@
 namespace ttmod_win {
 void lua_bridge_init(const char* profile_id, const char* log_path, ttmod::RuntimeOwner* owner);
 void lua_bridge_shutdown();
-// Picker glow gate (ttmod_menu_palette calls this): while the colour picker
-// is the active screen, the engine's GLOBAL light struct (the hover glow
-// source, kScolLightStructRva) is set to BLACK instead of the accent, so
-// both build-time and hover-time styling write a glow that adds nothing and
-// the per-row swatch colours render pure. On close the accent is restored
-// (or stock white when no accent is configured).
-void lua_bridge_set_light_palette(bool picker_open);
+// Picker light phases (ttmod_menu_palette): the engine's global default-
+// colour register (kScolLightStructRva) is copied into every material at
+// creation, pushed by the styling writes, and READ BY THE UNHOVER RESTORE
+// as the colour a deselected row reverts to. Phase white(true) before the
+// picker's rows are built (true-colour creation light), phase accent(false)
+// after the build (the restore value matches the accent-painted rows, so
+// reverts are invisible). See docs/runtime/menu-theme.md.
+void lua_bridge_set_light_palette(bool white_phase);
 } // namespace ttmod_win
 #endif

@@ -122,7 +122,6 @@ static float* scol_light_struct() {
     return p;
 }
 
-
 // Bounded retry for the UI-region hook: that memory unpacks progressively,
 // so the anchor may take up to a minute to match. Gives up loudly.
 struct UiProbeTarget {
@@ -598,29 +597,28 @@ static DWORD WINAPI late_hook_thread(LPVOID p) {
 
 } // namespace
 
-void lua_bridge_set_light_palette(bool picker_open) {
+void lua_bridge_set_light_palette(bool white_phase) {
     float* light = scol_light_struct();
     if (!light) return;
-    if (picker_open) {
-        // WHITE, not black: the light is a MULTIPLICATIVE illuminant -
-        // render = Text Color x Light Color. Black light turns every row's
-        // text black (proven in-game: the whole picker rendered black);
-        // white is the identity, so each row shows exactly its own colour -
-        // swatches, accent nav rows, everything. Hover then keeps the row's
-        // colour (the selection chore still scales/glows for feedback).
-        light[0] = light[1] = light[2] = 1.0f;
-        light[3] = 1.0f;
-        return;
-    }
-    // Restore: the accent when themed, stock white otherwise. This is also
-    // where the struct is (re)poisoned for every non-picker screen, so the
-    // accent-on-hover glow behaves exactly as it always has.
-    float acc[3] = {};
-    if (scol_accent(acc)) {
-        light[0] = acc[0];
-        light[1] = acc[1];
-        light[2] = acc[2];
+    if (!white_phase) {
+        // Accent when themed, stock white otherwise. This is also where the
+        // register is (re)poisoned for every non-picker screen, so the
+        // accent-everywhere theme behaves exactly as it always has.
+        float acc[3] = {};
+        if (scol_accent(acc)) {
+            light[0] = acc[0];
+            light[1] = acc[1];
+            light[2] = acc[2];
+        } else {
+            light[0] = light[1] = light[2] = 1.0f;
+        }
     } else {
+        // WHITE phase (picker row build): the light is a MULTIPLICATIVE
+        // illuminant - render = Text Color x Light - and white is the
+        // identity, so freshly built rows render their own painted colours
+        // exactly. Phased back to the accent right after the build so the
+        // unhover restore (which reads this register) rewrites accent onto
+        // the accent-painted rows and the revert is invisible.
         light[0] = light[1] = light[2] = 1.0f;
     }
     light[3] = 1.0f;
