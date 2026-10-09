@@ -570,6 +570,22 @@ local function theme_substitute(prop, v)
     return { r = rgb[1], g = rgb[2], b = rgb[3],
              a = (type(v.a) == 'number' and v.a or 1) }
 end
+-- Menu_Pop wrapper (2026-10-09): any pop off the colour picker must clear
+-- the palette glow-suppression flag. The Back button's callback is the Lua
+-- string 'Menu_Pop()', so redefining the global intercepts engine-driven
+-- pops too - the same global-wrapper pattern as theme_wrap_asp. Load-safe:
+-- installed from TTMOD_THEME_WIDGET only, when Menu_Pop actually exists.
+local function theme_wrap_pop()
+    if ttmod_pop_wrapped then return end
+    if type == nil or Menu_Pop == nil then return end
+    if type(Menu_Pop) ~= 'function' then return end
+    local orig = Menu_Pop
+    Menu_Pop = function(...)
+        if ttmod_menu_palette ~= nil then pcall(ttmod_menu_palette, '0') end
+        return orig(...)
+    end
+    ttmod_pop_wrapped = true
+end
 local function theme_wrap_asp()
     -- Load-safe: this file's top level must NEVER call globals. The chunk
     -- runs at lua_newstate capture, before the engine opens standard libs
@@ -1185,6 +1201,7 @@ end
 -- Drains the retry queue FIRST: by the time the next widget is added the
 -- previous one has been populated and can finally be themed.
 function TTMOD_THEME_WIDGET(widget)
+    theme_wrap_pop()
     theme_wrap_asp()
     theme_wrap_roll()
     theme_wrap_tc()
@@ -1291,6 +1308,7 @@ end
 -- Real menu idiom (Menu_Options.lua): create, set align/background, assign
 -- Populate, push. Rows MUST be added inside Populate (runs on push).
 function Menu_Mods_Show()
+    if ttmod_menu_palette ~= nil then pcall(ttmod_menu_palette, '0') end
     mlog('show: enter listmenu=' .. type(ListMenu) .. ' header=' .. type(Header) ..
         ' listbutton=' .. type(ListButton) .. ' create=' .. type(Menu_Create) ..
         ' push=' .. type(Menu_Push))
@@ -1340,6 +1358,7 @@ function Menu_Mods_Find(id)
 end
 
 function Menu_Mods_Select(id)
+    if ttmod_menu_palette ~= nil then pcall(ttmod_menu_palette, '0') end
     mlog('select: ' .. tostring(id))
     ttmod_menu_refresh()
     local m = Menu_Mods_Find(id)
@@ -1423,17 +1442,13 @@ function Menu_Mods_PickColor(id, key, page)
     if menu == nil then mlog('color: create failed') return end
     menu.align = 'left'
     menu.background = {}
-    -- Palette rows are ACCENT-coloured, like every other row (2026-10-09
-    -- decision). Seven instrumented rounds proved a per-row swatch colour
-    -- cannot survive hover: the engine's selection flood overwrites the
-    -- row every frame and never deselects, Lua hover events never fire
-    -- (theme-roll count 0), the agent->descriptor mapping is unmappable
-    -- (names + Lua-table addresses), the engine getter cannot reach the
-    -- slot the setter writes (flag maps to {1,4}, live colour is slot 2),
-    -- and a direct probe of every slot {0..8} returns nothing for these
-    -- descriptors. Accent rows are immune BY CONSTRUCTION: the flood
-    -- carries accent, so hover writes accent onto accent. The hex code in
-    -- the label text identifies the colour; ' *' marks the current choice.
+    -- Swatch rows captured for the post-push repaint below: the engine
+    -- applies each row's template during its realization pass, which runs
+    -- AFTER Populate returns - everything painted inside Populate is
+    -- overwritten (the in-session audit read every swatch back as template
+    -- 0.878). Repainting AFTER Menu_Push lands on the final, stable widget
+    -- state - the same state the accent holds on every other screen.
+    local painted = {}
     menu.Populate = function(self)
         local h = Menu_Add(Header, nil, 'header_settings')
         setlabel(h, tostring(key) .. ' color')
@@ -1446,7 +1461,17 @@ function Menu_Mods_PickColor(id, key, page)
             local r = Menu_Add(ListButton, 'sw_' .. tostring(i), 'label_OK',
                 'Menu_Mods_SetColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '","' ..
                 hex .. '")')
-            setlabel(r, hex .. mark)
+            -- Paint the swatch colour on the row's LABEL and its BUTTON
+            -- agent. The engine renders a selected row from the button's
+            -- colour slots (the sweep found Text Color AND Selection Color
+            -- live there), and TTMOD_THEME_WIDGET paints that button accent
+            -- at Menu_Add time - so painting only the label leaves the
+            -- selected-state render sourced from accent, which is exactly
+            -- the stuck-accent symptom on hover.
+            local lab = setlabel(r, hex .. mark)
+            paint(lab, hex)
+            if r ~= nil and r.agent ~= nil then paint(r.agent, hex) end
+            painted[#painted + 1] = { lab, r, hex }
         end
         if page > 1 then
             local p = Menu_Add(ListButton, 'prevpage', 'label_OK',
@@ -1468,8 +1493,45 @@ function Menu_Mods_PickColor(id, key, page)
     -- (single thread), so everything painted here tags as 'own'.
     TTMOD_OWN_BUILD = true
     Menu_Push(menu)
+    -- Post-push repaint: the engine's realization pass (template chore) runs
+    -- during/after Menu_Push and overwrites everything painted inside
+    -- Populate - proven in-game by the audit reading each swatch back as
+    -- template 0.878 while the in-Populate paints all "succeeded". This is
+    -- the moment that survives: after the push, nothing restyles the rows
+    -- again (the accent holds on every other screen from exactly this
+    -- ordering), so the swatch colours land for good, and the native
+    -- getter-based substitution finally reads a deliberate colour on hover.
+    for _, e in ipairs(painted) do
+        if e[1] ~= nil then paint(e[1], e[3]) end
+        local ag = (e[2] ~= nil and e[2].agent ~= nil) and e[2].agent or e[2]
+        if ag ~= nil then paint(ag, e[3]) end
+    end
+    -- Post-push read-back (diagnostic, bounded: 6 lines per push): proves
+    -- whether the repaint landed on the stable widget state or was wiped
+    -- again - the next session's log answers this definitively.
+    if AgentGetProperty ~= nil then
+        for i, e in ipairs(painted) do
+            if e[1] ~= nil then
+                pcall(function()
+                    local ok, v = pcall(AgentGetProperty, e[1], 'Text Color')
+                    local cur = '?'
+                    if ok and type(v) == 'table' then
+                        cur = string.format('%.3f,%.3f,%.3f', v.r or -1, v.g or -1, v.b or -1)
+                    end
+                    mlog('color: verify sw_' .. tostring(i) .. ' want=' .. tostring(e[3]) .. ' read=' .. cur)
+                end)
+            end
+        end
+    end
     TTMOD_OWN_BUILD = nil
-    mlog('color: pushed grid rows=' .. tostring(Menu_Mods_RowCount()))
+    -- Tell native code the picker is the active screen (ttmod_menu_palette,
+    -- registered by menu_bridge): the scol hook redirects the engine's hover
+    -- GLOW writes (its global light colour) to black while this is set, so
+    -- the per-row swatch colours survive hover. Cleared by the Menu_Pop
+    -- wrapper and by every other screen builder below.
+    if ttmod_menu_palette ~= nil then pcall(ttmod_menu_palette, '1') end
+    mlog('color: pushed grid rows=' .. tostring(Menu_Mods_RowCount()) ..
+         ' repainted=' .. tostring(#painted))
 end
 
 function Menu_Mods_SetColor(id, key, hex)

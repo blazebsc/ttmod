@@ -209,6 +209,33 @@ static int __cdecl fn_log(lua_State* L) {
     return 0;
 }
 
+// ttmod_menu_palette("1"/"0"): the colour picker tells native code it is the
+// active screen. The engine's hover GLOW re-applies its global light colour
+// (a static struct, see kScolLightStructRva) to whichever row is selected,
+// washing out any per-row colour - proven by decompiling the two flood call
+// sites (they write 'Light Color Diffuse'/'Light Color Specular' from that
+// static). While the picker is up, the scol hook redirects those writes to a
+// black copy so the swatch colours stay pure; every other screen keeps the
+// accent glow untouched. Set on push, cleared by the Menu_Pop wrapper and by
+// every other screen builder in our chunk (belt and braces against a missed
+// pop).
+static volatile LONG g_palette_open = 0;
+static int __cdecl fn_palette(lua_State* L) {
+    const char* s = g_tolstring ? g_tolstring(L, 1, nullptr) : nullptr;
+    LONG v = (s && s[0] == '1') ? 1 : 0;
+    InterlockedExchange(&g_palette_open, v);
+    emit(v ? "palette: glow suppressed (picker open)" : "palette: glow restored");
+    return 0;
+}
+
+void menumods_set_palette_open(bool open) {
+    InterlockedExchange(&g_palette_open, open ? 1 : 0);
+}
+
+bool menumods_palette_open() {
+    return g_palette_open != 0;
+}
+
 static void reg_fn(lua_State* L, LuaPushCClosureFn pushcclosure, LuaSetglobalFn setglobal, lua_CFunction fn,
                    const char* name) {
     if (!pushcclosure || !setglobal) return;
@@ -258,6 +285,7 @@ void menumods_register(lua_State* L, LuaLoadstringFn loadstring, LuaPcallkFn pca
     reg_fn(L, pushcclosure, setglobal, fn_set_enabled, "ttmod_menu_set_enabled");
     reg_fn(L, pushcclosure, setglobal, fn_set_value, "ttmod_menu_set_value");
     reg_fn(L, pushcclosure, setglobal, fn_log, "ttmod_menu_log");
+    reg_fn(L, pushcclosure, setglobal, fn_palette, "ttmod_menu_palette");
     // Replay plugin chunks ON THE MENU STATE. The LoadResource drain already ran
     // them, but on the engine state (_engine.lua et al) - a different lua_State.
     // Globals a plugin sets (TTMOD_ACCENT, ...) therefore never reach the state

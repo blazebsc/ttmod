@@ -14,6 +14,14 @@ namespace ttmod {
 // Engine color setter (thiscall ecx=this, ret $0xc, args
 // descriptor/color-struct/flag). The theme substitute hooks it.
 inline constexpr uint32_t kScolRva = 0x168430;
+// The engine's GLOBAL LIGHT COLOUR struct (found by decompiling the hover
+// flood's two call sites, 0x2980DE/0x298116: they push this exact pointer
+// with flag=1 to write 'Light Color Diffuse'/'Light Color Specular' onto
+// whichever row is selected). Statically RGBA (1,1,1,1) in .data - the
+// stock white glow. The scol hook's in-place substitution recolours THIS
+// struct, which is the entire "accent on hover" theme effect; the same
+// writes, unrecognized, are what washes a palette swatch's per-row colour.
+inline constexpr uint32_t kScolLightStructRva = 0x9893E4;
 inline constexpr uint8_t kScolAnchor[10] = {0x55, 0x8B, 0xEC, 0x51, 0x56, 0x57, 0x8B, 0xF1, 0xE8, 0xD3};
 // Its sibling property GETTER (0x1684B0, 0x80 below the setter). ABI
 // verified from the unpacked dump (mcsm-unpacked.bin, 2026-10-07), not
@@ -41,7 +49,6 @@ inline constexpr uint8_t kPropLookupAnchor[12] = {0x55, 0x8B, 0xEC, 0x51, 0x53, 
 // anchor pins the non-rebased image - consistent with the exe_base=00400000
 // invariant every other anchor already assumes.
 inline constexpr uint32_t kPropCtxRva = 0x23110;
-inline constexpr uint8_t kPropCtxAnchor[12] = {0xA1, 0xB4, 0x95, 0xDD, 0x00, 0xA9,
-                                               0x00, 0x00, 0x00, 0x20, 0x75, 0x7F};
+inline constexpr uint8_t kPropCtxAnchor[12] = {0xA1, 0xB4, 0x95, 0xDD, 0x00, 0xA9, 0x00, 0x00, 0x00, 0x20, 0x75, 0x7F};
 
 } // namespace ttmod

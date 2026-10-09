@@ -397,33 +397,32 @@ static volatile LONG g_scolBsub = 0;
 static volatile LONG g_scolKeep = 0;
 
 static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* color, int flag) {
-    // The substitution MUST write through to the caller's color struct, not a
-    // copy. Two failure modes were proven in-game, in both directions:
-    //
-    //  - Copy-based substitution: the engine's mouse-off "stay" path reads
-    //    its own color struct DIRECTLY, bypassing this setter, so the struct
-    //    must contain the accent or the hovered row turns stock WHITE after
-    //    mouse-off (the regression this comment prevents from coming back).
-    //
-    //  - No substitution at all: rest and hover stay stock white.
-    //
-    // So the in-place write IS the mechanism: the accent has to live in the
-    // engine's persistent struct for the highlight paths that never pass
-    // through scol. The struct stays accent for the process lifetime, which
-    // is what makes the theme hold at rest, on hover, AND after mouse-off.
-    //
-    // That same struct is re-applied CONTINUOUSLY to whichever row is
-    // selected (hundreds of scol calls per hover burst, all accent), so any
-    // per-row colour is overwritten on hover and never restored (no
-    // mouse-off deselect exists). Per-row colours were proven unreachable
-    // in seven instrumented rounds - getter, slot probe {0..8}, Lua events,
-    // agent mapping, traffic learning all dead (see menu-theme.md). The
-    // working answer is upstream: the palette paints rows accent, so the
-    // flood writes accent onto accent and nothing can stick. This hook
-    // therefore does ONE thing: near-gray-white becomes the accent, in
-    // place.
+    // THE REAL MECHANISM (found by decompiling the flood call sites
+    // 0x2980DE/0x298116): the "hundreds of scol calls per burst" are the
+    // engine's hover GLOW system writing 'Light Color Diffuse' and
+    // 'Light Color Specular' from ONE static struct (kScolLightStructRva,
+    // stock white) onto whichever row is selected. The substituted accent
+    // in that struct is the entire accent-on-hover theme; the same write
+    // washes a palette swatch's per-row colour while the row stays
+    // selected. The struct is shared process-wide, so per-row glow values
+    // are impossible - but the WRITE is recognizable by pointer, and the
+    // colour picker tells us (via ttmod_menu_palette) when its screen is
+    // up. On the picker, redirect those writes to a BLACK copy: the glow
+    // adds nothing, the swatch colours stay pure, and the shared struct is
+    // never touched (copy, not in-place). Everywhere else the accent glow
+    // behaves exactly as it always has.
     float* c = (float*)color;
     if (color && desc) {
+        // The light struct's address is fixed for the process (exe base never
+        // moves); resolve it once. Function-local static init is thread-safe.
+        static const BYTE* light_struct = [] {
+            return (BYTE*)GetModuleHandleA(nullptr) + ttmod::kScolLightStructRva;
+        }();
+        if (color == (void*)light_struct && menumods_palette_open()) {
+            float glow_off[4] = {0.0f, 0.0f, 0.0f, c[3]};
+            if (g_origScol) return g_origScol(self, desc, glow_off, flag);
+            return 0;
+        }
         float acc[3] = {};
         bool haveAcc = scol_accent(acc);
         bool sub = haveAcc && ttmod::should_substitute(c[0], c[1], c[2]);

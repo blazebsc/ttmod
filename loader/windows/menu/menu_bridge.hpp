@@ -20,6 +20,11 @@ void menumods_init(const char* game_dir, const char* log_path, ttmod::RuntimeOwn
 // v5 plugin API thunk: queue a Lua chunk for the bridge to run on the
 // game's script thread at the next script load. 0 queued, -1 dropped.
 int menumods_queue_ui_chunk(const char* code);
+// Palette-screen glow gate: set by ttmod_menu_palette from the colour picker,
+// read by the scol hook to neutralize the engine's hover light writes while
+// the picker is the active screen (see kScolLightStructRva).
+void menumods_set_palette_open(bool open);
+bool menumods_palette_open();
 // False when the user opted out of the in-game menu: env TTMOD_MENU=0 or
 // the file config/menu-disabled. Logged once per process.
 bool menumods_button_enabled();
