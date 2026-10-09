@@ -1489,6 +1489,14 @@ function Menu_Mods_PickColor(id, key, page)
         setlabel(b, 'Back')
         mlog('populate: color grid done')
     end
+    -- Tell native code the picker is the active screen BEFORE the push:
+    -- the styling function reads its glow colour from the global light
+    -- struct, rows are styled at BUILD time and keep that glow, so the
+    -- struct must already be black when Populate runs - gating only
+    -- hover-time writes was too late (proven: rows built with the accent
+    -- glow showed it on hover regardless). Cleared by the Menu_Pop
+    -- wrapper and by every other screen builder below.
+    if ttmod_menu_palette ~= nil then pcall(ttmod_menu_palette, '1') end
     -- Own-build window: Populate runs synchronously inside Menu_Push
     -- (single thread), so everything painted here tags as 'own'.
     TTMOD_OWN_BUILD = true
@@ -1524,12 +1532,6 @@ function Menu_Mods_PickColor(id, key, page)
         end
     end
     TTMOD_OWN_BUILD = nil
-    -- Tell native code the picker is the active screen (ttmod_menu_palette,
-    -- registered by menu_bridge): the scol hook redirects the engine's hover
-    -- GLOW writes (its global light colour) to black while this is set, so
-    -- the per-row swatch colours survive hover. Cleared by the Menu_Pop
-    -- wrapper and by every other screen builder below.
-    if ttmod_menu_palette ~= nil then pcall(ttmod_menu_palette, '1') end
     mlog('color: pushed grid rows=' .. tostring(Menu_Mods_RowCount()) ..
          ' repainted=' .. tostring(#painted))
 end

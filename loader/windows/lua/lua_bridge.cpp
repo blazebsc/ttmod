@@ -110,6 +110,19 @@ static ScolFn g_origScol = nullptr;
 static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* color, int flag);
 static bool scol_accent(float* out);
 
+// Picker glow gate: the engine's global light struct (see kScolLightStructRva)
+// is the source every styling write reads its glow colour from. While the
+// colour picker is the active screen we set it BLACK - build-time and
+// hover-time styling then both carry a glow that adds nothing, so the
+// per-row swatch colours render pure. On close, restore the accent (or the
+// stock white when no accent is configured). The struct's address is fixed
+// for the process; resolve it once.
+static float* scol_light_struct() {
+    static float* p = [] { return (float*)((BYTE*)GetModuleHandleA(nullptr) + ttmod::kScolLightStructRva); }();
+    return p;
+}
+
+
 // Bounded retry for the UI-region hook: that memory unpacks progressively,
 // so the anchor may take up to a minute to match. Gives up loudly.
 struct UiProbeTarget {
@@ -419,6 +432,13 @@ static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* col
             return (BYTE*)GetModuleHandleA(nullptr) + ttmod::kScolLightStructRva;
         }();
         if (color == (void*)light_struct && menumods_palette_open()) {
+            // Belt and braces: the struct itself is blacked while the picker
+            // is open, so these writes already carry black - but log them
+            // (capped) so the log proves whether hover re-runs the styling
+            // function at all.
+            static volatile LONG glow_hits = 0;
+            LONG gn = InterlockedIncrement(&glow_hits);
+            if (gn <= 40) emit("scol-glow: light write blacked on picker");
             float glow_off[4] = {0.0f, 0.0f, 0.0f, c[3]};
             if (g_origScol) return g_origScol(self, desc, glow_off, flag);
             return 0;
@@ -576,6 +596,30 @@ static DWORD WINAPI late_hook_thread(LPVOID p) {
 }
 
 } // namespace
+
+void lua_bridge_set_light_palette(bool picker_open) {
+    float* light = scol_light_struct();
+    if (!light) return;
+    if (picker_open) {
+        light[0] = 0.0f;
+        light[1] = 0.0f;
+        light[2] = 0.0f;
+        light[3] = 1.0f;
+        return;
+    }
+    // Restore: the accent when themed, stock white otherwise. This is also
+    // where the struct is (re)poisoned for every non-picker screen, so the
+    // accent-on-hover glow behaves exactly as it always has.
+    float acc[3] = {};
+    if (scol_accent(acc)) {
+        light[0] = acc[0];
+        light[1] = acc[1];
+        light[2] = acc[2];
+    } else {
+        light[0] = light[1] = light[2] = 1.0f;
+    }
+    light[3] = 1.0f;
+}
 
 void lua_bridge_init(const char* profile_id, const char* log_path, ttmod::RuntimeOwner* owner) {
     g_logpath = log_path ? log_path : "";

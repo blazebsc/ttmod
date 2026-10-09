@@ -17,6 +17,7 @@
 #include "ttmod/plugin_api.h"
 #include "ttmod/uiqueue.hpp"
 #include "lua_abi.hpp"
+#include "lua_bridge.hpp"
 #include "menu_bridge.hpp"
 #include "mods.hpp"
 #include "menumods_ui.h" // generated from menumods_ui.lua (not committed)
@@ -224,6 +225,12 @@ static int __cdecl fn_palette(lua_State* L) {
     const char* s = g_tolstring ? g_tolstring(L, 1, nullptr) : nullptr;
     LONG v = (s && s[0] == '1') ? 1 : 0;
     InterlockedExchange(&g_palette_open, v);
+    // The light struct itself goes black for the picker (and back to the
+    // accent on close): build-time styling reads its colour from this
+    // struct, and rows keep whatever glow they were built with, so gating
+    // only the hover-time writes is too late for rows styled before the
+    // flag existed.
+    ttmod_win::lua_bridge_set_light_palette(v != 0);
     emit(v ? "palette: glow suppressed (picker open)" : "palette: glow restored");
     return 0;
 }
