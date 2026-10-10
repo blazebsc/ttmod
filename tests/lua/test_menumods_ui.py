@@ -259,18 +259,12 @@ Menu_Mods_PickColor('demo.config', 'accent', 1)
 local painted_base, painted_states = color_props(calls)
 assert(painted_base == 0, 'no extra Text Color paints after the probe either, got ' .. painted_base)
 assert(painted_states >= 0, 'state variants painted too, got ' .. painted_states)
--- Post-push Light Color Diffuse writes: 6 per page (the decompiled render
--- path - per-button material colour attempt).
-local lcd = 0
-for _, c in ipairs(calls) do
-  if c:sub(1, 7) == 'setprop' and c:find('|Light Color Diffuse|', 1, true) then lcd = lcd + 1 end
-end
-assert(lcd >= 6, 'six Light Color Diffuse writes post-push, got ' .. lcd)
+-- Per-row colour previews are removed (proven impossible - see the
+-- menumods_ui.lua proof-chain comment). No LCD writes expected.
 for _, c in ipairs(calls) do
   if c:sub(1, 7) == 'setprop' and not c:find('Text String', 1, true) then
-    assert(c:find('|Text Color', 1, true) or c:find('|Selection Color|', 1, true) or
-      c:find('|Light Color Diffuse|', 1, true) or c:find('|Light Color Specular|', 1, true),
-      'only proven or decompiled-render properties painted: ' .. c)
+    assert(c:find('|Text Color', 1, true) or c:find('|Selection Color|', 1, true),
+      'only proven properties painted: ' .. c)
   end
 end
 -- The read-only sweep must discover colour properties WITHOUT any debug flag:

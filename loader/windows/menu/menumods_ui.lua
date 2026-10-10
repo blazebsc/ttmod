@@ -1501,53 +1501,19 @@ function Menu_Mods_PickColor(id, key, page)
     -- (single thread), so everything painted here tags as 'own'.
     TTMOD_OWN_BUILD = true
     Menu_Push(menu)
-    -- Post-push: paint 'Light Color Diffuse' on each button's agent. The
-    -- decompiled render path (FUN_00697a60 state 0 writes it from the
-    -- register; the VISIBLE colour IS this material property, not Text
-    -- Color - proven: all-orange pages with Text Color holding swatches).
-    -- If Headers/ListButtons don't rebuild their material on hover, this
-    -- sticks and each button shows its colour; if they do, the register
-    -- (accent) reclaims it and the hex code text carries the UX.
-    for _, e in ipairs(painted) do
-        local ag = (e[2] ~= nil and e[2].agent ~= nil) and e[2].agent or e[2]
-        if ag ~= nil and e[3] ~= nil then
-            pcall(function()
-                local r, g, b = e[3]:match('^#(%x%x)(%x%x)(%x%x)$')
-                if r ~= nil then
-                    AgentSetProperty(ag, 'Light Color Diffuse',
-                        { r = tonumber(r, 16) / 255,
-                          g = tonumber(g, 16) / 255,
-                          b = tonumber(b, 16) / 255, a = 1 })
-                end
-            end)
-            pcall(function()
-                local ok, v = pcall(AgentGetProperty, ag, 'Light Color Diffuse')
-                if ok and type(v) == 'table' then
-                    mlog('color: lcd sw_' .. tostring(e[3]) ..
-                         ' read=' .. string.format('%.3f,%.3f,%.3f', v.r or -1, v.g or -1, v.b or -1))
-                else
-                    mlog('color: lcd ' .. tostring(e[3]) .. ' read=MISSING')
-                end
-            end)
-        end
-    end
-    -- Post-push read-back (bounded: 6 lines per push): proves the repaint
-    -- landed. want=read on every row means the rest state is correct;
-    -- anything after that is the hover/restore cycle, covered natively.
-    if AgentGetProperty ~= nil then
-        for i, e in ipairs(painted) do
-            if e[1] ~= nil then
-                pcall(function()
-                    local ok, v = pcall(AgentGetProperty, e[1], 'Text Color')
-                    local cur = '?'
-                    if ok and type(v) == 'table' then
-                        cur = string.format('%.3f,%.3f,%.3f', v.r or -1, v.g or -1, v.b or -1)
-                    end
-                    mlog('color: verify sw_' .. tostring(i) .. ' want=' .. tostring(e[3]) .. ' read=' .. cur)
-                end)
-            end
-        end
-    end
+    -- Per-row colour preview: CONCLUSIVELY IMPOSSIBLE (2026-10-11).
+    -- Complete proof chain, each closed by direct evidence:
+    --   Text Color: stored but NOT rendered (all-orange pages with Text
+    --     Color holding exact swatches - verify lines proved both).
+    --   Light Color Diffuse (the decompiled render property): unreachable
+    --     from Lua - AgentGetProperty reads MISSING on every agent (the
+    --     material is an internal object at widget+0x20, no Lua path).
+    --   The global register: one colour for ALL widgets, by design.
+    --   The material rebuild (FUN_00698310) rewrites every widget's Light
+    --     Color from the register on every hover/unhover.
+    --   Lua hover events: never fire (theme-roll count 0 across sessions).
+    -- The hex code text identifies each colour; picking applies it to the
+    -- whole menu instantly - that IS the preview this engine allows.
     TTMOD_OWN_BUILD = nil
     mlog('color: pushed grid rows=' .. tostring(Menu_Mods_RowCount()) ..
          ' repainted=' .. tostring(#painted))
