@@ -1415,7 +1415,7 @@ local TT_COLOR_SWATCHES = {
     '#C0FFA0', '#00E000', '#008000', '#004000',
     '#A0C0FF', '#0080FF', '#0000C0', '#000040',
 }
-local TT_COLOR_PAGE = 4
+local TT_COLOR_PAGE = 2
 
 local function is_hex(s)
     return type(s) == 'string' and s:match('^#%x%x%x%x%x%x$') ~= nil
