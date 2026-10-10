@@ -639,7 +639,7 @@ local function theme_repaint_agent(agent)
     apply_theme(agent)
     if Clone_Find ~= nil then
         for _, child in ipairs({ 'label', 'caption', 'text', 'ui_listButton_label',
-                                 'ui_header_header', 'ui_listButton_button' }) do
+                                 'ui_header_header', 'ui_listButton_button', 'Mesh', 'Material' }) do
             pcall(function()
                 local okc, c = pcall(Clone_Find, agent, child)
                 if okc and c ~= nil then
@@ -1073,7 +1073,7 @@ theme_widget_settled = function(widget)
     local found_any = false
     if Clone_Find ~= nil then
         for _, child in ipairs({ 'label', 'caption', 'text', 'ui_listButton_label',
-                                 'ui_header_header', 'ui_listButton_button' }) do
+                                 'ui_header_header', 'ui_listButton_button', 'Mesh', 'Material' }) do
             pcall(function()
                 local okc, c = pcall(Clone_Find, ag, child)
                 if okc and c ~= nil then
@@ -1095,7 +1095,7 @@ theme_widget_settled = function(widget)
         pcall(sweep_props, ag, 'root')
         if Clone_Find ~= nil then
             for _, child in ipairs({ 'label', 'ui_listButton_label', 'caption', 'text',
-                                     'ui_header_header', 'ui_listButton_button' }) do
+                                     'ui_header_header', 'ui_listButton_button', 'Mesh', 'Material' }) do
                 pcall(function()
                     local okc, c = pcall(Clone_Find, ag, child)
                     if not okc then
