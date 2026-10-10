@@ -223,22 +223,16 @@ static int __cdecl fn_log(lua_State* L) {
 static volatile LONG g_palette_open = 0;
 static int __cdecl fn_palette(lua_State* L) {
     const char* s = g_tolstring ? g_tolstring(L, 1, nullptr) : nullptr;
-    // Phases: '1' = picker build (white register: identity creation light),
-    // '2' = picker built (accent register: the unhover restore reads it and
-    //       rewrites accent onto the accent-painted rows - invisible),
-    // '0' = closed (accent register, gate off).
-    // The register (kScolLightStructRva) is copied into every material at
-    // creation, pushed by the styling writes, and READ BY THE UNHOVER
-    // RESTORE as the colour a deselected row reverts to - one global, by
-    // design. Phasing it white->accent around the build is the only stable
-    // control we have; per-row restore values are impossible.
-    int phase = (s && s[0] == '1') ? 1 : ((s && s[0] == '2') ? 2 : 0);
-    LONG flag = (phase != 0) ? 1 : 0;
-    InterlockedExchange(&g_palette_open, flag);
-    ttmod_win::lua_bridge_set_light_palette(phase == 1);
-    if (phase == 1) emit("palette: register white (picker building)");
-    else if (phase == 2) emit("palette: register accent (picker built)");
-    else emit("palette: register accent (closed)");
+    // Boolean gate: '1' = picker open (white register + suppress white
+    // restores, so swatch colours survive hover AND unhover), anything
+    // else = closed (accent register, normal substitution). There is no
+    // phase-2: the register stays white for the whole visit because the
+    // unhover restore is suppressed, not outlasted.
+    LONG v = (s && s[0] == '1') ? 1 : 0;
+    InterlockedExchange(&g_palette_open, v);
+    ttmod_win::lua_bridge_set_light_palette(v != 0);
+    emit(v ? "palette: gate open (white register, restores suppressed)"
+           : "palette: gate closed (accent register, normal)");
     return 0;
 }
 

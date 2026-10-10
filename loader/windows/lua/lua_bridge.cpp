@@ -430,12 +430,37 @@ static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* col
         static const BYTE* light_struct = [] {
             return (BYTE*)GetModuleHandleA(nullptr) + ttmod::kScolLightStructRva;
         }();
+        float acc[3] = {};
+        bool haveAcc = scol_accent(acc);
+        // Picker gate (boolean): while the colour picker is open AND an
+        // accent is configured, white scol writes are SUPPRESSED (dropped,
+        // never reach the engine) and the shared light struct is never
+        // written. Rationale: the unhover restore rewrites deselected rows
+        // to white, and the hover flood re-applies the shared struct - both
+        // destroy per-row swatch colours, and both are white while the gate
+        // is open. Dropping them leaves rows exactly as painted. Saturated
+        // paints, blacks, and everything else pass through untouched, and
+        // the Lua wrapper still preserves/restores on its own path. The
+        // scol hook only ever sees COLOUR writes (it is the colour setter),
+        // so suppression cannot break layout, positions, or structure - and
+        // with no accent configured the gate is inert (stock behaviour).
+        // Suppression is logged (capped) so the log proves it fires; if rows
+        // still stick white with suppression firing, the restore bypasses
+        // scol entirely (scalar/direct path) and that is a different fix.
+        if (haveAcc && menumods_palette_open()) {
+            bool sub = ttmod::should_substitute(c[0], c[1], c[2]);
+            if (sub) {
+                static volatile LONG suppress_hits = 0;
+                LONG sn = InterlockedIncrement(&suppress_hits);
+                if (sn <= 60) emit("scol-suppress: white write dropped on picker");
+                return 0;
+            }
+        }
         if (color == (void*)light_struct && menumods_palette_open()) {
-            // Belt and braces: the struct itself is WHITED while the picker
-            // is open (identity lighting - see lua_bridge_set_light_palette),
-            // so these writes already carry white; redirect any straggler to
-            // white as well and log (capped) so the log proves whether hover
-            // re-runs the styling function at all.
+            // Belt and braces: with suppression active these writes never
+            // reach here - but if one does (e.g. non-substitutable light
+            // value), redirect it to a white copy rather than letting the
+            // shared struct through, and log (capped).
             static volatile LONG glow_hits = 0;
             LONG gn = InterlockedIncrement(&glow_hits);
             if (gn <= 40) emit("scol-glow: light write whited on picker");
@@ -443,8 +468,6 @@ static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* col
             if (g_origScol) return g_origScol(self, desc, glow_white, flag);
             return 0;
         }
-        float acc[3] = {};
-        bool haveAcc = scol_accent(acc);
         bool sub = haveAcc && ttmod::should_substitute(c[0], c[1], c[2]);
         if (sub) {
             LONG n = InterlockedIncrement(&g_scolBsub);
@@ -598,9 +621,16 @@ static DWORD WINAPI late_hook_thread(LPVOID p) {
 } // namespace
 
 void lua_bridge_set_light_palette(bool white_phase) {
+    // Boolean: true = white register for the whole picker visit (the
+    // unhover restore is suppressed while the gate is open, so the
+    // register never needs to match accent-painted rows - there is no
+    // phase-2 any more).
     float* light = scol_light_struct();
     if (!light) return;
-    if (!white_phase) {
+    if (white_phase) {
+        // WHITE (identity): rows render exactly what they are painted.
+        light[0] = light[1] = light[2] = 1.0f;
+    } else {
         // Accent when themed, stock white otherwise. This is also where the
         // register is (re)poisoned for every non-picker screen, so the
         // accent-everywhere theme behaves exactly as it always has.
@@ -612,14 +642,6 @@ void lua_bridge_set_light_palette(bool white_phase) {
         } else {
             light[0] = light[1] = light[2] = 1.0f;
         }
-    } else {
-        // WHITE phase (picker row build): the light is a MULTIPLICATIVE
-        // illuminant - render = Text Color x Light - and white is the
-        // identity, so freshly built rows render their own painted colours
-        // exactly. Phased back to the accent right after the build so the
-        // unhover restore (which reads this register) rewrites accent onto
-        // the accent-painted rows and the revert is invisible.
-        light[0] = light[1] = light[2] = 1.0f;
     }
     light[3] = 1.0f;
 }

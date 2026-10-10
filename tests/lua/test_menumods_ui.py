@@ -231,7 +231,7 @@ Menu_Mods_PickColor('demo.config', 'accent', 1)
 -- the in-game-proven name. The shipped mod must theme the menu with no debug
 -- flag present - it used to depend on config/probe-props existing.
 local base0, state0 = color_props(calls)
-assert(base0 == 0, 'no accent configured: palette rows are plain (accent theming only), got ' .. base0)
+assert(base0 == 24, 'six swatches x two agents x two passes painted (swatch colours need no accent), got ' .. base0)
 -- run the probe against a real label clone (TTMOD_PROBE_PROPS arms it)
 calls = {}
 TTMOD_PROBE_PROPS = 1
@@ -255,8 +255,8 @@ TTMOD_PROBE_PROPS = nil
 calls = {}
 Menu_Mods_PickColor('demo.config', 'accent', 1)
 local painted_base, painted_states = color_props(calls)
-assert(painted_base == 0, 'no accent configured: nothing extra painted after the probe, got ' .. painted_base)
-assert(painted_states == 0, 'no accent configured: no state variants painted either, got ' .. painted_states)
+assert(painted_base == 24, 'swatch paints land after the probe too, got ' .. painted_base)
+assert(painted_states >= 12, 'state variants painted too, got ' .. painted_states)
 for _, c in ipairs(calls) do
   if c:sub(1, 7) == 'setprop' and not c:find('Text String', 1, true) then
     assert(c:find('|Text Color', 1, true) or c:find('|Selection Color|', 1, true),
@@ -417,31 +417,31 @@ Menu_Mods_PickColor('demo.config', 'accent', 1)
 -- it - the native hook leaves stock accent glow everywhere else.
 TT_PALETTE = nil
 Menu_Mods_PickColor('demo.config', 'accent', 1)
-assert(TT_PALETTE == '2', 'picker ends on phase 2 (accent register, gate on)')
+assert(TT_PALETTE == '1', 'picker opens the gate (white register, restores suppressed)')
 TT_PALETTE = nil
 Menu_Mods_Select('demo.config')
 assert(TT_PALETTE == '0', 'select clears the gate')
 TT_PALETTE = nil
 Menu_Mods_PickColor('demo.config', 'accent', 1)
-assert(TT_PALETTE == '2', 'picker re-phases to 2 on push')
+assert(TT_PALETTE == '1', 'picker re-opens the gate on push')
 TT_PALETTE = nil
 Menu_Pop()
 assert(TT_PALETTE == '0', 'Menu_Pop wrapper clears the gate')
--- Palette rows are ACCENT-painted (per-row preview proven impossible: the
--- engine's unhover restore rewrites every deselected row to the global
--- default-colour register). With the accent configured here, every palette
--- row's Text Color must read the ACCENT - hex codes identify the colours.
+-- Palette rows carry their SWATCH colours: white scol writes are
+-- suppressed natively while the gate is open, so the unhover restore has
+-- no path left to reach the rows. The last swatch on page 1 is #FFB000
+-- (green channel 176/255, distinct from the #FF8000 accent's 128/255).
 TTMOD_ACCENT = '#FF8000'
 TTMOD_THEME_SCOPE = 'all'
-local sw_any = nil
-for _, a in ipairs(TT_TC_ALL) do
-  if tostring(a.of):sub(1, 3) == 'sw_' then sw_any = a break end
+local sw = nil
+for i = #TT_TC_ALL, 1, -1 do
+  if tostring(TT_TC_ALL[i].of):sub(1, 3) == 'sw_' then sw = TT_TC_ALL[i] break end
 end
-assert(sw_any ~= nil, 'palette rows themed')
-local swk = tostring(sw_any.of) .. '/' .. (sw_any.clone or '') .. '/Text Color'
-assert(type(_color[swk]) == 'table' and _color[swk].r == 1 and
-  math.abs(_color[swk].g - (128 / 255)) < 1e-6 and _color[swk].b == 0,
-  'palette row carries the ACCENT, not a per-row preview colour')
+assert(sw ~= nil, 'palette paint captured a swatch label agent')
+local swk = tostring(sw.of) .. '/' .. (sw.clone or '') .. '/Text Color'
+local swg = 176 / 255
+assert(_color[swk] ~= nil and math.abs(_color[swk].g - swg) < 1e-6,
+  'swatch painted its own colour, not the accent')
 -- theme_roll: the hover fix, end to end. The stub models the engine: hover
 -- writes white, unhover restores stock gray, both bypassing the
 -- AgentSetProperty global. The wrapper must repaint accent either way.
