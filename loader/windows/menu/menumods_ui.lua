@@ -1415,7 +1415,7 @@ local TT_COLOR_SWATCHES = {
     '#C0FFA0', '#00E000', '#008000', '#004000',
     '#A0C0FF', '#0080FF', '#0000C0', '#000040',
 }
-local TT_COLOR_PAGE = 2
+local TT_COLOR_PAGE = 6
 
 local function is_hex(s)
     return type(s) == 'string' and s:match('^#%x%x%x%x%x%x$') ~= nil
@@ -1461,33 +1461,31 @@ function Menu_Mods_PickColor(id, key, page)
         for i = first, last do
             local hex = TT_COLOR_SWATCHES[i]
             local mark = (hex == cur) and ' *' or ''
-            -- STATIC swatch display: a Header (non-interactive text) painted
-            -- the swatch colour. Static rows can never gain selection focus,
-            -- so they are never hover-flooded, never deselected, and never
-            -- restored - the three native-direct paths that destroy
-            -- per-row colours on ListButtons (proven: zero scol/Lua traffic
-            -- on picker hover, yet rows turned white). Once painted, a
-            -- static row keeps its colour permanently. The PICK action lives
-            -- on the accent button row below it (hover-safe by
-            -- construction: accent onto accent).
-            local d = Menu_Add(Header, 'swd_' .. tostring(i), 'label_OK')
-            local dlab = setlabel(d, hex .. mark)
-            paint(dlab, hex)
-            painted[#painted + 1] = { dlab, d, hex }
-            -- Pick button: accent text (setlabel themes it), safe under
-            -- hover by construction. Hex + mark identify the colour.
+            -- One pick button per colour: hex code + mark identifies it.
+            -- Per-row colour previews are IMPOSSIBLE in this engine (the
+            -- decompiled material rebuild FUN_00698310 rewrites every
+            -- widget's Light Color Diffuse from the ONE global register
+            -- on every hover/unhover; Headers render through the same
+            -- material path, proven in-game: all-orange pages). The real
+            -- preview is picking: the whole menu re-themes instantly.
             local r = Menu_Add(ListButton, 'sw_' .. tostring(i), 'label_OK',
                 'Menu_Mods_SetColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '","' ..
                 hex .. '")')
-            setlabel(r, hex .. mark .. ' (pick)')
-            painted[#painted + 1] = { nil, r, nil }
+            setlabel(r, hex .. mark)
+            painted[#painted + 1] = { nil, r, hex }
         end
-        -- Page nav: one cycling More button + Back = 2 nav rows, so 4
-        -- colours (8 rows) + 2 nav = 10 rows, the proven-rendered capacity.
-        local np = Menu_Add(ListButton, 'morepage', 'label_OK',
-            'Menu_Mods_PickColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '",' ..
-            tostring(page % total_pages + 1) .. ')')
-        setlabel(np, 'More colours (' .. tostring(page) .. '/' .. tostring(total_pages) .. ')')
+        if page > 1 then
+            local p = Menu_Add(ListButton, 'prevpage', 'label_OK',
+                'Menu_Mods_PickColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '",' ..
+                tostring(page - 1) .. ')')
+            setlabel(p, '<< Previous')
+        end
+        if last < #TT_COLOR_SWATCHES then
+            local p = Menu_Add(ListButton, 'nextpage', 'label_OK',
+                'Menu_Mods_PickColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '",' ..
+                tostring(page + 1) .. ')')
+            setlabel(p, 'Next >>')
+        end
         local b = Menu_Add(ListButton, 'back', 'label_OK', 'Menu_Pop()')
         setlabel(b, 'Back')
         mlog('populate: color grid done')
@@ -1503,22 +1501,34 @@ function Menu_Mods_PickColor(id, key, page)
     -- (single thread), so everything painted here tags as 'own'.
     TTMOD_OWN_BUILD = true
     Menu_Push(menu)
-    -- Post-push repaint: the engine's realization pass overwrites
-    -- everything painted inside Populate, so repaint the SWATCH colours
-    -- here, on the final widget state. The register stays WHITE for the
-    -- whole visit (no phase-2): unhover restores are suppressed natively,
-    -- so nothing rewrites the rows after this lands.
+    -- Post-push: paint 'Light Color Diffuse' on each button's agent. The
+    -- decompiled render path (FUN_00697a60 state 0 writes it from the
+    -- register; the VISIBLE colour IS this material property, not Text
+    -- Color - proven: all-orange pages with Text Color holding swatches).
+    -- If Headers/ListButtons don't rebuild their material on hover, this
+    -- sticks and each button shows its colour; if they do, the register
+    -- (accent) reclaims it and the hex code text carries the UX.
     for _, e in ipairs(painted) do
-        if e[3] ~= nil then
-            -- Static display: repaint the swatch colour (immune rows, but
-            -- the realization pass overwrote the Populate paint).
-            if e[1] ~= nil then paint(e[1], e[3]) end
-            local ag = (e[2] ~= nil and e[2].agent ~= nil) and e[2].agent or e[2]
-            if ag ~= nil then paint(ag, e[3]) end
-        else
-            -- Pick button: re-apply the accent theming (same overwrite).
-            local ag = (e[2] ~= nil and e[2].agent ~= nil) and e[2].agent or e[2]
-            if ag ~= nil then apply_theme(ag) end
+        local ag = (e[2] ~= nil and e[2].agent ~= nil) and e[2].agent or e[2]
+        if ag ~= nil and e[3] ~= nil then
+            pcall(function()
+                local r, g, b = e[3]:match('^#(%x%x)(%x%x)(%x%x)$')
+                if r ~= nil then
+                    AgentSetProperty(ag, 'Light Color Diffuse',
+                        { r = tonumber(r, 16) / 255,
+                          g = tonumber(g, 16) / 255,
+                          b = tonumber(b, 16) / 255, a = 1 })
+                end
+            end)
+            pcall(function()
+                local ok, v = pcall(AgentGetProperty, ag, 'Light Color Diffuse')
+                if ok and type(v) == 'table' then
+                    mlog('color: lcd sw_' .. tostring(e[3]) ..
+                         ' read=' .. string.format('%.3f,%.3f,%.3f', v.r or -1, v.g or -1, v.b or -1))
+                else
+                    mlog('color: lcd ' .. tostring(e[3]) .. ' read=MISSING')
+                end
+            end)
         end
     end
     -- Post-push read-back (bounded: 6 lines per push): proves the repaint

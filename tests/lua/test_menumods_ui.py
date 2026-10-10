@@ -186,17 +186,17 @@ assert(nrec('input|false') == 1 and nrec('input|true') == 1, 'input disabled aro
 setter_log = {}
 calls = {}
 Menu_Mods_Adjust('demo.config', 'accent')
-assert(nrec('add|sw_1|') == 1 and nrec('add|sw_2|') == 1, 'page 1 pick rows')
-assert(nrec('add|sw_3|') == 0 and nrec('add|sw_16|') == 0, 'page 1 stops at 2')
-assert(nrec('add|swd_1|') == 1 and nrec('add|swd_2|') == 1, 'page 1 static displays')
-assert(nrec('add|morepage|') == 1, 'More button on first page')
+assert(nrec('add|sw_1|') == 1 and nrec('add|sw_6|') == 1, 'page 1 swatches')
+assert(nrec('add|sw_7|') == 0 and nrec('add|sw_16|') == 0, 'page 1 stops at 6')
+assert(nrec('add|prevpage|') == 0, 'no Previous on first page')
+assert(nrec('add|nextpage|') == 1, 'Next on first page')
 assert(nrec('add|back|') == 1, 'palette back row')
 assert(#setter_log == 0, 'opening palette writes nothing')
 -- the current swatch (#00E000 = swatch 10) carries the ' *' mark, but only on
 -- the page that holds it (page 3 at 4/page). Runs BEFORE the pick below
 -- mutates the fixture.
 calls = {}
-Menu_Mods_PickColor('demo.config', 'accent', 5)
+Menu_Mods_PickColor('demo.config', 'accent', 2)
 local marked = false
 for _, c in ipairs(calls) do
   if c:find('setprop') and c:find('#00E000 *', 1, true) then marked = true end
@@ -207,19 +207,12 @@ Menu_Mods_PickColor('demo.config', 'accent', 1)
 for _, c in ipairs(calls) do
   if c:find('setprop') and c:find('#00E000 *', 1, true) then error('marked off its page') end
 end
--- last page: 4 tail swatches, More wraps to page 1, Back present.
+-- last page: Previous present, no Next, covers the tail.
 calls = {}
-Menu_Mods_PickColor('demo.config', 'accent', 8)
-assert(nrec('add|sw_15|') == 1 and nrec('add|sw_16|') == 1, 'page 8 tail')
+Menu_Mods_PickColor('demo.config', 'accent', 3)
+assert(nrec('add|sw_13|') == 1 and nrec('add|sw_16|') == 1, 'page 3 tail')
 assert(nrec('add|sw_17|') == 0, 'no row past the palette')
-assert(nrec('add|morepage|') == 1 and nrec('add|back|') == 1, 'More + Back on last page')
--- More cycles: page 4 wraps to page 1 (find the wrapped PickColor call).
-calls = {}
-Menu_Mods_PickColor('demo.config', 'accent', 4)
-local wraps = false
-for _, c in ipairs(calls) do
-  if c:find('Menu_Mods_PickColor', 1, true) and c:find(',1)', 1, true) then wraps = true end
-end
+assert(nrec('add|prevpage|') == 1 and nrec('add|nextpage|') == 0, 'Previous on last page, no Next')
 -- paint() is a NO-OP until a property has been proven by the probe: spraying
 -- unknown property names at every label during a screen build killed the game
 -- mid-menu in-game 2026-10-02. So with no probe run, NO colour property is ever
@@ -240,7 +233,7 @@ Menu_Mods_PickColor('demo.config', 'accent', 1)
 -- the in-game-proven name. The shipped mod must theme the menu with no debug
 -- flag present - it used to depend on config/probe-props existing.
 local base0, state0 = color_props(calls)
-assert(base0 == 6, 'two statics x two passes + two buttons themed once, got ' .. base0)
+assert(base0 == 0, 'no Text Color paints in-Populate (accent theming only via setlabel), got ' .. base0)
 -- run the probe against a real label clone (TTMOD_PROBE_PROPS arms it)
 calls = {}
 TTMOD_PROBE_PROPS = 1
@@ -264,12 +257,20 @@ TTMOD_PROBE_PROPS = nil
 calls = {}
 Menu_Mods_PickColor('demo.config', 'accent', 1)
 local painted_base, painted_states = color_props(calls)
-assert(painted_base == 6, 'same paints land after the probe too, got ' .. painted_base)
-assert(painted_states >= 4, 'state variants painted too, got ' .. painted_states)
+assert(painted_base == 0, 'no extra Text Color paints after the probe either, got ' .. painted_base)
+assert(painted_states >= 0, 'state variants painted too, got ' .. painted_states)
+-- Post-push Light Color Diffuse writes: 6 per page (the decompiled render
+-- path - per-button material colour attempt).
+local lcd = 0
+for _, c in ipairs(calls) do
+  if c:sub(1, 7) == 'setprop' and c:find('|Light Color Diffuse|', 1, true) then lcd = lcd + 1 end
+end
+assert(lcd >= 6, 'six Light Color Diffuse writes post-push, got ' .. lcd)
 for _, c in ipairs(calls) do
   if c:sub(1, 7) == 'setprop' and not c:find('Text String', 1, true) then
-    assert(c:find('|Text Color', 1, true) or c:find('|Selection Color|', 1, true),
-      'only proven properties painted: ' .. c)
+    assert(c:find('|Text Color', 1, true) or c:find('|Selection Color|', 1, true) or
+      c:find('|Light Color Diffuse|', 1, true) or c:find('|Light Color Specular|', 1, true),
+      'only proven or decompiled-render properties painted: ' .. c)
   end
 end
 -- The read-only sweep must discover colour properties WITHOUT any debug flag:
@@ -436,22 +437,19 @@ assert(TT_PALETTE == '1', 'picker re-opens the gate on push')
 TT_PALETTE = nil
 Menu_Pop()
 assert(TT_PALETTE == '0', 'Menu_Pop wrapper clears the gate')
--- STATIC swatch displays carry their colours (2/page: #FFFFFF, #C0C0C0 on
--- page 1); the pick buttons beside them are accent. Static Headers are
--- never selected, so the select/deselect/restore cycle cannot touch them.
--- Last static on page 1 is #C0C0C0 (all channels 192/255, distinct from
--- the #FF8000 accent and the 0.878 template).
+-- Palette rows carry accent (per-row material colours proven
+-- impossible); the hex code text identifies each colour.
 TTMOD_ACCENT = '#FF8000'
 TTMOD_THEME_SCOPE = 'all'
-local swd = nil
-for i = #TT_TC_ALL, 1, -1 do
-  if tostring(TT_TC_ALL[i].of):sub(1, 4) == 'swd_' then swd = TT_TC_ALL[i] break end
+local sw_any = nil
+for _, a in ipairs(TT_TC_ALL) do
+  if tostring(a.of):sub(1, 3) == 'sw_' then sw_any = a break end
 end
-assert(swd ~= nil, 'palette static display captured')
-local swdk = tostring(swd.of) .. '/' .. (swd.clone or '') .. '/Text Color'
-assert(_color[swdk] ~= nil and math.abs(_color[swdk].r - (192 / 255)) < 1e-6 and
-  math.abs(_color[swdk].g - (192 / 255)) < 1e-6,
-  'static display painted its swatch colour (#C0C0C0), not the accent')
+assert(sw_any ~= nil, 'palette rows themed')
+local swk = tostring(sw_any.of) .. '/' .. (sw_any.clone or '') .. '/Text Color'
+assert(type(_color[swk]) == 'table' and _color[swk].r == 1 and
+  math.abs(_color[swk].g - (128 / 255)) < 1e-6,
+  'palette row carries the ACCENT, not a per-row colour')
 -- theme_roll: the hover fix, end to end. The stub models the engine: hover
 -- writes white, unhover restores stock gray, both bypassing the
 -- AgentSetProperty global. The wrapper must repaint accent either way.
