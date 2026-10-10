@@ -64,21 +64,22 @@ the engine's GLOBAL DEFAULT-COLOUR REGISTER. Three consumers, all proven:
   restart. Blacking it turned the whole menu black (multiplication);
   whiting it made restores stick white.
 
-**White-restore suppression on the picker (2026-10-10).** The "impossible"
-conclusion above was wrong: it assumed the restore had to be outlasted or
-out-read, but the scol hook only ever sees COLOUR writes (it is the colour
-setter) - so while the picker's gate is open, white writes can simply be
-DROPPED before they reach the engine, and the shared light struct is never
-written. Saturated paints, blacks, and the Lua wrapper's own preserve path
-are untouched; the register stays white for the whole visit (boolean gate,
-no phases) and goes back to the accent on close. This cannot break layout,
-positions, or structure - no such writes exist at this hook - and with no
-accent configured the gate is inert (stock behaviour). Log marker:
-`scol-suppress:` (capped at 60). If rows still stick white with
-suppression firing, the restore bypasses scol entirely (scalar/direct
-path) and the log distinguishes the two outcomes. Accepted edge: a
-`#FFFFFF` swatch painted through this hook is suppressed like any white
-write (it still picks fine).
+**Static swatch displays + accent pick rows (2026-10-10).** The
+suppression build proved its own negative: zero white scol writes arrived
+during the entire picker visit (suppress counter stayed 0), yet rows still
+turned white - the unhover restore bypasses scol 100% (scalar/direct
+path), and no rollover event of any kind fires in Lua. Chasing the restore
+is over: the palette sidesteps it instead. Each colour is now TWO rows: a
+static Header painted the swatch colour, and an accent ListButton beside
+it that performs the pick. Static rows can never gain selection focus, so
+they are never hover-flooded, never deselected, and never restored - the
+three native-direct paths that destroy per-row colours on buttons. Once
+painted (post-push, past the realization pass), a static row keeps its
+colour permanently. Pick buttons are accent-on-accent (hover-safe by
+construction); hex codes plus `' *'` identify colours on both rows.
+4 colours per page (8 rows) + cycling More + Back = 10 rows, the
+proven-rendered capacity. The gate, the white register, and the scol
+redirect stay as defense in depth (zero cost when no traffic flows).
 
 ## Proven behaviour (screenshot-verified)
 

@@ -1405,15 +1405,17 @@ end
 -- rather than computed: a computed grid needs RGB math in the game's Lua and
 -- gives worse-looking results than these.
 -- ponytail: fixed 16-swatch list. The engine renders a FIXED number of
--- ListButton rows per menu; rows past that are added but render blank, so the
--- palette is paginated by TT_COLOR_PAGE to stay inside the measured capacity.
+-- rows per menu (10 proven: the old 6-swatch + nav + title palette); rows
+-- past that are added but render blank. Each colour now needs TWO rows (a
+-- static Header display, immune to select/deselect, plus its pick button),
+-- so 4 colours (8 rows) + More + Back = 10 fit exactly.
 local TT_COLOR_SWATCHES = {
     '#FFFFFF', '#C0C0C0', '#808080', '#404040',
     '#FFE0A0', '#FFB000', '#FF8000', '#C04000',
     '#C0FFA0', '#00E000', '#008000', '#004000',
     '#A0C0FF', '#0080FF', '#0000C0', '#000040',
 }
-local TT_COLOR_PAGE = 6
+local TT_COLOR_PAGE = 4
 
 local function is_hex(s)
     return type(s) == 'string' and s:match('^#%x%x%x%x%x%x$') ~= nil
@@ -1449,40 +1451,43 @@ function Menu_Mods_PickColor(id, key, page)
     -- 0.878). Repainting AFTER Menu_Push lands on the final, stable widget
     -- state - the same state the accent holds on every other screen.
     local painted = {}
+    local total_pages = math.max(1, math.ceil(#TT_COLOR_SWATCHES / TT_COLOR_PAGE))
+    if page < 1 then page = 1 end
+    if page > total_pages then page = total_pages end
     menu.Populate = function(self)
-        local h = Menu_Add(Header, nil, 'header_settings')
-        setlabel(h, tostring(key) .. ' color')
         local first = (page - 1) * TT_COLOR_PAGE + 1
         local last = first + TT_COLOR_PAGE - 1
         if last > #TT_COLOR_SWATCHES then last = #TT_COLOR_SWATCHES end
         for i = first, last do
             local hex = TT_COLOR_SWATCHES[i]
             local mark = (hex == cur) and ' *' or ''
+            -- STATIC swatch display: a Header (non-interactive text) painted
+            -- the swatch colour. Static rows can never gain selection focus,
+            -- so they are never hover-flooded, never deselected, and never
+            -- restored - the three native-direct paths that destroy
+            -- per-row colours on ListButtons (proven: zero scol/Lua traffic
+            -- on picker hover, yet rows turned white). Once painted, a
+            -- static row keeps its colour permanently. The PICK action lives
+            -- on the accent button row below it (hover-safe by
+            -- construction: accent onto accent).
+            local d = Menu_Add(Header, 'swd_' .. tostring(i), 'label_OK')
+            local dlab = setlabel(d, hex .. mark)
+            paint(dlab, hex)
+            painted[#painted + 1] = { dlab, d, hex }
+            -- Pick button: accent text (setlabel themes it), safe under
+            -- hover by construction. Hex + mark identify the colour.
             local r = Menu_Add(ListButton, 'sw_' .. tostring(i), 'label_OK',
                 'Menu_Mods_SetColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '","' ..
                 hex .. '")')
-            -- Paint the swatch colour on the row's LABEL and its BUTTON
-            -- agent. The engine renders a selected row from the button's
-            -- colour slots, and TTMOD_THEME_WIDGET paints that button accent
-            -- at Menu_Add time - so painting only the label leaves the
-            -- selected-state render sourced from accent.
-            local lab = setlabel(r, hex .. mark)
-            paint(lab, hex)
-            if r ~= nil and r.agent ~= nil then paint(r.agent, hex) end
-            painted[#painted + 1] = { lab, r, hex }
+            setlabel(r, hex .. mark .. ' (pick)')
+            painted[#painted + 1] = { nil, r, nil }
         end
-        if page > 1 then
-            local p = Menu_Add(ListButton, 'prevpage', 'label_OK',
-                'Menu_Mods_PickColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '",' ..
-                tostring(page - 1) .. ')')
-            setlabel(p, '<< Previous')
-        end
-        if last < #TT_COLOR_SWATCHES then
-            local p = Menu_Add(ListButton, 'nextpage', 'label_OK',
-                'Menu_Mods_PickColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '",' ..
-                tostring(page + 1) .. ')')
-            setlabel(p, 'Next >>')
-        end
+        -- Page nav: one cycling More button + Back = 2 nav rows, so 4
+        -- colours (8 rows) + 2 nav = 10 rows, the proven-rendered capacity.
+        local np = Menu_Add(ListButton, 'morepage', 'label_OK',
+            'Menu_Mods_PickColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '",' ..
+            tostring(page % total_pages + 1) .. ')')
+        setlabel(np, 'More colours (' .. tostring(page) .. '/' .. tostring(total_pages) .. ')')
         local b = Menu_Add(ListButton, 'back', 'label_OK', 'Menu_Pop()')
         setlabel(b, 'Back')
         mlog('populate: color grid done')
@@ -1504,9 +1509,17 @@ function Menu_Mods_PickColor(id, key, page)
     -- whole visit (no phase-2): unhover restores are suppressed natively,
     -- so nothing rewrites the rows after this lands.
     for _, e in ipairs(painted) do
-        if e[1] ~= nil then paint(e[1], e[3]) end
-        local ag = (e[2] ~= nil and e[2].agent ~= nil) and e[2].agent or e[2]
-        if ag ~= nil then paint(ag, e[3]) end
+        if e[3] ~= nil then
+            -- Static display: repaint the swatch colour (immune rows, but
+            -- the realization pass overwrote the Populate paint).
+            if e[1] ~= nil then paint(e[1], e[3]) end
+            local ag = (e[2] ~= nil and e[2].agent ~= nil) and e[2].agent or e[2]
+            if ag ~= nil then paint(ag, e[3]) end
+        else
+            -- Pick button: re-apply the accent theming (same overwrite).
+            local ag = (e[2] ~= nil and e[2].agent ~= nil) and e[2].agent or e[2]
+            if ag ~= nil then apply_theme(ag) end
+        end
     end
     -- Post-push read-back (bounded: 6 lines per push): proves the repaint
     -- landed. want=read on every row means the rest state is correct;
