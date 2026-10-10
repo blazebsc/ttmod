@@ -64,15 +64,21 @@ the engine's GLOBAL DEFAULT-COLOUR REGISTER. Three consumers, all proven:
   restart. Blacking it turned the whole menu black (multiplication);
   whiting it made restores stick white.
 
-**Per-row palette preview colours are therefore impossible, by engine
-design**: a preview survives exactly until the first unhover, because the
-restore rewrites the row to the one global register. The picker ships
-accent-painted rows (hex codes + `' *'` identify colours) and phases the
-register: WHITE while its rows are built (identity creation light), back
-to the ACCENT once built - so the restore rewrites accent onto
-accent-painted rows and the revert is invisible. `ttmod_menu_palette`
-carries the phases ('1' build / '2' built / '0' closed); the
-`Menu_Pop` wrapper and every other screen builder clear the gate.
+**White-restore suppression on the picker (2026-10-10).** The "impossible"
+conclusion above was wrong: it assumed the restore had to be outlasted or
+out-read, but the scol hook only ever sees COLOUR writes (it is the colour
+setter) - so while the picker's gate is open, white writes can simply be
+DROPPED before they reach the engine, and the shared light struct is never
+written. Saturated paints, blacks, and the Lua wrapper's own preserve path
+are untouched; the register stays white for the whole visit (boolean gate,
+no phases) and goes back to the accent on close. This cannot break layout,
+positions, or structure - no such writes exist at this hook - and with no
+accent configured the gate is inert (stock behaviour). Log marker:
+`scol-suppress:` (capped at 60). If rows still stick white with
+suppression firing, the restore bypasses scol entirely (scalar/direct
+path) and the log distinguishes the two outcomes. Accepted edge: a
+`#FFFFFF` swatch painted through this hook is suppressed like any white
+write (it still picks fine).
 
 ## Proven behaviour (screenshot-verified)
 
