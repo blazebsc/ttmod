@@ -447,27 +447,13 @@ static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* col
         // Suppression is logged (capped) so the log proves it fires; if rows
         // still stick white with suppression firing, the restore bypasses
         // scol entirely (scalar/direct path) and that is a different fix.
-        if (haveAcc && menumods_palette_open()) {
-            bool sub = ttmod::should_substitute(c[0], c[1], c[2]);
-            if (sub) {
-                static volatile LONG suppress_hits = 0;
-                LONG sn = InterlockedIncrement(&suppress_hits);
-                if (sn <= 60) emit("scol-suppress: white write dropped on picker");
-                return 0;
-            }
-        }
-        if (color == (void*)light_struct && menumods_palette_open()) {
-            // Belt and braces: with suppression active these writes never
-            // reach here - but if one does (e.g. non-substitutable light
-            // value), redirect it to a white copy rather than letting the
-            // shared struct through, and log (capped).
-            static volatile LONG glow_hits = 0;
-            LONG gn = InterlockedIncrement(&glow_hits);
-            if (gn <= 40) emit("scol-glow: light write whited on picker");
-            float glow_white[4] = {1.0f, 1.0f, 1.0f, c[3]};
-            if (g_origScol) return g_origScol(self, desc, glow_white, flag);
-            return 0;
-        }
+        // DECOMPILED: the material rebuild (FUN_00698310) writes Light
+        // Color Diffuse/Specular from the register through THIS hook. The
+        // register stays at the ACCENT on the picker (see
+        // lua_bridge_set_light_palette), so the rebuild writes accent into
+        // the pick buttons = correct. Statics render through Text Color and
+        // never see these writes. No interception needed - the register
+        // value IS the fix.
         bool sub = haveAcc && ttmod::should_substitute(c[0], c[1], c[2]);
         if (sub) {
             LONG n = InterlockedIncrement(&g_scolBsub);
@@ -621,27 +607,26 @@ static DWORD WINAPI late_hook_thread(LPVOID p) {
 } // namespace
 
 void lua_bridge_set_light_palette(bool white_phase) {
-    // Boolean: true = white register for the whole picker visit (the
-    // unhover restore is suppressed while the gate is open, so the
-    // register never needs to match accent-painted rows - there is no
-    // phase-2 any more).
+    // DECOMPILED MODEL (Ghidra, 2026-10-11): FUN_00698310 rebuilds a
+    // widget's full PropertySet on every state change (hover/unhover),
+    // calling the material styler FUN_00697a60 for all 14 states, which
+    // writes 'Light Color Diffuse/Specular' = THIS REGISTER into every
+    // button material. The VISIBLE button colour IS that material
+    // property - Text Color is a separate render path (statics/labels).
+    // Whiting the register made every button rebuild white (proven
+    // in-game); the register must stay the ACCENT on the picker so
+    // buttons rebuild as accent = correct. Statics render through Text
+    // Color and are unaffected.
+    (void)white_phase; // single behaviour now: always the theme colour
     float* light = scol_light_struct();
     if (!light) return;
-    if (white_phase) {
-        // WHITE (identity): rows render exactly what they are painted.
-        light[0] = light[1] = light[2] = 1.0f;
+    float acc[3] = {};
+    if (scol_accent(acc)) {
+        light[0] = acc[0];
+        light[1] = acc[1];
+        light[2] = acc[2];
     } else {
-        // Accent when themed, stock white otherwise. This is also where the
-        // register is (re)poisoned for every non-picker screen, so the
-        // accent-everywhere theme behaves exactly as it always has.
-        float acc[3] = {};
-        if (scol_accent(acc)) {
-            light[0] = acc[0];
-            light[1] = acc[1];
-            light[2] = acc[2];
-        } else {
-            light[0] = light[1] = light[2] = 1.0f;
-        }
+        light[0] = light[1] = light[2] = 1.0f;
     }
     light[3] = 1.0f;
 }
