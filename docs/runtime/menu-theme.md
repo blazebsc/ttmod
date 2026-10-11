@@ -213,6 +213,8 @@ Back never had a chance.
   The aliased-mode suite driver (shared-table stubs + stub return
   stack that re-populates on reveal) pins the whole design: bare pops
   reveal details rows, then list rows, then empty - on ONE table.
+  **CONFIRMED IN-GAME (user session, 2026-10-11): "it works nice"** -
+  Back lands on the previous screen first press, including ESC.
 
 - **`Menu_Pop` yields on lock** (still true, kept): `Menu_Pop` (game
   Menu.lua) starts with `while Menu_StackMemberLocked() do Yield() end`;
