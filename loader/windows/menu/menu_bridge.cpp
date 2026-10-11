@@ -212,26 +212,27 @@ static int __cdecl fn_log(lua_State* L) {
 
 // ttmod_menu_palette("1"/"0"): the colour picker tells native code it is the
 // active screen. The engine's hover GLOW re-applies its global light colour
-// (a static struct, see kScolLightStructRva) to whichever row is selected,
-// washing out any per-row colour - proven by decompiling the two flood call
-// sites (they write 'Light Color Diffuse'/'Light Color Specular' from that
-// static). While the picker is up, the scol hook redirects those writes to a
-// black copy so the swatch colours stay pure; every other screen keeps the
-// accent glow untouched. Set on push, cleared by the Menu_Pop wrapper and by
-// every other screen builder in our chunk (belt and braces against a missed
-// pop).
+// (a static struct, see kScolLightStructRva) to whichever row is selected.
+// While the picker is up, the register is WHITE (identity) and the scol
+// hook skips the accent substitution for that window, so markup swatch
+// labels render TRUE colours on stock-looking chrome; every other screen
+// keeps the accent glow untouched. Set on push, cleared by the Menu_Pop
+// wrapper and by every other screen builder in our chunk (belt and
+// braces against a missed pop).
 static volatile LONG g_palette_open = 0;
 static int __cdecl fn_palette(lua_State* L) {
     const char* s = g_tolstring ? g_tolstring(L, 1, nullptr) : nullptr;
-    // Boolean gate: '1' = picker open (white register + suppress white
-    // restores, so swatch colours survive hover AND unhover), anything
-    // else = closed (accent register, normal substitution). There is no
-    // phase-2: the register stays white for the whole visit because the
-    // unhover restore is suppressed, not outlasted.
+    // Boolean gate: '1' = picker open (register WHITE = identity - glyph
+    // render is markup x material light, proven in-game 2026-10-11, so
+    // identity shows true swatch colours - and scol accent-substitution
+    // off for the same window). Anything else = closed (accent register,
+    // normal substitution). No phase-2: the register stays white for the
+    // whole visit; the picker's materials die with its screen and the
+    // close path restores the accent.
     LONG v = (s && s[0] == '1') ? 1 : 0;
     InterlockedExchange(&g_palette_open, v);
     ttmod_win::lua_bridge_set_light_palette(v != 0);
-    emit(v ? "palette: gate open (white register, restores suppressed)"
+    emit(v ? "palette: gate open (white register, substitution off)"
            : "palette: gate closed (accent register, normal)");
     return 0;
 }

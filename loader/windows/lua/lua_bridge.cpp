@@ -407,6 +407,11 @@ static bool scol_accent(float* out) {
 }
 static volatile LONG g_scolBsub = 0;
 static volatile LONG g_scolKeep = 0;
+// Picker gate mirror: set by lua_bridge_set_light_palette(true) - the ONLY
+// gate driver is the ttmod_menu_palette Lua entry point. While set, the
+// global register is WHITE (identity) and hook_scol skips the accent
+// substitution (see there).
+static volatile LONG g_palette_white = 0;
 
 static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* color, int flag) {
     // THE REAL MECHANISM (found by decompiling the flood call sites
@@ -414,14 +419,11 @@ static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* col
     // engine's hover GLOW system writing 'Light Color Diffuse' and
     // 'Light Color Specular' from ONE static struct (kScolLightStructRva,
     // stock white) onto whichever row is selected. The substituted accent
-    // in that struct is the entire accent-on-hover theme; the same write
-    // washes a palette swatch's per-row colour while the row stays
-    // selected. The struct is shared process-wide, so per-row glow values
-    // are impossible - but the WRITE is recognizable by pointer, and the
-    // colour picker tells us (via ttmod_menu_palette) when its screen is
-    // up. On the picker, redirect those writes to a BLACK copy: the glow
-    // adds nothing, the swatch colours stay pure, and the shared struct is
-    // never touched (copy, not in-place). Everywhere else the accent glow
+    // in that struct is the entire accent-on-hover theme. The struct is
+    // shared process-wide, so per-row glow values are impossible - the
+    // colour picker instead flips the REGISTER itself to white for its
+    // whole visit (see lua_bridge_set_light_palette) and this hook skips
+    // the substitution for that window. Everywhere else the accent glow
     // behaves exactly as it always has.
     float* c = (float*)color;
     if (color && desc) {
@@ -432,29 +434,21 @@ static int __attribute__((thiscall)) hook_scol(void* self, void* desc, void* col
         }();
         float acc[3] = {};
         bool haveAcc = scol_accent(acc);
-        // Picker gate (boolean): while the colour picker is open AND an
-        // accent is configured, white scol writes are SUPPRESSED (dropped,
-        // never reach the engine) and the shared light struct is never
-        // written. Rationale: the unhover restore rewrites deselected rows
-        // to white, and the hover flood re-applies the shared struct - both
-        // destroy per-row swatch colours, and both are white while the gate
-        // is open. Dropping them leaves rows exactly as painted. Saturated
-        // paints, blacks, and everything else pass through untouched, and
-        // the Lua wrapper still preserves/restores on its own path. The
-        // scol hook only ever sees COLOUR writes (it is the colour setter),
-        // so suppression cannot break layout, positions, or structure - and
-        // with no accent configured the gate is inert (stock behaviour).
-        // Suppression is logged (capped) so the log proves it fires; if rows
-        // still stick white with suppression firing, the restore bypasses
-        // scol entirely (scalar/direct path) and that is a different fix.
         // DECOMPILED: the material rebuild (FUN_00698310) writes Light
         // Color Diffuse/Specular from the register through THIS hook. The
-        // register stays at the ACCENT on the picker (see
-        // lua_bridge_set_light_palette), so the rebuild writes accent into
-        // the pick buttons = correct. Statics render through Text Color and
-        // never see these writes. No interception needed - the register
-        // value IS the fix.
-        bool sub = haveAcc && ttmod::should_substitute(c[0], c[1], c[2]);
+        // GLYPH render is markup-colour x material light (proven in-game
+        // 2026-10-11: with the register at the green accent, every
+        // markup-coloured picker label rendered as a green shade - the
+        // exact multiplication the register performs). So while the picker
+        // gate is open (register WHITE = identity), the rebuild's white
+        // writes must stay white: substituting the accent here would
+        // re-tint both the chrome and every swatch label back to the
+        // accent family. Skipping the substitution makes the picker render
+        // exactly like a stock screen (white light on the authored
+        // textures) while the labels' ^color:#rrggbb^ markup shows TRUE
+        // colours. Outside the picker, the substitution IS the
+        // accent-on-hover theme, unchanged.
+        bool sub = haveAcc && !g_palette_white && ttmod::should_substitute(c[0], c[1], c[2]);
         if (sub) {
             LONG n = InterlockedIncrement(&g_scolBsub);
             if (n <= 400) {
@@ -611,17 +605,21 @@ void lua_bridge_set_light_palette(bool white_phase) {
     // widget's full PropertySet on every state change (hover/unhover),
     // calling the material styler FUN_00697a60 for all 14 states, which
     // writes 'Light Color Diffuse/Specular' = THIS REGISTER into every
-    // button material. The VISIBLE button colour IS that material
-    // property - Text Color is a separate render path (statics/labels).
-    // Whiting the register made every button rebuild white (proven
-    // in-game); the register must stay the ACCENT on the picker so
-    // buttons rebuild as accent = correct. Statics render through Text
-    // Color and are unaffected.
-    (void)white_phase; // single behaviour now: always the theme colour
+    // button material. Glyph render is markup-colour x material light:
+    // proven in-game 2026-10-11 - with the register at the green accent,
+    // every markup-coloured picker label rendered as a green shade.
+    // White_phase (colour picker open): register = WHITE (identity).
+    // Chrome rebuilds exactly like a stock screen, and the labels'
+    // ^color:#rrggbb^ markup shows TRUE swatch colours. hook_scol skips
+    // the accent substitution for the same window, or the white rebuild
+    // writes would re-tint chrome and glyphs back to the accent family.
+    // Closed: register back to the accent (stock white when no accent
+    // is configured); the picker's materials die with its screen.
+    InterlockedExchange(&g_palette_white, white_phase ? 1 : 0);
     float* light = scol_light_struct();
     if (!light) return;
     float acc[3] = {};
-    if (scol_accent(acc)) {
+    if (!white_phase && scol_accent(acc)) {
         light[0] = acc[0];
         light[1] = acc[1];
         light[2] = acc[2];

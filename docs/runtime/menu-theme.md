@@ -72,8 +72,8 @@ path), and no rollover event of any kind fires in Lua. Per-row MATERIAL
 colour is closed conclusively (see the proof chain below). The palette now
 ships as 16 swatches, 6 per page (3 pages) of one pick button each, plus
 Next/Previous and Back - 8 rows, the proven-rendered capacity. The gate,
-the white register, and the scol redirect stay as defense in depth (zero
-cost when no traffic flows).
+the white register, and the substitution skip stay as defense in depth
+(zero cost when no traffic flows).
 
 **Per-row TEXT colour via the engine's own markup (2026-10-11).** The
 game's own UI scripts - decrypted from `MCSM_pc_Menu_data.ttarch2` (70
@@ -90,21 +90,37 @@ AgentSetProperty('ui_stats_statDescription', 'Text String',
 
 The text renderer parses `^color:#rrggbb^ ... ^^` inside `Text String` -
 a render-layer feature entirely separate from the material path, so it
-should survive every hover/unhover material rebuild (the string is never
-rewritten). The picker now uses the game's exact idiom: each swatch
-row's hex label would render IN that swatch's colour
+survives every hover/unhover material rebuild (the string is never
+rewritten). The picker uses the game's exact idiom: each swatch row's
+hex label renders IN that swatch's colour
 (`setlabel(r, '^color:' .. hex:lower() .. '^' .. hex .. mark .. '^^', true)`).
 The label is passed raw - the game bypasses `EscapeText2` for markup
-strings, and escaping would eat the `^` tags. The button chrome still
-renders from the global register (accent); the glyphs would be the
-swatch. Picking still re-themes the whole menu instantly.
-**DO NOT CLAIM DONE: markup rendering on `ui_listButton_button` label
-clones is unverified in-game** - the game proves the mechanism on
-`ui_stats_statDescription`, a different label agent; our row labels must
-be eyeballed in a real session. The deterministic suite proves only that
-the markup string lands in `Text String`. If row labels turn out not to
-parse markup, the fallback is the pre-2026-10-11 state: plain hex-code
-labels, accent rows.
+strings, and escaping would eat the `^` tags.
+
+**Markup rendering CONFIRMED in-game (2026-10-11, user session).** Every
+picker label rendered a DIFFERENT shade - per-row colour works - but all
+shades were GREEN: the glyph render is `markup colour x material light`,
+and the material light is the global register, which the 10-11 build
+still held at the (green) accent during the picker. Hover changed
+nothing (the string drives glyphs, material rebuilds never touch it) -
+exactly the multiplication model the decompile predicted.
+
+**White register during the picker (2026-10-11, second build).** The
+fix for the green tint: `lua_bridge_set_light_palette` now HONORS its
+`white_phase` argument - gate open writes WHITE (identity) to the
+register (`kScolLightStructRva`), gate close restores the accent. White
+is what the STOCK game runs (stock register is 1,1,1,1), so the picker
+chrome renders stock while markup labels show TRUE colours.
+`hook_scol` skips the near-white->accent substitution for the same
+window: the rebuild's white Light Color writes must stay white, or the
+substitution would re-tint chrome and glyphs back to the accent family
+(the exact reported bug). On close, the picker's materials die with its
+screen and the accent returns everywhere else. The old "white proved
+destructive" note was pre-gate (ungated whiting stuck restores white
+menu-wide); the gate + skip contains the white window to the picker
+visit. **DO NOT CLAIM DONE: true-colour swatches on a white-register
+picker are pending in-game verification** - the green-shades session
+proved markup + multiplication, not the white window yet.
 
 **Per-row material impossibility - final proof chain (2026-10-11).**
 Every path closed by direct in-game or decompiled evidence:

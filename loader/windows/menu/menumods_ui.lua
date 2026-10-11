@@ -1496,10 +1496,14 @@ function Menu_Mods_PickColor(id, key, page)
     end
     -- Gate open BEFORE the push: the global default-colour register goes
     -- WHITE (identity) and stays white for the whole visit - there is no
-    -- phase-2. White restores are suppressed natively while the gate is
-    -- open, so the swatch colours painted here survive hover AND unhover.
-    -- Cleared by the Menu_Pop wrapper and by every other screen builder
-    -- below (register back to the accent, suppression off).
+    -- phase-2. Glyph render is markup x material light (proven in-game
+    -- 2026-10-11: with an accent register every swatch label rendered as
+    -- a shade of the accent), so identity is what shows the markup
+    -- colours TRUE. The native hook also skips the accent substitution
+    -- while the gate is open, or the white rebuild writes would re-tint
+    -- chrome and glyphs to the accent. Cleared by the Menu_Pop wrapper
+    -- and by every other screen builder below (register back to the
+    -- accent, substitution on).
     if ttmod_menu_palette ~= nil then pcall(ttmod_menu_palette, '1') end
     -- Own-build window: Populate runs synchronously inside Menu_Push
     -- (single thread), so everything painted here tags as 'own'.
@@ -1524,8 +1528,12 @@ function Menu_Mods_PickColor(id, key, page)
     --   markup in 'Text String' - the game's Menu_Stats.lua does exactly
     --   this on ui_stats_statDescription. Each swatch row's hex label
     --   renders in that swatch's colour (setlabel in Populate above). The
-    --   label glyphs, not the button chrome; picking still re-themes the
-    --   whole menu instantly.
+    --   glyph render multiplies by the material light (the global
+    --   register), CONFIRMED in-game 2026-10-11: with the register at the
+    --   green accent every label rendered as a green shade, stable across
+    --   hover. The gate therefore holds the register WHITE (identity) for
+    --   the whole picker visit, so labels show TRUE colours on
+    --   stock-looking chrome; picking still re-themes the whole menu.
     TTMOD_OWN_BUILD = nil
     mlog('color: pushed grid rows=' .. tostring(Menu_Mods_RowCount()) ..
          ' repainted=' .. tostring(#painted))
