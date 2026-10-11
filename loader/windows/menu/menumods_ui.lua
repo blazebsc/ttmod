@@ -601,6 +601,28 @@ local function theme_wrap_pop()
     end
     ttmod_pop_wrapped = true
 end
+-- Push twin of the pop diagnostic: logs kind/page of every pushed menu
+-- (2026-10-11: two rounds burned because pushes were invisible - the
+-- 'page replaced in place' line only ever meant 'pcall succeeded'
+-- while every page click pushed). Same install point and guard style.
+local function theme_wrap_push()
+    if ttmod_push_wrapped then return end
+    if type == nil or Menu_Push == nil then return end
+    if type(Menu_Push) ~= 'function' then return end
+    local orig = Menu_Push
+    Menu_Push = function(menu, ...)
+        pcall(function()
+            if menu ~= nil and type(menu) == 'table' then
+                mlog('push: kind=' .. tostring(menu.ttmod_kind) ..
+                     ' page=' .. tostring(menu.ttmod_page))
+            else
+                mlog('push: kind=<none>')
+            end
+        end)
+        return orig(menu, ...)
+    end
+    ttmod_push_wrapped = true
+end
 local function theme_wrap_asp()
     -- Load-safe: this file's top level must NEVER call globals. The chunk
     -- runs at lua_newstate capture, before the engine opens standard libs
@@ -1217,6 +1239,7 @@ end
 -- previous one has been populated and can finally be themed.
 function TTMOD_THEME_WIDGET(widget)
     theme_wrap_pop()
+    theme_wrap_push()
     theme_wrap_asp()
     theme_wrap_roll()
     theme_wrap_tc()
@@ -1468,6 +1491,34 @@ function Menu_Mods_PickColor(id, key, page)
     for _, c in ipairs(m.config or {}) do
         if tostring(c.key) == tostring(key) then cur = tostring(c.value) end
     end
+    local total_pages = math.max(1, math.ceil(#TT_COLOR_SWATCHES / TT_COLOR_PAGE))
+    if page < 1 then page = 1 end
+    if page > total_pages then page = total_pages end
+    -- Page turn on the LIVE picker: refresh in place - no create, no
+    -- push, no pop, no Replace. (2026-10-11, sixth build. The
+    -- Menu_Replace experiment is deleted: re-reading its body, when
+    -- existing==currentMenu the stack find misses and it falls into
+    -- Menu_Push - exactly our case - so every page click pushed and the
+    -- 'page replaced in place' log line only ever meant 'pcall
+    -- succeeded'. Two user round-trips burned on that misread.)
+    -- Menu_Refresh (game Menu.lua: input off, re-run the current menu's
+    -- Populate, chores-wait, input on) changes zero stack state.
+    -- Populate reads the page off the menu table (self.ttmod_page), set
+    -- here before refreshing. Missing global or a refresh error falls
+    -- back to the push path below.
+    local cur_menu = nil
+    pcall(function()
+        if Menu_GetCurrentMenu ~= nil then cur_menu = Menu_GetCurrentMenu() end
+    end)
+    if cur_menu ~= nil and type(cur_menu) == 'table' and
+        cur_menu.ttmod_kind == 'picker' and Menu_Refresh ~= nil then
+        cur_menu.ttmod_page = page
+        if pcall(Menu_Refresh) then
+            mlog('color: page refreshed in place page=' .. tostring(page))
+            return
+        end
+        mlog('color: refresh failed, falling back to push')
+    end
     local menu = Menu_Create(ListMenu, 'ui_menu_options')
     if menu == nil then mlog('color: create failed') return end
     menu.align = 'left'
@@ -1496,7 +1547,14 @@ function Menu_Mods_PickColor(id, key, page)
         -- rebuild writes would re-tint chrome and glyphs. Cleared by the
         -- Menu_Pop wrapper and by every other screen builder below.
         if ttmod_menu_palette ~= nil then pcall(ttmod_menu_palette, '1') end
-        local first = (page - 1) * TT_COLOR_PAGE + 1
+        -- The page lives on the menu table (self.ttmod_page), not the
+        -- closure upvalue: Menu_Refresh re-runs THIS Populate on the
+        -- live menu for page turns, and the table carries the new page.
+        local pg = page
+        if type(self) == 'table' and self.ttmod_page ~= nil then
+            pg = self.ttmod_page
+        end
+        local first = (pg - 1) * TT_COLOR_PAGE + 1
         local last = first + TT_COLOR_PAGE - 1
         if last > #TT_COLOR_SWATCHES then last = #TT_COLOR_SWATCHES end
         for i = first, last do
@@ -1524,16 +1582,16 @@ function Menu_Mods_PickColor(id, key, page)
         -- interleave across frames with the push and the next click.
         -- The game's own scripts never pop+push for sibling screens;
         -- they call Menu_Replace (pure show, no stack change).
-        if page > 1 then
+        if pg > 1 then
             local p = Menu_Add(ListButton, 'prevpage', 'label_OK',
                 'Menu_Mods_PickColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '",' ..
-                tostring(page - 1) .. ')')
+                tostring(pg - 1) .. ')')
             setlabel(p, '<< Previous')
         end
         if last < #TT_COLOR_SWATCHES then
             local p = Menu_Add(ListButton, 'nextpage', 'label_OK',
                 'Menu_Mods_PickColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '",' ..
-                tostring(page + 1) .. ')')
+                tostring(pg + 1) .. ')')
             setlabel(p, 'Next >>')
         end
         -- Back REBUILDS the details screen rather than relying on the
@@ -1552,38 +1610,18 @@ function Menu_Mods_PickColor(id, key, page)
         setlabel(b, 'Back')
         mlog('populate: color grid done')
     end
-    -- Tag the menu so a later PickColor can tell "the current screen is
-    -- one of our picker pages" via Menu_GetCurrentMenu() (the game's own
-    -- accessor; the raw currentMenu is an upvalue, invisible to us).
-    -- ttmod_kind is set by EVERY builder (menu tables are reused by the
-    -- engine, so absence of a tag is not proof of absence of a picker).
+    -- First open only: plain Menu_Push, so details stays the Back
+    -- target. (Page turns never reach here - they refresh in place
+    -- above.) Tag the menu: a later PickColor tells "the current screen
+    -- is one of our picker pages" via Menu_GetCurrentMenu(), and the
+    -- pop wrapper logs kind/page. ttmod_kind is set by EVERY builder
+    -- (menu tables are reused by the engine).
     menu.ttmod_kind = 'picker'
     menu.ttmod_page = page
     -- Own-build window: Populate runs synchronously inside Menu_Push
     -- (single thread), so everything painted here tags as 'own'.
     TTMOD_OWN_BUILD = true
-    -- Sibling page transition: when the CURRENT menu is already one of
-    -- our picker pages, use the game's own Menu_Replace(menu, existing)
-    -- (Menu.lua): with existing == currentMenu it degrades to a pure
-    -- Menu_Show - the new page replaces the old IN PLACE, the return
-    -- stack is untouched, and no pop runs in the click command at all.
-    -- First open (current = the details screen) keeps Menu_Push: details
-    -- stays as the Back target. If either primitive is missing, Push is
-    -- the safe fallback.
-    local cur_menu = nil
-    pcall(function()
-        if Menu_GetCurrentMenu ~= nil then cur_menu = Menu_GetCurrentMenu() end
-    end)
-    local shown = false
-    if cur_menu ~= nil and type(cur_menu) == 'table' and
-        cur_menu.ttmod_kind == 'picker' and cur_menu.ttmod_page ~= nil and
-        Menu_Replace ~= nil then
-        shown = pcall(Menu_Replace, menu, cur_menu)
-        if shown then mlog('color: page replaced in place') end
-    end
-    if not shown then
-        Menu_Push(menu)
-    end
+    Menu_Push(menu)
     TTMOD_OWN_BUILD = nil
     -- Per-row MATERIAL colour preview: CONCLUSIVELY IMPOSSIBLE (2026-10-11).
     -- Complete proof chain, each closed by direct evidence:

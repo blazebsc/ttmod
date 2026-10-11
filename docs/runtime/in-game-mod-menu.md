@@ -48,17 +48,18 @@ UI_ListButton.lua (decrypt+disasm pipeline below).
   revealed menu's rows). So: anything Populate must be true on every run
   (idempotent rows, fresh reads), and revealed screens rebuild
   themselves with whatever `Populate` reads.
-- MENU_POP YIELDS ON LOCK + MENU_REPLACE (2026-10-11, cost a second
-  user round-trip): `Menu_Pop` opens with
-  `while Menu_StackMemberLocked() do Yield() end`; the lock is an OR of
-  four flags including the transition flag `Menu_Show` holds and the
-  click's own press state. `'Menu_Pop();<builder>()'` in a button
-  command therefore suspends mid-command and completes LATE, its pop
-  interleaving with the push across frames. NEVER pop+push in one
-  click command. The game's own idiom for sibling screens is
-  `Menu_Replace(menu, existing)` - with existing == currentMenu it is a
-  pure in-place show, stack untouched, no pop at all (see menu-theme.md
-  for the shipped picker flow).
+- MENU_POP YIELDS ON LOCK (2026-10-11, cost two user round-trips):
+  `Menu_Pop` opens with `while Menu_StackMemberLocked() do Yield() end`;
+  the lock is an OR of four flags including the transition flag
+  `Menu_Show` holds and the click's own press state. `'Menu_Pop();
+  <builder>()'` in a button command therefore suspends mid-command and
+  completes LATE, its pop interleaving with the push across frames.
+  NEVER pop+push in one click command. NO Menu_Replace EITHER for the
+  current-menu case (it PUSHES when existing==currentMenu - stack find
+  misses; substitutes only buried entries). Sibling page-turns: set
+  state on the live menu table and call `Menu_Replace`-free
+  `Menu_Refresh()` - re-runs Populate in place, zero stack change (see
+  menu-theme.md; Populate must read per-show state off `self`).
 - Main menu build (Menu_Main.lua): `Menu_Create(ListMenu,'ui_menuMain',
   'ui_menuMain.scene')` (3 args), `menu.align='left'`, then Menu_Show.
 - Button labels (UI_ListButton.lua Initialize):

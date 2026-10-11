@@ -21,13 +21,12 @@ ListMenu, Header, ListButton = {}, {}, {}
 function Menu_Create(w, scene) rec('create', scene) return {scene = scene} end
 function Menu_Add(w, id, label, cb) rec('add', tostring(id), tostring(label), tostring(cb)) return {id = id, agent = {of = tostring(id)}} end
 -- Engine current-menu model (game Menu.lua semantics, simplified): the
--- visible menu; Push stacks it and shows the new one; Replace(menu,
--- existing) with existing == current is a pure in-place show.
+-- visible menu; Push stacks it and shows the new one; Refresh re-runs
+-- the current menu's Populate in place (input held, zero stack change).
 CURRENT_MENU = nil
 function Menu_GetCurrentMenu() return CURRENT_MENU end
-function Menu_Replace(m, existing) rec('replace', tostring(existing and existing.ttmod_page))
-  CURRENT_MENU = m
-  if m.Populate then m:Populate() end
+function Menu_Refresh() rec('refresh')
+  if CURRENT_MENU ~= nil and CURRENT_MENU.Populate then CURRENT_MENU:Populate() end
   return 1 end
 function Menu_Push(m) rec('push') CURRENT_MENU = m if m.Populate then m:Populate() end end
 function Menu_Pop() rec('pop') end
@@ -233,14 +232,15 @@ for _, c in ipairs(calls) do
   if c:find('setprop') and c:find('#00E000 *', 1, true) then marked = true end
 end
 assert(marked, 'current swatch marked on its page')
--- PAGE NAV IS A SIBLING TRANSITION (2026-10-11, second fix): the click
--- command must be PLAIN Menu_Mods_PickColor - no Menu_Pop. Menu_Pop
--- (game Menu.lua) spins on 'while Menu_StackMemberLocked() do Yield()
--- end', and the click's own press state sets one of those lock flags,
--- so a pop inside the command suspends and its effects interleave with
--- the push across frames (the stacked-pages + 3-4 Back presses bug).
--- PickColor instead calls the game's Menu_Replace when the current
--- screen is already a picker page (asserted below).
+-- PAGE TURNS REFRESH IN PLACE (2026-10-11, third fix): the click
+-- command is PLAIN Menu_Mods_PickColor - no Menu_Pop (a pop inside the
+-- command suspends on Menu_StackMemberLocked and completes late), and
+-- NO Menu_Replace either (re-reading its body: existing==currentMenu
+-- misses the stack find and falls into Menu_Push - every page click
+-- pushed; the 'replaced in place' log only ever meant pcall
+-- succeeded). PickColor calls the game's Menu_Refresh when the current
+-- screen is already a picker page: Populate re-runs on the live menu,
+-- zero stack change (asserted below).
 calls = {}
 Menu_Mods_PickColor('demo.config', 'accent', 2)
 local nav, navplain = 0, 0
@@ -254,16 +254,29 @@ end
 assert(nav == 2 and navplain == 2,
   'page nav is a plain PickColor command, no pop, got ' .. nav .. '/' .. navplain)
 -- FIRST open pushes (current = details, not a picker page); a page click
--- REPLACES in place (no push, no stack growth).
+-- REFRESHES the live picker (no push, no stack growth, Populate re-run
+-- reads the new page off the menu table).
 calls = {}
 CURRENT_MENU = { id = 'details' }
 Menu_Mods_PickColor('demo.config', 'accent', 1)
-assert(nrec('push') == 1 and nrec('replace') == 0, 'first open pushes over details')
+assert(nrec('push') == 1 and nrec('refresh') == 0, 'first open pushes over details')
 calls = {}
 Menu_Mods_PickColor('demo.config', 'accent', 2)
-assert(nrec('replace|1') == 1 and nrec('push') == 0,
-  'page click replaces the current picker page in place')
-assert(CURRENT_MENU ~= nil and CURRENT_MENU.ttmod_page == 2, 'replace made page 2 current')
+assert(nrec('refresh') == 1 and nrec('push') == 0,
+  'page click refreshes the live picker in place')
+assert(CURRENT_MENU ~= nil and CURRENT_MENU.ttmod_page == 2, 'refresh retagged page 2')
+local saw_p2 = false
+for _, c in ipairs(calls) do
+  if c:find('^setprop|sw_', 1) and c:find('#008000', 1, true) then saw_p2 = true end
+end
+assert(saw_p2, 'refreshed labels show page-2 swatches')
+-- fallback: Menu_Refresh missing -> push (stack grows, but the screen works)
+local real_refresh = Menu_Refresh
+Menu_Refresh = nil
+calls = {}
+Menu_Mods_PickColor('demo.config', 'accent', 3)
+assert(nrec('push') == 1 and nrec('refresh') == 0, 'missing Menu_Refresh falls back to push')
+Menu_Refresh = real_refresh
 calls = {}
 Menu_Mods_PickColor('demo.config', 'accent', 1)
 for _, c in ipairs(calls) do
