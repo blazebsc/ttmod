@@ -581,6 +581,21 @@ local function theme_wrap_pop()
     if type(Menu_Pop) ~= 'function' then return end
     local orig = Menu_Pop
     Menu_Pop = function(...)
+        -- Diagnostic (2026-10-11): which menu is current at each pop, so
+        -- the log shows the click-by-click stack walk. pcall-guarded:
+        -- Menu_GetCurrentMenu is the game's accessor (Menu.lua), present
+        -- on menu states.
+        pcall(function()
+            if Menu_GetCurrentMenu ~= nil then
+                local cm = Menu_GetCurrentMenu()
+                if cm ~= nil and type(cm) == 'table' then
+                    mlog('pop: cur=' .. tostring(cm.ttmod_kind) ..
+                         ' page=' .. tostring(cm.ttmod_page))
+                else
+                    mlog('pop: cur=<none>')
+                end
+            end
+        end)
         if ttmod_menu_palette ~= nil then pcall(ttmod_menu_palette, '0') end
         return orig(...)
     end
@@ -1324,6 +1339,12 @@ function Menu_Mods_Show()
     local data = ttmod_menu
     local menu = Menu_Create(ListMenu, 'ui_menu_options')
     if menu == nil then mlog('show: create failed') return end
+    -- Engine menu tables are REUSED across Menu_Create calls (proven
+    -- in-game 2026-10-11: the picker's ttmod_page tag survived into the
+    -- details menu, so the first picker open took the Replace path).
+    -- Every builder must un-tag: only the picker is ever a picker page.
+    menu.ttmod_page = nil
+    menu.ttmod_kind = 'list'
     menu.align = 'left'
     menu.background = {}
     menu.Populate = function(self)
@@ -1374,6 +1395,8 @@ function Menu_Mods_Select(id)
     end
     local menu = Menu_Create(ListMenu, 'ui_menu_options')
     if menu == nil then mlog('select: create failed') return end
+    menu.ttmod_page = nil
+    menu.ttmod_kind = 'details'
     menu.align = 'left'
     menu.background = {}
     menu.Populate = function(self)
@@ -1513,13 +1536,28 @@ function Menu_Mods_PickColor(id, key, page)
                 tostring(page + 1) .. ')')
             setlabel(p, 'Next >>')
         end
-        local b = Menu_Add(ListButton, 'back', 'label_OK', 'Menu_Pop()')
+        -- Back REBUILDS the details screen rather than relying on the
+        -- pop-reveal (2026-10-11, third user report: a bare pop still
+        -- needed 3-4 presses and overshot to main). Empirics from this
+        -- very feature: the PICK path - Menu_Pop();Menu_Pop();
+        -- Menu_Mods_Select(id) - lands on fresh details in one click,
+        -- every time, while the bare-pop Back never worked; the game's
+        -- own back commands also rebuild ('Menu_Pop();Menu_Hide();
+        -- Menu_Main()') instead of trusting the reveal. Revealed rows
+        -- re-populate (log-proven) but the revealed screen under the
+        -- cursor keeps eating the press - pop+rebuild sidesteps the
+        -- whole reveal machinery.
+        local b = Menu_Add(ListButton, 'back', 'label_OK',
+            'Menu_Mods_BackFromPicker("' .. cbquote(id) .. '")')
         setlabel(b, 'Back')
         mlog('populate: color grid done')
     end
     -- Tag the menu so a later PickColor can tell "the current screen is
     -- one of our picker pages" via Menu_GetCurrentMenu() (the game's own
     -- accessor; the raw currentMenu is an upvalue, invisible to us).
+    -- ttmod_kind is set by EVERY builder (menu tables are reused by the
+    -- engine, so absence of a tag is not proof of absence of a picker).
+    menu.ttmod_kind = 'picker'
     menu.ttmod_page = page
     -- Own-build window: Populate runs synchronously inside Menu_Push
     -- (single thread), so everything painted here tags as 'own'.
@@ -1538,7 +1576,8 @@ function Menu_Mods_PickColor(id, key, page)
     end)
     local shown = false
     if cur_menu ~= nil and type(cur_menu) == 'table' and
-        cur_menu.ttmod_page ~= nil and Menu_Replace ~= nil then
+        cur_menu.ttmod_kind == 'picker' and cur_menu.ttmod_page ~= nil and
+        Menu_Replace ~= nil then
         shown = pcall(Menu_Replace, menu, cur_menu)
         if shown then mlog('color: page replaced in place') end
     end
@@ -1573,6 +1612,17 @@ function Menu_Mods_PickColor(id, key, page)
     --   stock-looking chrome; picking still re-themes the whole menu.
     mlog('color: pushed grid rows=' .. tostring(Menu_Mods_RowCount()) ..
          ' repainted=' .. tostring(#painted))
+end
+
+function Menu_Mods_BackFromPicker(id)
+    -- The picker's Back: the pick path's proven tail, minus the value
+    -- write. Two pops (picker, stale details) then Select rebuilds fresh
+    -- details over the list. NEVER a bare pop here - see the Back row
+    -- comment in Menu_Mods_PickColor.
+    mlog('color: back to details ' .. tostring(id))
+    Menu_Pop()
+    Menu_Pop()
+    Menu_Mods_Select(id)
 end
 
 function Menu_Mods_SetColor(id, key, hex)
@@ -1666,10 +1716,12 @@ end
 do
     local want = { 'Menu_Mods', 'Menu_Mods_Show', 'Menu_Mods_Select',
         'Menu_Mods_PickColor', 'Menu_Mods_Toggle', 'Menu_Mods_Adjust',
-        'Menu_Mods_RowCount', 'TTMOD_THEME_WIDGET', 'TTMOD_THEME_WRAP' }
+        'Menu_Mods_BackFromPicker', 'Menu_Mods_RowCount',
+        'TTMOD_THEME_WIDGET', 'TTMOD_THEME_WRAP' }
     local have = { Menu_Mods, Menu_Mods_Show, Menu_Mods_Select,
         Menu_Mods_PickColor, Menu_Mods_Toggle, Menu_Mods_Adjust,
-        Menu_Mods_RowCount, TTMOD_THEME_WIDGET, TTMOD_THEME_WRAP }
+        Menu_Mods_BackFromPicker, Menu_Mods_RowCount,
+        TTMOD_THEME_WIDGET, TTMOD_THEME_WRAP }
     local n, missing = 0, nil
     for i = 1, #want do
         if have[i] ~= nil then n = n + 1

@@ -132,6 +132,32 @@ Consequences, both handled: the picker's gate-open moved INSIDE
 and screen replacement must mind that revealed screens rebuild
 themselves with whatever `Populate` reads.
 
+**Back = rebuild, never rely on the reveal (2026-10-11, fifth build).**
+The Replace fix was necessary (pages stopped stacking - the log shows
+`page replaced in place` on every click) but not sufficient: Back still
+needed 3-4 presses and overshot to main (third user report). The
+decisive empirical contrast, from this very feature: the PICK path -
+`Menu_Pop(); Menu_Pop(); Menu_Mods_Select(id)` - lands on fresh details
+in one click, every time, while the bare-pop Back (which trusts the
+engine to reveal the screen beneath) never worked once across three
+sessions. The game's own back commands agree: they REBUILD
+(`'Menu_Pop();Menu_Hide();Menu_Main()'`), never bare-pop. Revealed rows
+re-populate (log-proven) but the revealed screen evidently does not
+become a working, visible destination for our Lua-built screens.
+Shipped: the picker's Back is `Menu_Mods_BackFromPicker(id)` - the pick
+path's exact tail minus the value write. Same for the details screen's
+own Back if it ever shows the symptom (it has not: its row layout puts
+its Back where no revealed row collides).
+
+**Engine menu-table reuse (2026-10-11, log-proven).** `Menu_Create`
+hands back REUSED menu tables: the picker's `ttmod_page` tag survived
+into the details menu, so the picker's FIRST open took the Replace path
+and discarded details as the Back target. Every builder now un-tags
+(`ttmod_page = nil`, `ttmod_kind = 'list'/'details'/'picker'`), and the
+Replace check requires BOTH the picker kind and a page. The Menu_Pop
+wrapper logs the current menu's kind/page at every pop (`pop: cur=`),
+so any future stack weirdness reads directly from ttmod.log.
+
 **Menu-stack: the lock-yield model and Menu_Replace (2026-10-11, fourth
 build).** Back needing 3-4 presses and overshooting to the main menu had
 TWO rounds of fixes - the first (pop-before-push in the page command)

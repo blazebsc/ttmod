@@ -138,7 +138,7 @@ function nrec(p) local n = 0 for _, c in ipairs(calls) do if c:sub(1, #p) == p t
 -- entry points defined, or the log names the missing one.
 local selfok = false
 for _, c in ipairs(calls) do
-  if c == 'log|menumods: ui self-test defs=9/9' then selfok = true end
+  if c == 'log|menumods: ui self-test defs=10/10' then selfok = true end
 end
 assert(selfok, 'chunk self-test green at load')
 -- list screen
@@ -198,6 +198,30 @@ assert(nrec('add|sw_7|') == 0 and nrec('add|sw_16|') == 0, 'page 1 stops at 6')
 assert(nrec('add|prevpage|') == 0, 'no Previous on first page')
 assert(nrec('add|nextpage|') == 1, 'Next on first page')
 assert(nrec('add|back|') == 1, 'palette back row')
+-- the picker's Back REBUILDS details (the pick path's proven tail), it
+-- is NEVER a bare pop: bare-pop Back relied on the pop-reveal, which
+-- never visibly worked for our screens (3 user reports: 3-4 presses,
+-- overshoot to main). The game's own back commands also rebuild
+-- ('Menu_Pop();Menu_Hide();Menu_Main()').
+local backcb = nil
+for _, c in ipairs(calls) do
+  backcb = c:match('^add|back|[^|]*|(.*)$') or backcb
+end
+assert(backcb == 'Menu_Mods_BackFromPicker("demo.config")',
+  'back row rebuilds details, got ' .. tostring(backcb))
+-- BackFromPicker: two pops (picker, stale details) + Select rebuilds.
+-- Same stack math as the pick path (proven in-game); one press, one
+-- destination.
+calls = {}
+Menu_Mods_BackFromPicker('demo.config')
+assert(nrec('pop') == 2 and nrec('create|ui_menu_options') == 1,
+  'back = pop, pop, rebuild details')
+-- the rebuilt details is a tagged 'details' menu with NO picker page tag
+-- (engine menu tables are REUSED, so builders must un-tag or a later
+-- first-open takes the Replace path and discards details as the Back
+-- target - seen in the 2026-10-11 log).
+assert(CURRENT_MENU ~= nil and CURRENT_MENU.ttmod_kind == 'details' and
+  CURRENT_MENU.ttmod_page == nil, 'details rebuilt untagged')
 assert(#setter_log == 0, 'opening palette writes nothing')
 -- the current swatch (#00E000 = swatch 10) carries the ' *' mark, but only on
 -- the page that holds it (page 2 spans swatches 7-12 at 6/page). Runs BEFORE
