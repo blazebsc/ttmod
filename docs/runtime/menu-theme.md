@@ -118,9 +118,36 @@ substitution would re-tint chrome and glyphs back to the accent family
 screen and the accent returns everywhere else. The old "white proved
 destructive" note was pre-gate (ungated whiting stuck restores white
 menu-wide); the gate + skip contains the white window to the picker
-visit. **DO NOT CLAIM DONE: true-colour swatches on a white-register
-picker are pending in-game verification** - the green-shades session
-proved markup + multiplication, not the white window yet.
+visit. **CONFIRMED IN-GAME (user session, 2026-10-11): "the colour
+picker is now working nice"** - true-colour swatch labels on the
+white-register picker. The 11-path impossibility saga closes here:
+per-row material colour remains impossible, per-row TEXT colour is
+shipped and verified.
+
+**Reveal-repopulate (2026-10-11, log-proven).** The engine RE-RUNS a
+revealed screen's `menu.Populate` when a pop exposes it (log:
+`populate: color grid done` lines with no matching `color: pick`).
+Consequences, both handled: the picker's gate-open moved INSIDE
+`Populate` (a revealed picker re-opens the gate and keeps true colours),
+and screen replacement must mind that revealed screens rebuild
+themselves with whatever `Populate` reads.
+
+**Menu-stack fixes (2026-10-11, third build).** The same session
+reported Back needing 3-4 presses and overshooting to the main menu -
+two stack-growing bugs, both fixed with the game's own chained-command
+idiom (`'Menu_Pop();...'` in button commands):
+
+- Page nav (Next/Previous) pushed a SIBLING picker per visit without
+  popping; Back then popped every visited page - each an
+  identical-looking picker - before the screen beneath. Now
+  `Menu_Pop();Menu_Mods_PickColor(...)` replaces the page: the stack
+  stays [main, list, details, picker] through any amount of paging.
+- `Menu_Mods_SetColor` (a pick) popped once but pushed a fresh details
+  screen over the revealed stale one - leaving TWO details stacked.
+  Now it pops twice (picker + stale details) before `Menu_Mods_Select`
+  pushes the fresh screen. (`Toggle`/`EditString` correctly single-pop:
+  they run ON the details screen itself; `Select` never pops - details
+  must nest over the list.)
 
 **Per-row material impossibility - final proof chain (2026-10-11).**
 Every path closed by direct in-game or decompiled evidence:

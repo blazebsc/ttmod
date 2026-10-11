@@ -43,6 +43,15 @@ UI_ListButton.lua (decrypt+disasm pipeline below).
   `Menu_Push(menu)`. ROWS MUST BE ADDED INSIDE Populate: `Menu_Add`
   targets the CURRENT menu; adding before push lands rows on the old menu
   and the pushed screen renders empty (the blank-screen bug, fixed).
+- REVEAL-REPOPULATE (log-proven 2026-10-11): a pop that exposes a screen
+  RE-RUNS that screen's `menu.Populate` (the engine rebuilds the
+  revealed menu's rows). So: anything Populate must be true on every run
+  (idempotent rows, fresh reads), and screen replacement in one click
+  command (`'Menu_Pop();<builder>'`, the game's own idiom) transiently
+  re-populates the revealed screen before the new push - keep the
+  sequence pop-then-push, never push a sibling without popping
+  (stacked a picker per page visit; Back then popped every visited
+  page, 2026-10-11 in-game report).
 - Main menu build (Menu_Main.lua): `Menu_Create(ListMenu,'ui_menuMain',
   'ui_menuMain.scene')` (3 args), `menu.align='left'`, then Menu_Show.
 - Button labels (UI_ListButton.lua Initialize):

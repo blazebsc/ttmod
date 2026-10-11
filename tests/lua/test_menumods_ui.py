@@ -200,6 +200,22 @@ for _, c in ipairs(calls) do
   if c:find('setprop') and c:find('#00E000 *', 1, true) then marked = true end
 end
 assert(marked, 'current swatch marked on its page')
+-- page nav REPLACES the picker: pop-then-push in one command (the game's
+-- own chained idiom - its scripts use literal 'Menu_Pop();Menu_Pop()'
+-- button commands). Pushing without popping stacked a sibling picker per
+-- page visit, so Back popped every visited page before the screen under
+-- them (2026-10-11 in-game report).
+calls = {}
+Menu_Mods_PickColor('demo.config', 'accent', 2)
+local nav, navpop = 0, 0
+for _, c in ipairs(calls) do
+  if c:find('^add|nextpage|', 1) or c:find('^add|prevpage|', 1) then
+    nav = nav + 1
+    if c:find('Menu_Pop();Menu_Mods_PickColor(', 1, true) then navpop = navpop + 1 end
+  end
+end
+assert(nav == 2 and navpop == 2,
+  'page nav pops before pushing, got ' .. nav .. '/' .. navpop)
 calls = {}
 Menu_Mods_PickColor('demo.config', 'accent', 1)
 for _, c in ipairs(calls) do
@@ -463,6 +479,22 @@ assert(TT_PALETTE == '1', 'picker re-opens the gate on push')
 TT_PALETTE = nil
 Menu_Pop()
 assert(TT_PALETTE == '0', 'Menu_Pop wrapper clears the gate')
+-- the engine re-runs a revealed screen's Populate on pop (proven in-game
+-- 2026-10-11: 'populate: color grid done' log lines with no 'color: pick'),
+-- so the gate re-opens INSIDE Populate - a revealed picker keeps true
+-- colours instead of reverting to the accent-tinted register.
+local real_push = Menu_Push
+local captured = nil
+Menu_Push = function(m) captured = m rec('push') if m.Populate then m:Populate() end end
+Menu_Mods_PickColor('demo.config', 'accent', 1)
+Menu_Push = real_push
+assert(TT_PALETTE == '1', 'gate open at push')
+TT_PALETTE = nil
+Menu_Pop()
+assert(TT_PALETTE == '0', 'pop clears the gate')
+TT_PALETTE = nil
+captured:Populate()
+assert(TT_PALETTE == '1', 'reveal-repopulate re-opens the gate')
 -- Palette rows carry accent (per-row material colours proven
 -- impossible); the hex code text identifies each colour.
 TTMOD_ACCENT = '#FF8000'
@@ -570,12 +602,16 @@ for _, v in pairs(_color) do
   end
 end
 assert(saw_orange, '#FF8000 written as 1.0, 0.50196, 0.0')
--- picking a swatch writes it and returns to details
+-- picking a swatch writes it and returns to details: pop TWICE (the
+-- picker, then the stale details under it) before Select pushes the
+-- fresh screen - single-pop left BOTH details stacked, so Back walked
+-- a duplicate screen before the list (part of the 2026-10-11 in-game
+-- '3-4 presses, overshoot to main' report).
 setter_log = {}
 calls = {}
 Menu_Mods_SetColor('demo.config', 'accent', '#0080FF')
 assert(setter_log[1] == 'set:demo.config.accent=#0080FF', 'swatch write, got ' .. tostring(setter_log[1]))
-assert(nrec('pop') == 1 and nrec('create|ui_menu_options') == 1, 'pick pops to details')
+assert(nrec('pop') == 2 and nrec('create|ui_menu_options') == 1, 'pick pops picker+stale details, pushes fresh')
 -- garbage hex is refused without touching config
 setter_log = {}
 Menu_Mods_SetColor('demo.config', 'accent', 'blue')
@@ -594,9 +630,11 @@ assert(nrec('add|nomods') == 1, 'empty row')
 print('menumods-ui: screen logic OK')
 """
 
-# The GAME runs Lua 5.1 (setmetatable/table.unpack are 5.2-only and are nil
-# there - a setmetatable in menumods_ui.lua killed every menu screen in-game
-# while this suite stayed green on 5.2) and has _G == nil. So the same proof
+# The game's own chunks are compiled Lua 5.2 (proven 2026-10-11 by
+# decrypting them - see docs/runtime/in-game-mod-menu.md), but the runtime's
+# environment is STRIPPED: _G is nil and 5.2 base functions like setmetatable
+# are absent (a setmetatable in menumods_ui.lua killed every menu screen
+# in-game while this suite stayed green on stock 5.2). So the same proof
 # runs on BOTH interpreters, against the game's actual missing-global shape.
 # Interpreters are resolved from the system (lua5.1/lua5.2 on PATH); this used
 # to hardcode `nix-shell`, which exists on the author's box and nowhere else,

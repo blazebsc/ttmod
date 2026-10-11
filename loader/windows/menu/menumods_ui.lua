@@ -1460,6 +1460,19 @@ function Menu_Mods_PickColor(id, key, page)
     if page < 1 then page = 1 end
     if page > total_pages then page = total_pages end
     menu.Populate = function(self)
+        -- Gate open at the TOP of Populate: the engine runs this on push
+        -- AND re-runs it when a pop reveals this screen (proven in-game
+        -- 2026-10-11: log showed 'populate: color grid done' lines with
+        -- no matching 'color: pick' - each Back re-populated the
+        -- revealed picker). Opening here covers both, and still lands
+        -- before the realization pass (Populate runs before materials
+        -- snapshot at push). Glyph render is markup x material light
+        -- (proven in-game 2026-10-11), so the register must be WHITE
+        -- (identity) for true swatch colours; the native hook skips the
+        -- accent substitution while the gate is open, or the white
+        -- rebuild writes would re-tint chrome and glyphs. Cleared by the
+        -- Menu_Pop wrapper and by every other screen builder below.
+        if ttmod_menu_palette ~= nil then pcall(ttmod_menu_palette, '1') end
         local first = (page - 1) * TT_COLOR_PAGE + 1
         local last = first + TT_COLOR_PAGE - 1
         if last > #TT_COLOR_SWATCHES then last = #TT_COLOR_SWATCHES end
@@ -1478,15 +1491,24 @@ function Menu_Mods_PickColor(id, key, page)
             setlabel(r, '^color:' .. hex:lower() .. '^' .. hex .. mark .. '^^', true)
             painted[#painted + 1] = { nil, r, hex }
         end
+        -- Page nav REPLACES the picker: pop the page the button lives on
+        -- before pushing the next (the game's own chained-command idiom -
+        -- its scripts use literal 'Menu_Pop();Menu_Pop()' button
+        -- commands). Pushing without popping stacked a sibling picker per
+        -- page visit, so Back had to pop every visited page before
+        -- reaching the screen under them (reported in-game 2026-10-11:
+        -- 'pressed Back 3-4 times and landed on the main menu' - the
+        -- extra presses walked through the identical-looking stacked
+        -- pages, past details and list, to main).
         if page > 1 then
             local p = Menu_Add(ListButton, 'prevpage', 'label_OK',
-                'Menu_Mods_PickColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '",' ..
+                'Menu_Pop();Menu_Mods_PickColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '",' ..
                 tostring(page - 1) .. ')')
             setlabel(p, '<< Previous')
         end
         if last < #TT_COLOR_SWATCHES then
             local p = Menu_Add(ListButton, 'nextpage', 'label_OK',
-                'Menu_Mods_PickColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '",' ..
+                'Menu_Pop();Menu_Mods_PickColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '",' ..
                 tostring(page + 1) .. ')')
             setlabel(p, 'Next >>')
         end
@@ -1494,17 +1516,6 @@ function Menu_Mods_PickColor(id, key, page)
         setlabel(b, 'Back')
         mlog('populate: color grid done')
     end
-    -- Gate open BEFORE the push: the global default-colour register goes
-    -- WHITE (identity) and stays white for the whole visit - there is no
-    -- phase-2. Glyph render is markup x material light (proven in-game
-    -- 2026-10-11: with an accent register every swatch label rendered as
-    -- a shade of the accent), so identity is what shows the markup
-    -- colours TRUE. The native hook also skips the accent substitution
-    -- while the gate is open, or the white rebuild writes would re-tint
-    -- chrome and glyphs to the accent. Cleared by the Menu_Pop wrapper
-    -- and by every other screen builder below (register back to the
-    -- accent, substitution on).
-    if ttmod_menu_palette ~= nil then pcall(ttmod_menu_palette, '1') end
     -- Own-build window: Populate runs synchronously inside Menu_Push
     -- (single thread), so everything painted here tags as 'own'.
     TTMOD_OWN_BUILD = true
@@ -1546,6 +1557,15 @@ function Menu_Mods_SetColor(id, key, hex)
     end
     ttmod_menu_set_value(tostring(id), tostring(key), hex)
     mlog('color: set ' .. tostring(id) .. '.' .. tostring(key) .. '=' .. hex)
+    -- Pop TWICE: this runs on the picker, with the details screen under
+    -- it. One pop reveals the STALE details (built before the pick); the
+    -- second removes it, and Select pushes a fresh one (Select calls
+    -- ttmod_menu_refresh, so the new screen reads the just-written
+    -- value). Single-pop + push left BOTH details screens on the stack -
+    -- Back then walked a duplicate identical screen before the list
+    -- (part of the 2026-10-11 '3-4 presses' report). Toggle/EditString
+    -- need only one pop: they run ON the details screen itself.
+    Menu_Pop()
     Menu_Pop()
     Menu_Mods_Select(id)
 end
