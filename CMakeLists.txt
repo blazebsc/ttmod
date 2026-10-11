@@ -96,6 +96,8 @@ ttmod_add_unit_test(sigmatch tests/unit/test_sigmatch.cpp)
 
 ttmod_add_unit_test(profile tests/unit/test_profile.cpp)
 
+ttmod_add_unit_test(plugin_abi tests/unit/test_plugin_abi.cpp)
+
 ttmod_add_unit_test(manifest tests/unit/test_manifest.cpp)
 
 ttmod_add_unit_test(pathnorm tests/unit/test_pathnorm.cpp)

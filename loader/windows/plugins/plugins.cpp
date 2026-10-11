@@ -11,6 +11,7 @@
 #include "ttmod/detect.hpp"
 #include "ttmod/manifest.hpp"
 #include "ttmod/plugin_api.h"
+#include "ttmod/plugin_grant.hpp"
 #include "events.hpp"
 #include "menu_bridge.hpp"
 #include "mods.hpp"
@@ -74,6 +75,25 @@ void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, co
     for (auto& s : all) {
         const ttmod::ModManifest& m = s.manifest;
         if (!s.has_dll) continue; // resource-only; mods loader owns it
+        // PR 20 capability gate: a manifest whose non-empty runtimes disclaim
+        // Native while shipping a DLL is contradictory - refuse with a reason
+        // instead of executing code the author said isn't there. Empty
+        // runtimes = legacy/unspecified = allowed (all shipped mods).
+        if (!ttmod::plugin_runtime_allowed(m.runtime.runtimes)) {
+            emit("plugins: " + m.identity.id.str() + " rejected (runtimes declare no native runtime)");
+            continue;
+        }
+        // PR 20 negotiation log: granted subset of the manifest's requested
+        // permissions (host-API-backed only; LoadLibrary is still arbitrary
+        // code - see the WARNING below, unchanged).
+        {
+            std::string g;
+            for (auto p : ttmod::plugin_grants(profile_id, m.runtime.permissions)) {
+                if (!g.empty()) g += ",";
+                g += ttmod::to_string(p);
+            }
+            emit("plugins: " + m.identity.id.str() + " grants: " + (g.empty() ? "(none requested)" : g));
+        }
         // M11: manifest-declared plugin path (or legacy plugin.dll), arch gate.
         if (!m.compat.supports_arch(ttmod::Architecture::X86)) {
             emit("plugins: " + m.identity.id.str() + " rejected (arch " + ttmod::to_string(m.compat.arch) + " != x86)");
