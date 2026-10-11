@@ -20,7 +20,16 @@ function rec(...) local t = {} for i = 1, select('#', ...) do t[#t+1] = tostring
 ListMenu, Header, ListButton = {}, {}, {}
 function Menu_Create(w, scene) rec('create', scene) return {scene = scene} end
 function Menu_Add(w, id, label, cb) rec('add', tostring(id), tostring(label), tostring(cb)) return {id = id, agent = {of = tostring(id)}} end
-function Menu_Push(m) rec('push') if m.Populate then m:Populate() end end
+-- Engine current-menu model (game Menu.lua semantics, simplified): the
+-- visible menu; Push stacks it and shows the new one; Replace(menu,
+-- existing) with existing == current is a pure in-place show.
+CURRENT_MENU = nil
+function Menu_GetCurrentMenu() return CURRENT_MENU end
+function Menu_Replace(m, existing) rec('replace', tostring(existing and existing.ttmod_page))
+  CURRENT_MENU = m
+  if m.Populate then m:Populate() end
+  return 1 end
+function Menu_Push(m) rec('push') CURRENT_MENU = m if m.Populate then m:Populate() end end
 function Menu_Pop() rec('pop') end
 -- Clone_Find returns a CLONE AGENT (the engine's real return value), so the
 -- fake carries `of` through; returning the widget table would not model it.
@@ -200,22 +209,37 @@ for _, c in ipairs(calls) do
   if c:find('setprop') and c:find('#00E000 *', 1, true) then marked = true end
 end
 assert(marked, 'current swatch marked on its page')
--- page nav REPLACES the picker: pop-then-push in one command (the game's
--- own chained idiom - its scripts use literal 'Menu_Pop();Menu_Pop()'
--- button commands). Pushing without popping stacked a sibling picker per
--- page visit, so Back popped every visited page before the screen under
--- them (2026-10-11 in-game report).
+-- PAGE NAV IS A SIBLING TRANSITION (2026-10-11, second fix): the click
+-- command must be PLAIN Menu_Mods_PickColor - no Menu_Pop. Menu_Pop
+-- (game Menu.lua) spins on 'while Menu_StackMemberLocked() do Yield()
+-- end', and the click's own press state sets one of those lock flags,
+-- so a pop inside the command suspends and its effects interleave with
+-- the push across frames (the stacked-pages + 3-4 Back presses bug).
+-- PickColor instead calls the game's Menu_Replace when the current
+-- screen is already a picker page (asserted below).
 calls = {}
 Menu_Mods_PickColor('demo.config', 'accent', 2)
-local nav, navpop = 0, 0
+local nav, navplain = 0, 0
 for _, c in ipairs(calls) do
   if c:find('^add|nextpage|', 1) or c:find('^add|prevpage|', 1) then
     nav = nav + 1
-    if c:find('Menu_Pop();Menu_Mods_PickColor(', 1, true) then navpop = navpop + 1 end
+    if c:find('Menu_Mods_PickColor(', 1, true) and
+       not c:find('Menu_Pop', 1, true) then navplain = navplain + 1 end
   end
 end
-assert(nav == 2 and navpop == 2,
-  'page nav pops before pushing, got ' .. nav .. '/' .. navpop)
+assert(nav == 2 and navplain == 2,
+  'page nav is a plain PickColor command, no pop, got ' .. nav .. '/' .. navplain)
+-- FIRST open pushes (current = details, not a picker page); a page click
+-- REPLACES in place (no push, no stack growth).
+calls = {}
+CURRENT_MENU = { id = 'details' }
+Menu_Mods_PickColor('demo.config', 'accent', 1)
+assert(nrec('push') == 1 and nrec('replace') == 0, 'first open pushes over details')
+calls = {}
+Menu_Mods_PickColor('demo.config', 'accent', 2)
+assert(nrec('replace|1') == 1 and nrec('push') == 0,
+  'page click replaces the current picker page in place')
+assert(CURRENT_MENU ~= nil and CURRENT_MENU.ttmod_page == 2, 'replace made page 2 current')
 calls = {}
 Menu_Mods_PickColor('demo.config', 'accent', 1)
 for _, c in ipairs(calls) do
@@ -485,7 +509,8 @@ assert(TT_PALETTE == '0', 'Menu_Pop wrapper clears the gate')
 -- colours instead of reverting to the accent-tinted register.
 local real_push = Menu_Push
 local captured = nil
-Menu_Push = function(m) captured = m rec('push') if m.Populate then m:Populate() end end
+Menu_Push = function(m) captured = m rec('push') CURRENT_MENU = m if m.Populate then m:Populate() end end
+CURRENT_MENU = { id = 'details' }  -- untagged: PickColor takes the Push path
 Menu_Mods_PickColor('demo.config', 'accent', 1)
 Menu_Push = real_push
 assert(TT_PALETTE == '1', 'gate open at push')

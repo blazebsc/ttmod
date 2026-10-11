@@ -1491,24 +1491,25 @@ function Menu_Mods_PickColor(id, key, page)
             setlabel(r, '^color:' .. hex:lower() .. '^' .. hex .. mark .. '^^', true)
             painted[#painted + 1] = { nil, r, hex }
         end
-        -- Page nav REPLACES the picker: pop the page the button lives on
-        -- before pushing the next (the game's own chained-command idiom -
-        -- its scripts use literal 'Menu_Pop();Menu_Pop()' button
-        -- commands). Pushing without popping stacked a sibling picker per
-        -- page visit, so Back had to pop every visited page before
-        -- reaching the screen under them (reported in-game 2026-10-11:
-        -- 'pressed Back 3-4 times and landed on the main menu' - the
-        -- extra presses walked through the identical-looking stacked
-        -- pages, past details and list, to main).
+        -- Page nav is a SIBLING transition: the command is plain
+        -- Menu_Mods_PickColor (NO Menu_Pop - see the Replace logic at
+        -- the push below). Pop+push in one click command was the 3-4
+        -- Back presses bug: Menu_Pop (game Menu.lua) spins on
+        -- 'while Menu_StackMemberLocked() do Yield() end' - and the
+        -- click's own press/roll state sets one of those four lock
+        -- flags - so the pop suspends mid-command and its effects
+        -- interleave across frames with the push and the next click.
+        -- The game's own scripts never pop+push for sibling screens;
+        -- they call Menu_Replace (pure show, no stack change).
         if page > 1 then
             local p = Menu_Add(ListButton, 'prevpage', 'label_OK',
-                'Menu_Pop();Menu_Mods_PickColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '",' ..
+                'Menu_Mods_PickColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '",' ..
                 tostring(page - 1) .. ')')
             setlabel(p, '<< Previous')
         end
         if last < #TT_COLOR_SWATCHES then
             local p = Menu_Add(ListButton, 'nextpage', 'label_OK',
-                'Menu_Pop();Menu_Mods_PickColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '",' ..
+                'Menu_Mods_PickColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '",' ..
                 tostring(page + 1) .. ')')
             setlabel(p, 'Next >>')
         end
@@ -1516,10 +1517,35 @@ function Menu_Mods_PickColor(id, key, page)
         setlabel(b, 'Back')
         mlog('populate: color grid done')
     end
+    -- Tag the menu so a later PickColor can tell "the current screen is
+    -- one of our picker pages" via Menu_GetCurrentMenu() (the game's own
+    -- accessor; the raw currentMenu is an upvalue, invisible to us).
+    menu.ttmod_page = page
     -- Own-build window: Populate runs synchronously inside Menu_Push
     -- (single thread), so everything painted here tags as 'own'.
     TTMOD_OWN_BUILD = true
-    Menu_Push(menu)
+    -- Sibling page transition: when the CURRENT menu is already one of
+    -- our picker pages, use the game's own Menu_Replace(menu, existing)
+    -- (Menu.lua): with existing == currentMenu it degrades to a pure
+    -- Menu_Show - the new page replaces the old IN PLACE, the return
+    -- stack is untouched, and no pop runs in the click command at all.
+    -- First open (current = the details screen) keeps Menu_Push: details
+    -- stays as the Back target. If either primitive is missing, Push is
+    -- the safe fallback.
+    local cur_menu = nil
+    pcall(function()
+        if Menu_GetCurrentMenu ~= nil then cur_menu = Menu_GetCurrentMenu() end
+    end)
+    local shown = false
+    if cur_menu ~= nil and type(cur_menu) == 'table' and
+        cur_menu.ttmod_page ~= nil and Menu_Replace ~= nil then
+        shown = pcall(Menu_Replace, menu, cur_menu)
+        if shown then mlog('color: page replaced in place') end
+    end
+    if not shown then
+        Menu_Push(menu)
+    end
+    TTMOD_OWN_BUILD = nil
     -- Per-row MATERIAL colour preview: CONCLUSIVELY IMPOSSIBLE (2026-10-11).
     -- Complete proof chain, each closed by direct evidence:
     --   Text Color: stored but NOT rendered (all-orange pages with Text
@@ -1545,7 +1571,6 @@ function Menu_Mods_PickColor(id, key, page)
     --   hover. The gate therefore holds the register WHITE (identity) for
     --   the whole picker visit, so labels show TRUE colours on
     --   stock-looking chrome; picking still re-themes the whole menu.
-    TTMOD_OWN_BUILD = nil
     mlog('color: pushed grid rows=' .. tostring(Menu_Mods_RowCount()) ..
          ' repainted=' .. tostring(#painted))
 end

@@ -132,22 +132,38 @@ Consequences, both handled: the picker's gate-open moved INSIDE
 and screen replacement must mind that revealed screens rebuild
 themselves with whatever `Populate` reads.
 
-**Menu-stack fixes (2026-10-11, third build).** The same session
-reported Back needing 3-4 presses and overshooting to the main menu -
-two stack-growing bugs, both fixed with the game's own chained-command
-idiom (`'Menu_Pop();...'` in button commands):
+**Menu-stack: the lock-yield model and Menu_Replace (2026-10-11, fourth
+build).** Back needing 3-4 presses and overshooting to the main menu had
+TWO rounds of fixes - the first (pop-before-push in the page command)
+was wrong medicine, still broken in the follow-up session. Reading the
+game's own `Menu.lua` (decrypted) closed it:
 
-- Page nav (Next/Previous) pushed a SIBLING picker per visit without
-  popping; Back then popped every visited page - each an
-  identical-looking picker - before the screen beneath. Now
-  `Menu_Pop();Menu_Mods_PickColor(...)` replaces the page: the stack
-  stays [main, list, details, picker] through any amount of paging.
-- `Menu_Mods_SetColor` (a pick) popped once but pushed a fresh details
-  screen over the revealed stale one - leaving TWO details stacked.
-  Now it pops twice (picker + stale details) before `Menu_Mods_Select`
-  pushes the fresh screen. (`Toggle`/`EditString` correctly single-pop:
-  they run ON the details screen itself; `Select` never pops - details
-  must nest over the list.)
+- **`Menu_Pop` yields on lock.** `Menu_Pop` (game Menu.lua) starts with
+  `while Menu_StackMemberLocked() do Yield() end`; the lock is an OR of
+  four flags, including the transition flag `Menu_Show` holds for its
+  whole duration and the click's own press/roll state. A click command
+  of the form `'Menu_Pop();<builder>()'` therefore suspends mid-command
+  and its pop completes LATE - interleaving with the push and the next
+  click across frames (the log showed pushes before pops and pages
+  reappearing). The game's own scripts only ever pop+pop or pop+rebuild
+  (`'Menu_Pop();Menu_Hide();Menu_Main()'`); for sibling screens they use
+  a dedicated primitive.
+- **`Menu_Replace(menu, existing)` is that primitive** (Menu.lua): with
+  `existing == currentMenu` it degrades to a pure `Menu_Show` - the new
+  screen replaces the old IN PLACE, return stack untouched, no pop in
+  the command at all. (With `existing` deeper in the stack it drains
+  down to and INCLUDING it - the replaced screen is discarded as a
+  Back target.)
+- **Shipped design**: page clicks are plain
+  `'Menu_Mods_PickColor(...)'`; inside, if `Menu_GetCurrentMenu()` is one
+  of our picker pages (tagged `menu.ttmod_page`), the new page goes in
+  via `Menu_Replace` - paging never touches the stack. First open keeps
+  `Menu_Push` (details stays the Back target). Back is one pure pop.
+- `Menu_Mods_SetColor` (a pick) pops twice (picker, then the stale
+  details) before `Menu_Mods_Select` pushes the fresh screen - stack
+  `[main, list, details-fresh]`. (`Toggle`/`EditString` correctly
+  single-pop: they run ON the details screen itself; `Select` never
+  pops - details must nest over the list.)
 
 **Per-row material impossibility - final proof chain (2026-10-11).**
 Every path closed by direct in-game or decompiled evidence:
