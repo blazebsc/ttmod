@@ -312,6 +312,23 @@ local theme_probed = false
 -- re-probe or fight the engine's own refresh. Plain table, NOT setmetatable:
 -- the game's Lua is 5.1 (no setmetatable, no table.unpack) - verified in-game.
 local theme_painted = {}
+-- Our screen stack (2026-10-11): Menu_Create recycles ONE table for all
+-- our screens (proven in-game: one picker push, then every reveal
+-- re-ran picker Populate with pop: cur=picker every time). The engine
+-- stack holds the same table N times, so the table's own tags/Populate
+-- always describe the LAST-built screen. This mirror records what each
+-- push MEANT: {kind='list'|'details'|'picker', id, key, page}. The pop
+-- wrapper removes the top on kind match and REASSIGNS the revealed
+-- table's Populate+tags for the new top BEFORE orig pop runs - so the
+-- reveal builds the right rows. Push wrapper appends (reading the fresh
+-- tags); refresh updates the top page.
+local TTMOD_STACK = {}
+-- Assign-only mode for the reassign-on-reveal call: builders create +
+-- tag + assign Populate, then return the menu WITHOUT pushing (and
+-- PickColor skips its refresh check). Set + cleared inside pcall by the
+-- pop wrapper only. Boolean (false = normal); never nil-tested, because
+-- the wrapper clears it back to false, not nil.
+local TTMOD_ASSIGN_ONLY = false
 -- Deliberate per-agent colours (the colour picker's palette rows). An agent
 -- whose colour was chosen to be something other than the accent must KEEP
 -- that colour through the engine's hover select/deselect cycle, which
@@ -585,16 +602,44 @@ local function theme_wrap_pop()
         -- the log shows the click-by-click stack walk. pcall-guarded:
         -- Menu_GetCurrentMenu is the game's accessor (Menu.lua), present
         -- on menu states.
+        local cur = nil
         pcall(function()
-            if Menu_GetCurrentMenu ~= nil then
-                local cm = Menu_GetCurrentMenu()
-                if cm ~= nil and type(cm) == 'table' then
-                    mlog('pop: cur=' .. tostring(cm.ttmod_kind) ..
-                         ' page=' .. tostring(cm.ttmod_page))
-                else
-                    mlog('pop: cur=<none>')
-                end
+            if Menu_GetCurrentMenu ~= nil then cur = Menu_GetCurrentMenu() end
+        end)
+        pcall(function()
+            if cur ~= nil and type(cur) == 'table' then
+                mlog('pop: cur=' .. tostring(cur.ttmod_kind) ..
+                     ' page=' .. tostring(cur.ttmod_page))
+            else
+                mlog('pop: cur=<none>')
             end
+        end)
+        -- Reassign-on-reveal (2026-10-11, fifth Back report): Menu_Create
+        -- recycles ONE table, so a bare pop reveals the shared table with
+        -- the STALE Populate (one logged push, then every reveal re-ran
+        -- picker rows). If the popped screen is ours and another of ours
+        -- is beneath (TTMOD_STACK mirror), rebuild the revealed table's
+        -- Populate+tags for the beneath screen BEFORE orig pop runs - the
+        -- reveal then builds the right rows. On distinct tables this is a
+        -- harmless equivalent reassign (the revealed table already holds
+        -- it). Assign-only: builders return without pushing.
+        pcall(function()
+            if cur == nil or type(cur) ~= 'table' or cur.ttmod_kind == nil then
+                return
+            end
+            local top = TTMOD_STACK[#TTMOD_STACK]
+            if top == nil or top.kind ~= cur.ttmod_kind then return end
+            TTMOD_STACK[#TTMOD_STACK] = nil
+            local nt = TTMOD_STACK[#TTMOD_STACK]
+            if nt == nil or nt.kind == nil then return end
+            TTMOD_ASSIGN_ONLY = true
+            if nt.kind == 'list' then pcall(Menu_Mods_Show)
+            elseif nt.kind == 'details' then pcall(Menu_Mods_Select, nt.id)
+            elseif nt.kind == 'picker' then
+                pcall(Menu_Mods_PickColor, nt.id, nt.key, nt.page)
+            end
+            TTMOD_ASSIGN_ONLY = false
+            mlog('pop: reveal-assigned ' .. tostring(nt.kind))
         end)
         if ttmod_menu_palette ~= nil then pcall(ttmod_menu_palette, '0') end
         return orig(...)
@@ -614,7 +659,18 @@ local function theme_wrap_push()
         pcall(function()
             if menu ~= nil and type(menu) == 'table' then
                 mlog('push: kind=' .. tostring(menu.ttmod_kind) ..
-                     ' page=' .. tostring(menu.ttmod_page))
+                     ' table=' .. tostring(menu))
+                -- Mirror our screens: the pop wrapper pops this entry on
+                -- kind match and reassigns the revealed table for the new
+                -- top (single-table aliasing). Engine screens (no kind)
+                -- are never tracked.
+                if menu.ttmod_kind == 'list' or menu.ttmod_kind == 'details' or
+                    menu.ttmod_kind == 'picker' then
+                    TTMOD_STACK[#TTMOD_STACK + 1] = {
+                        kind = menu.ttmod_kind, id = menu.ttmod_id,
+                        key = menu.ttmod_key, page = menu.ttmod_page,
+                    }
+                end
             else
                 mlog('push: kind=<none>')
             end
@@ -1266,6 +1322,7 @@ TTMOD_THEME_RESET_SWEEP = function()
     theme_where = {}
     TT_PENDING = {}
     TT_VERIFY_DONE = false
+    TTMOD_STACK = {}
 end
 -- Test seam: how many widgets are waiting for a retry.
 TTMOD_THEME_PENDING = function() return #TT_PENDING end
@@ -1364,10 +1421,14 @@ function Menu_Mods_Show()
     if menu == nil then mlog('show: create failed') return end
     -- Engine menu tables are REUSED across Menu_Create calls (proven
     -- in-game 2026-10-11: the picker's ttmod_page tag survived into the
-    -- details menu, so the first picker open took the Replace path).
+    -- details menu - and the 4-presses log proved TOTAL aliasing: one
+    -- push, then every reveal re-ran picker Populate. The pop wrapper
+    -- reassigns Populate+tags on reveal from TTMOD_STACK).
     -- Every builder must un-tag: only the picker is ever a picker page.
     menu.ttmod_page = nil
     menu.ttmod_kind = 'list'
+    menu.ttmod_id = nil
+    menu.ttmod_key = nil
     menu.align = 'left'
     menu.background = {}
     menu.Populate = function(self)
@@ -1392,6 +1453,7 @@ function Menu_Mods_Show()
     -- Own-build window: Populate runs synchronously inside Menu_Push
     -- (single thread), so everything painted here tags as 'own'.
     TTMOD_OWN_BUILD = true
+    if TTMOD_ASSIGN_ONLY then TTMOD_OWN_BUILD = nil return menu end
     Menu_Push(menu)
     TTMOD_OWN_BUILD = nil
     mlog('show: pushed')
@@ -1420,6 +1482,8 @@ function Menu_Mods_Select(id)
     if menu == nil then mlog('select: create failed') return end
     menu.ttmod_page = nil
     menu.ttmod_kind = 'details'
+    menu.ttmod_id = id
+    menu.ttmod_key = nil
     menu.align = 'left'
     menu.background = {}
     menu.Populate = function(self)
@@ -1447,6 +1511,7 @@ function Menu_Mods_Select(id)
     -- Own-build window: Populate runs synchronously inside Menu_Push
     -- (single thread), so everything painted here tags as 'own'.
     TTMOD_OWN_BUILD = true
+    if TTMOD_ASSIGN_ONLY then TTMOD_OWN_BUILD = nil return menu end
     Menu_Push(menu)
     TTMOD_OWN_BUILD = nil
 end
@@ -1510,10 +1575,13 @@ function Menu_Mods_PickColor(id, key, page)
     pcall(function()
         if Menu_GetCurrentMenu ~= nil then cur_menu = Menu_GetCurrentMenu() end
     end)
-    if cur_menu ~= nil and type(cur_menu) == 'table' and
+    if not TTMOD_ASSIGN_ONLY and cur_menu ~= nil and type(cur_menu) == 'table' and
         cur_menu.ttmod_kind == 'picker' and Menu_Refresh ~= nil then
         cur_menu.ttmod_page = page
         if pcall(Menu_Refresh) then
+            if #TTMOD_STACK > 0 and TTMOD_STACK[#TTMOD_STACK].kind == 'picker' then
+                TTMOD_STACK[#TTMOD_STACK].page = page
+            end
             mlog('color: page refreshed in place page=' .. tostring(page))
             return
         end
@@ -1618,9 +1686,12 @@ function Menu_Mods_PickColor(id, key, page)
     -- (menu tables are reused by the engine).
     menu.ttmod_kind = 'picker'
     menu.ttmod_page = page
+    menu.ttmod_id = id
+    menu.ttmod_key = key
     -- Own-build window: Populate runs synchronously inside Menu_Push
     -- (single thread), so everything painted here tags as 'own'.
     TTMOD_OWN_BUILD = true
+    if TTMOD_ASSIGN_ONLY then TTMOD_OWN_BUILD = nil return menu end
     Menu_Push(menu)
     TTMOD_OWN_BUILD = nil
     -- Per-row MATERIAL colour preview: CONCLUSIVELY IMPOSSIBLE (2026-10-11).

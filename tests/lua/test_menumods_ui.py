@@ -692,6 +692,79 @@ assert(nrec('add|nomods') == 1, 'empty row')
 print('menumods-ui: screen logic OK')
 """
 
+# ALIASED-MODE REGRESSION (2026-10-11, fifth Back report): the engine
+# recycles ONE menu table across Menu_Create calls (in-game proof: one
+# logged picker push, then every pop revealed picker Populate with
+# pop: cur=picker every time). Same UI chunk, engine stubs that model
+# it: shared table + a stub return stack whose pop re-runs the revealed
+# Populate - exactly what the engine does. Without reassign-on-reveal
+# every bare pop below rebuilds picker rows; with it, details/list.
+STUBS_ALIAS = STUBS.replace(
+  "function Menu_Create(w, scene) rec('create', scene) return {scene = scene} end",
+  "ALIAS_ONE = {scene = 'ui_menu_options'}\n"
+  "function Menu_Create(w, scene) rec('create', scene) return ALIAS_ONE end"
+).replace(
+  "function Menu_Push(m) rec('push') CURRENT_MENU = m if m.Populate then m:Populate() end end\n"
+  "function Menu_Pop() rec('pop') end",
+  "ALIAS_ESTACK = {}\n"
+  "function Menu_Push(m) rec('push') ALIAS_ESTACK[#ALIAS_ESTACK+1] = m "
+  "CURRENT_MENU = m if m.Populate then m:Populate() end end\n"
+  "function Menu_Pop() rec('pop') ALIAS_ESTACK[#ALIAS_ESTACK] = nil "
+  "CURRENT_MENU = ALIAS_ESTACK[#ALIAS_ESTACK] "
+  "if CURRENT_MENU ~= nil and CURRENT_MENU.Populate then CURRENT_MENU:Populate() end end"
+)
+
+DRIVER_ALIAS = STUBS_ALIAS + open(UI, encoding="utf-8").read() + r"""
+function nrec(p) local n = 0 for _, c in ipairs(calls) do if c:sub(1, #p) == p then n = n + 1 end end return n end
+local selfok = false
+for _, c in ipairs(calls) do
+  if c == 'log|menumods: ui self-test defs=10/10' then selfok = true end
+end
+assert(selfok, 'chunk self-test green at load (aliased)')
+-- install the Menu_Pop/Menu_Push wrappers (the game installs them on
+-- first widget creation; the stubs never call the Menu_Add wrapper)
+TTMOD_THEME_WIDGET({ id = 'seed', agent = { of = 'seed' } })
+-- list -> details -> picker: ONE shared table, three stack entries
+Menu_Mods()
+Menu_Mods_Select('demo.config')
+Menu_Mods_Adjust('demo.config', 'accent')
+assert(#ALIAS_ESTACK == 3, 'three pushes, got ' .. #ALIAS_ESTACK)
+assert(ALIAS_ESTACK[1] == ALIAS_ESTACK[2] and ALIAS_ESTACK[2] == ALIAS_ESTACK[3],
+  'single recycled table')
+-- bare ESC-style pop from the picker must reveal DETAILS rows: the pop
+-- wrapper reassigns the shared table BEFORE orig pop runs, so the
+-- engine reveal builds details, not the stale picker Populate.
+calls = {}
+Menu_Pop()
+assert(#ALIAS_ESTACK == 2, 'one pop removes one entry')
+assert(nrec('add|cfg_accent') == 1, 'reveal rebuilt details rows, not picker rows')
+-- again -> list rows
+calls = {}
+Menu_Pop()
+assert(nrec('add|mod_demo.config') == 1, 'reveal rebuilt list rows')
+-- again -> stack empty, main (nothing of ours to build)
+calls = {}
+Menu_Pop()
+assert(#ALIAS_ESTACK == 0, 'stack unwound')
+-- BackFromPicker from a fresh picker: ONE call lands details rows
+Menu_Mods_Select('demo.config')
+Menu_Mods_Adjust('demo.config', 'accent')
+calls = {}
+Menu_Mods_BackFromPicker('demo.config')
+assert(nrec('add|cfg_accent') >= 1, 'back rebuild lands details in one call')
+-- paging still refreshes in place: no pushes, shared table retagged.
+-- (re-open the picker first: BackFromPicker lands on details, and a
+-- page turn from details is a first open = push, by design.)
+calls = {}
+Menu_Mods_Adjust('demo.config', 'accent')
+assert(nrec('push') == 1, 're-open pushes the picker')
+calls = {}
+Menu_Mods_PickColor('demo.config', 'accent', 2)
+assert(nrec('refresh') == 1 and nrec('push') == 0, 'aliased page turn refreshes')
+assert(ALIAS_ONE.ttmod_page == 2, 'shared table retagged page 2')
+print('menumods-ui-alias: screen logic OK')
+"""
+
 # The game's own chunks are compiled Lua 5.2 (proven 2026-10-11 by
 # decrypting them - see docs/runtime/in-game-mod-menu.md), but the runtime's
 # environment is STRIPPED: _G is nil and 5.2 base functions like setmetatable
@@ -709,6 +782,14 @@ for version in lua_runner.VERSIONS:
     sys.stderr.write(r.stderr)
     if r.returncode != 0 or "menumods-ui: screen logic OK" not in r.stdout:
         print(f"FAIL: menumods_ui.lua screen logic on Lua {version}")
+        sys.exit(1)
+
+for version in lua_runner.VERSIONS:
+    r = lua_runner.run(version, DRIVER_ALIAS)
+    sys.stdout.write(r.stdout)
+    sys.stderr.write(r.stderr)
+    if r.returncode != 0 or "menumods-ui-alias: screen logic OK" not in r.stdout:
+        print(f"FAIL: menumods_ui.lua aliased-table logic on Lua {version}")
         sys.exit(1)
 
 # The C++-built literal must PARSE on stock 5.2 (needs test_modconfig run

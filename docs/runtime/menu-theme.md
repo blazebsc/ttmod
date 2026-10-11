@@ -158,10 +158,18 @@ Replace check requires BOTH the picker kind and a page. The Menu_Pop
 wrapper logs the current menu's kind/page at every pop (`pop: cur=`),
 so any future stack weirdness reads directly from ttmod.log.
 
-**Menu-stack: the lock-yield model, the Replace misread, and Refresh
-(2026-10-11, fourth through sixth builds).** Back needing extra presses
-and overshooting to the main menu took three rounds - the first two
-fixes were wrong, owned here so nobody re-tries them:
+**Menu-stack: the lock-yield model, the Replace misread, Refresh, and
+the single-table proof (2026-10-11, fourth through seventh builds).**
+Back needing extra presses and overshooting to the main menu took four
+rounds - the first two fixes were wrong, owned here so nobody re-tries
+them. The fourth log finally proved the real model - TOTAL table
+aliasing: ONE logged picker push, then every pop revealed picker
+Populate with `pop: cur=picker` every time. `Menu_Create` recycles a
+SINGLE table for all our screens: the engine stack holds the same
+object N times, so tags and Populate always describe the LAST-built
+screen, and every reveal re-runs the stale Populate. Picks always
+worked because `Select` reassigns Populate before showing; bare-pop
+Back never had a chance.
 
 - Pop-before-push in the page command: wrong. `Menu_Pop` (game Menu.lua)
   opens with `while Menu_StackMemberLocked() do Yield() end`; the lock
@@ -187,6 +195,24 @@ fixes were wrong, owned here so nobody re-tries them:
   `Menu_Refresh` falls back to push. The re-Populate is proven safe by
   the reveal path, which already re-runs Populate on live menus at
   every pop without doubling rows.
+
+- **Reassign-on-reveal (seventh build, ships).** The pop wrapper keeps
+  its own screen mirror (`TTMOD_STACK`, appended by the push wrapper
+  reading the fresh tags, popped on kind match). When the popped screen
+  is ours and another of ours is beneath, the wrapper rebuilds the
+  revealed table's Populate+tags for the beneath screen BEFORE orig pop
+  runs - by calling the public builders in assign-only mode
+  (`TTMOD_ASSIGN_ONLY`: create + tag + assign, return without pushing).
+  The reveal then builds the right rows. On genuinely distinct tables
+  this is a harmless equivalent reassign. Builders tag id/key as well
+  as kind/page (stale-tag hygiene - same bug class as the page leak).
+  Footgun found by the aliased driver, fixed before it ever shipped:
+  the flag is boolean, never nil-tested - the wrapper clears it to
+  false, and the refresh check tested `== nil`, which would have
+  permanently disabled refresh after the first pop.
+  The aliased-mode suite driver (shared-table stubs + stub return
+  stack that re-populates on reveal) pins the whole design: bare pops
+  reveal details rows, then list rows, then empty - on ONE table.
 
 - **`Menu_Pop` yields on lock** (still true, kept): `Menu_Pop` (game
   Menu.lua) starts with `while Menu_StackMemberLocked() do Yield() end`;

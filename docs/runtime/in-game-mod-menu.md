@@ -43,11 +43,15 @@ UI_ListButton.lua (decrypt+disasm pipeline below).
   `Menu_Push(menu)`. ROWS MUST BE ADDED INSIDE Populate: `Menu_Add`
   targets the CURRENT menu; adding before push lands rows on the old menu
   and the pushed screen renders empty (the blank-screen bug, fixed).
-- REVEAL-REPOPULATE (log-proven 2026-10-11): a pop that exposes a screen
-  RE-RUNS that screen's `menu.Populate` (the engine rebuilds the
-  revealed menu's rows). So: anything Populate must be true on every run
-  (idempotent rows, fresh reads), and revealed screens rebuild
-  themselves with whatever `Populate` reads.
+- REVEAL-REPOPULATE + SINGLE-TABLE ALIASING (log-proven 2026-10-11):
+  a pop that exposes a screen RE-RUNS that screen's `menu.Populate` -
+  and `Menu_Create` recycles ONE table for all our screens (one logged
+  picker push, then every reveal re-ran picker Populate). So anything
+  Populate must be true on every run AND the pop wrapper reassigns the
+  revealed table's Populate+tags for the beneath screen from its own
+  `TTMOD_STACK` mirror before orig pop runs (see menu-theme.md).
+  Builders tag id/key/kind/page; `Populate` reads per-show state off
+  `self`.
 - MENU_POP YIELDS ON LOCK (2026-10-11, cost two user round-trips):
   `Menu_Pop` opens with `while Menu_StackMemberLocked() do Yield() end`;
   the lock is an OR of four flags including the transition flag
