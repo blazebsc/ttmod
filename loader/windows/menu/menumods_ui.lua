@@ -1234,14 +1234,19 @@ TTMOD_THEME_PENDING = function() return #TT_PENDING end
 
 -- Returns the label agent it wrote to (nil when nothing usable was found), so
 -- callers that need to paint the same clone don't have to re-find it.
-local function setlabel(btn, text)
+-- `raw` skips T()/EscapeText2: the engine's text renderer parses inline
+-- markup (proven from the game's own decrypted scripts - Menu_Stats.lua sets
+-- 'Text String' to '^font:...^^color:#ffff99^' .. title .. '^^'), and the game
+-- bypasses escaping for markup strings, so the picker must too.
+local function setlabel(btn, text, raw)
     if btn == nil then mlog('setlabel: nil btn') return nil end
     if pcall == nil then mlog('setlabel: no pcall') return nil end
     local ag = btn.agent ~= nil and btn.agent or btn
     for i, n in ipairs({'label', 'ui_header_header', 'ui_listButton_label', 'caption', 'text'}) do
         local ok, lab = pcall(Clone_Find, ag, n)
         if ok and lab ~= nil then
-            local ok2 = pcall(AgentSetProperty, lab, 'Text String', T(text))
+            local ok2 = pcall(AgentSetProperty, lab, 'Text String',
+                              raw and text or T(text))
             mlog('setlabel: ' .. n .. ' propset=' .. tostring(ok2))
             if ok2 then
                 -- Diagnostic: probe once, on the first real label clone.
@@ -1461,17 +1466,16 @@ function Menu_Mods_PickColor(id, key, page)
         for i = first, last do
             local hex = TT_COLOR_SWATCHES[i]
             local mark = (hex == cur) and ' *' or ''
-            -- One pick button per colour: hex code + mark identifies it.
-            -- Per-row colour previews are IMPOSSIBLE in this engine (the
-            -- decompiled material rebuild FUN_00698310 rewrites every
-            -- widget's Light Color Diffuse from the ONE global register
-            -- on every hover/unhover; Headers render through the same
-            -- material path, proven in-game: all-orange pages). The real
-            -- preview is picking: the whole menu re-themes instantly.
+            -- One pick button per colour. Per-row MATERIAL colour is
+            -- impossible (proof chain below), but the LABEL renders in the
+            -- swatch's own colour via the engine's own text markup
+            -- ('^color:#rrggbb^...^^', the exact idiom the game's decrypted
+            -- Menu_Stats.lua uses on 'Text String'). The hex code + its
+            -- colour IS the per-row preview.
             local r = Menu_Add(ListButton, 'sw_' .. tostring(i), 'label_OK',
                 'Menu_Mods_SetColor("' .. cbquote(id) .. '","' .. cbquote(key) .. '","' ..
                 hex .. '")')
-            setlabel(r, hex .. mark)
+            setlabel(r, '^color:' .. hex:lower() .. '^' .. hex .. mark .. '^^', true)
             painted[#painted + 1] = { nil, r, hex }
         end
         if page > 1 then
@@ -1501,7 +1505,7 @@ function Menu_Mods_PickColor(id, key, page)
     -- (single thread), so everything painted here tags as 'own'.
     TTMOD_OWN_BUILD = true
     Menu_Push(menu)
-    -- Per-row colour preview: CONCLUSIVELY IMPOSSIBLE (2026-10-11).
+    -- Per-row MATERIAL colour preview: CONCLUSIVELY IMPOSSIBLE (2026-10-11).
     -- Complete proof chain, each closed by direct evidence:
     --   Text Color: stored but NOT rendered (all-orange pages with Text
     --     Color holding exact swatches - verify lines proved both).
@@ -1512,8 +1516,16 @@ function Menu_Mods_PickColor(id, key, page)
     --   The material rebuild (FUN_00698310) rewrites every widget's Light
     --     Color from the register on every hover/unhover.
     --   Lua hover events: never fire (theme-roll count 0 across sessions).
-    -- The hex code text identifies each colour; picking applies it to the
-    -- whole menu instantly - that IS the preview this engine allows.
+    --   The game's OWN scripts (decrypted from MCSM_pc_Menu_data.ttarch2,
+    --   2026-10-11) set NO widget colour property anywhere - colours are
+    --   authored scene data applied by the engine styler, never Lua-driven.
+    -- Per-row TEXT colour IS possible (the exception the game's own scripts
+    --   handed us): the text renderer parses inline '^color:#rrggbb^...^^'
+    --   markup in 'Text String' - the game's Menu_Stats.lua does exactly
+    --   this on ui_stats_statDescription. Each swatch row's hex label
+    --   renders in that swatch's colour (setlabel in Populate above). The
+    --   label glyphs, not the button chrome; picking still re-themes the
+    --   whole menu instantly.
     TTMOD_OWN_BUILD = nil
     mlog('color: pushed grid rows=' .. tostring(Menu_Mods_RowCount()) ..
          ' repainted=' .. tostring(#painted))

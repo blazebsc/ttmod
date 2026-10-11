@@ -183,45 +183,63 @@ Lua on the game's script thread; drained in the same LoadResource hook
 that offers the Menu_Add wrapper, via the one shared `bridge_run_chunk`
 (balanced-stack + error-sink). Unit queue semantics: `tests/unit/test_uiqueue.cpp`.
 
-## Toolchain: reading game scripts offline (PARTIAL - decrypt UNVERIFIED)
-> 2026-10-02 correction. The decrypt recipe below did NOT reproduce. It is kept
-> because the failure is itself the useful finding. **Do not trust it.**
+## Toolchain: reading game scripts offline (RESOLVED 2026-10-11)
 
-- Clone: `git clone https://github.com/iMrShadow/TelltaleToolKit` (MIT;
-  the old Telltale-Modding-Group org URL is gone). Data folder: `data/`.
-- Extraction works and is useful for browsing `.ttarch2` contents:
-  csproj referencing `src/TelltaleToolKit/TelltaleToolKit.csproj`, then
-  `ws.LoadArchive(path,"m",1000)` → `ws.ExtractFile("<Name>.lua")`.
-  Current TTK has **no CLI** (library only), and its `GameProfile` JSON loader
-  yields empty objects when driven that way - register the profile by hand.
-  `RegisterGameProfile` keys on `profile.Name`, NOT `profile.Id`.
-- **Decrypt does not work (VERIFIED FAILING 2026-10-02).** The documented
-  recipe - skip the 4-byte `LEn` magic → `Blowfish(key, 7).Decipher` →
-  prepend `\x1bLua` - produces random bytes, not Lua. Evidence:
-  - Distinct-byte ratio 1.00 (fully random), never Lua bytecode.
-  - Decrypting DIFFERENT loose files (`_resdesc_50_Boot.lua`,
-    `_resdesc_50_Menu.lua`, `_resdesc_50_German108.lua`) yields the IDENTICAL
-    head `FCCB6B219911AAF8`. Real encryption cannot do that: the Blowfish
-    keystream prefix repeats, so either the key or the whole framing is wrong.
-  - Both the modified-v7 and standard variants fail identically.
-  - `MCSM_pc_Menu_data.ttarch2` reports `IsRawDeflateCompressed` (NOT
-    encrypted), yet entry bytes stay random - so there is a layer the container
-    path is not reaching.
-  - TTK's `Blowfish` is a non-standard variant: on identical input it differs
-    from pycryptodome's standard Blowfish, so a standard implementation is NOT a
-    valid cross-check.
-  - The profile key is `"Mcsm"` (`data/game_profiles/minecraft-story-mode-2015.json`).
-- **Working alternative (2026-10-02): in-game property probe.** Do not
-  disassemble to learn UI property names. Enable `TTMOD_PROBE=1` (env) or
-  `config/probe-props`, then open the Mods menu: the UI dumps ~28 candidate
-  `AgentSetProperty` colour names against a real label clone, writes each set /
-  reads-back result to `logs/ttmod.log` (`probe: <name> set=… reads=…`), and
-  logs `probe-winner: <name>` for whichever sticks. One launch answers it.
-  Used to find the label text-colour property without any offline decryption.
-- Disassembler (works on real bytecode once you HAVE some; never yet applied to
-  a game script because decryption is unresolved):
-  `python3 tools/lua52_dis.py <file>.dec.lua` (RK-resolved
-  constants; validated byte-exact vs stock luac 5.2.4).
+> 2026-10-11: decryption WORKS. The 2026-10-02 failure was the KEY: the
+> profile key `"Mcsm"` is the ttarch ARCHIVE key. The Lua chunk cipher
+> (`\x1bLEn` files) uses a DIFFERENT, 55-byte binary key stored in the game
+> image - that's why "Mcsm" produced random bytes. Full recipe below.
+
+- Extraction (unchanged, works): clone
+  `git clone https://github.com/iMrShadow/TelltaleToolKit` (MIT; the old
+  Telltale-Modding-Group org URL is gone), build the library, then from a
+  small csproj referencing `src/TelltaleToolKit/TelltaleToolKit.csproj`:
+  `Toolkit.Initialize(); var archive = Toolkit.Instance
+  .LoadArchive(<path>, "Mcsm");` then iterate `archive.GetAllEntries()`
+  and `archive.OpenResource(entry.Name)`. No GameProfile registration
+  needed when the key string is passed directly. `MCSM_pc_Menu_data.ttarch2`
+  yields 70 `.lua` scripts (`Menu.lua`, `Menu_Stats.lua`,
+  `WidgetInitializer.lua`, `UI_ListButton.lua`, ...);
+  `MCSM_pc_Engine_Lua_data.ttarch2` yields 38 more (network/save infra).
+- **The LEn chunk layer (the 2026-10-02 missing piece).** Extracted
+  scripts start with a plaintext 4-byte magic `\x1bLEn` (compiled) or
+  `\x1bLEo` (source); the body is Blowfish ECB over `(len-4) & ~7` bytes.
+  Two non-obvious parts, both read straight out of the game image
+  (`mcsm-unpacked.bin`, PE base 0x400000, .text file off = RVA-0xC00):
+  - **Modified Blowfish**: `S[0][118]` is byte-reversed before the key
+    schedule (the ToolKit's `Blowfish(key, 7)` does this for you; the
+    engine's own `.rdata` S table at VA 0xc3da28 already ships it
+    swapped). P at VA 0xc3ea28, S at 0xc3da28 - both otherwise standard
+    Blowfish tables.
+  - **The key**: a 55-byte NUL-terminated binary blob at VA 0xc3ea70
+    (file offset 0x83d270), immediately after the P table. No ASCII key
+    exists in the image. The engine's own init wrapper (VA 0x530ed0)
+    pushes exactly this pointer into the key schedule (VA 0x5302a0);
+    the chunk loader is at VA 0x513c8f..0x513d19 (singleton getter
+    0x530e30, block-decrypt method 0x530950), and the in-place
+    encrypt/decrypt pair for chunks sits at 0x511930/0x511980.
+  - Recipe: `new Blowfish(key55, 7).Decipher(body, len)` → prepend
+    `\x1bLua` → valid Lua bytecode. Decrypted chunks are 5.2 format,
+    32-bit sizes (`52 00 01 04 04 04 04 00` + LUAC_TAIL) - the game
+    profile JSON's `"luaVersion": "5.1.2"` is wrong.
+- Disassembler (now applied for real): `python3 tools/lua52_dis.py
+  <file>.dec.lua` reads them directly (RK-resolved constants; validated
+  byte-exact vs stock luac 5.2.4).
+- What the scripts answered (2026-10-11, colour-picker research): the
+  game's own UI scripts set NO widget colour property anywhere (colours
+  are authored scene data; the closest they get is `Text String`,
+  `Button - Command`, `Button - Chore *`, `Group - Visible`), but they DO
+  colour menu text dynamically via inline markup - see
+  `menu-theme.md` for the `^color:#rrggbb^` idiom the picker now uses.
+  Decrypted scripts are game-derived: keep them in /tmp, never in the
+  repo or a release.
+- Historical (2026-10-02 failure, kept because the diagnosis matters):
+  the documented recipe with the `"Mcsm"` key produced random bytes;
+  distinct-file decrypts showed identical heads (key/stream framing
+  artifact). The profile key was simply the wrong key for this layer.
+  The in-game `TTMOD_PROBE=1` property probe remains the faster route
+  for learning live property names - offline decryption is for reading
+  the game's own IDIOMS (how its scripts build menus, what they set).
 
 ## Historical (kept for evidence)
 - Phase 1 (2026-09-17, wine-11.17): vanilla/framework/prototype all exited

@@ -64,22 +64,66 @@ the engine's GLOBAL DEFAULT-COLOUR REGISTER. Three consumers, all proven:
   restart. Blacking it turned the whole menu black (multiplication);
   whiting it made restores stick white.
 
-**Static swatch displays + accent pick rows (2026-10-10).** The
+**Six pick rows per page + markup swatch labels (2026-10-11, shipped).** The
 suppression build proved its own negative: zero white scol writes arrived
 during the entire picker visit (suppress counter stayed 0), yet rows still
 turned white - the unhover restore bypasses scol 100% (scalar/direct
-path), and no rollover event of any kind fires in Lua. Chasing the restore
-is over: the palette sidesteps it instead. Each colour is now TWO rows: a
-static Header painted the swatch colour, and an accent ListButton beside
-it that performs the pick. Static rows can never gain selection focus, so
-they are never hover-flooded, never deselected, and never restored - the
-three native-direct paths that destroy per-row colours on buttons. Once
-painted (post-push, past the realization pass), a static row keeps its
-colour permanently. Pick buttons are accent-on-accent (hover-safe by
-construction); hex codes plus `' *'` identify colours on both rows.
-4 colours per page (8 rows) + cycling More + Back = 10 rows, the
-proven-rendered capacity. The gate, the white register, and the scol
-redirect stay as defense in depth (zero cost when no traffic flows).
+path), and no rollover event of any kind fires in Lua. Per-row MATERIAL
+colour is closed conclusively (see the proof chain below). The palette now
+ships as 16 swatches, 6 per page (3 pages) of one pick button each, plus
+Next/Previous and Back - 8 rows, the proven-rendered capacity. The gate,
+the white register, and the scol redirect stay as defense in depth (zero
+cost when no traffic flows).
+
+**Per-row TEXT colour via the engine's own markup (2026-10-11).** The
+game's own UI scripts - decrypted from `MCSM_pc_Menu_data.ttarch2` (70
+scripts incl. `Menu.lua`, `Menu_Stats.lua`, `WidgetInitializer.lua`) -
+set NO widget colour property anywhere: colours are authored scene data
+applied by the engine's material styler, never Lua-driven, which is the
+final nail in the per-row-material coffin. But they DO colour menu text
+dynamically with inline markup: `Menu_Stats.lua` sets
+
+```lua
+AgentSetProperty('ui_stats_statDescription', 'Text String',
+  '^font:pexico_large^^glyphScale:.80^^color:#ffff99^' .. title .. '^^ \n' .. desc)
+```
+
+The text renderer parses `^color:#rrggbb^ ... ^^` inside `Text String` -
+a render-layer feature entirely separate from the material path, so it
+should survive every hover/unhover material rebuild (the string is never
+rewritten). The picker now uses the game's exact idiom: each swatch
+row's hex label would render IN that swatch's colour
+(`setlabel(r, '^color:' .. hex:lower() .. '^' .. hex .. mark .. '^^', true)`).
+The label is passed raw - the game bypasses `EscapeText2` for markup
+strings, and escaping would eat the `^` tags. The button chrome still
+renders from the global register (accent); the glyphs would be the
+swatch. Picking still re-themes the whole menu instantly.
+**DO NOT CLAIM DONE: markup rendering on `ui_listButton_button` label
+clones is unverified in-game** - the game proves the mechanism on
+`ui_stats_statDescription`, a different label agent; our row labels must
+be eyeballed in a real session. The deterministic suite proves only that
+the markup string lands in `Text String`. If row labels turn out not to
+parse markup, the fallback is the pre-2026-10-11 state: plain hex-code
+labels, accent rows.
+
+**Per-row material impossibility - final proof chain (2026-10-11).**
+Every path closed by direct in-game or decompiled evidence:
+
+- `Text Color` (agent property): stored but NOT rendered - all-orange
+  pages while it held exact swatch values (verify lines proved both).
+- `Light Color Diffuse` (the decompiled render property, written by
+  `FUN_00697a60` state 0): unreachable from Lua - `AgentGetProperty`
+  reads MISSING on every agent; the material is an internal object at
+  widget+0x20 with no Lua path (Mesh/Material `Clone_Find` children:
+  "not present").
+- The global default-colour register (`0x9893E4`): one colour for ALL
+  widgets, by design.
+- The material rebuild (`FUN_00698310`, all 14 states) rewrites every
+  widget's Light Color from the register on every hover/unhover.
+- Lua hover events: never fire (theme-roll count 0 across sessions).
+- The game's own scripts set no colour property on any widget (see the
+  decryption pipeline in `in-game-mod-menu.md` - the same idiom
+  space our menu uses).
 
 ## Proven behaviour (screenshot-verified)
 

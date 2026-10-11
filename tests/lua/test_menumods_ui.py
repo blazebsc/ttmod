@@ -93,7 +93,7 @@ function TextSetColor(a, r, g, b, al) rec('tsc', tostring(a and a.of), tostring(
 function RolloverEnableRolloverMesh(a, b) rec('mesh', tostring(b)) return 1 end
 function RolloverEnableTextBackgroundColor(a, b) rec('bg', tostring(b)) return 1 end
 function RolloverResetStatus() rec('resetstatus') return 1 end
-function EscapeText2(s) return tostring(s) end
+function EscapeText2(s) rec('esc', tostring(s)) return tostring(s) end
 function WidgetInputHandler_EnableInput(b) rec('input', tostring(b)) end
 function Menu_OpenTextEntryBox(init, prompt) rec('textbox', tostring(init), tostring(prompt)) return 'Typed!', true end
 setter_log = {}
@@ -178,11 +178,9 @@ Menu_Mods_Adjust('demo.config', 'greet')
 assert(nrec('textbox|Hi|Greet') == 1, 'native textbox opened with current+label')
 assert(setter_log[1] == 'set:demo.config.greet=Typed!', 'typed text saved')
 assert(nrec('input|false') == 1 and nrec('input|true') == 1, 'input disabled around dialog')
--- color row opens palette page 1: 4 colours as static-display + pick-button
--- pairs, plus a cycling More button and Back (10 rows, the proven-rendered
--- capacity). Static Header rows are non-interactive: the engine never
--- selects, floods, or restores them, so their swatch colours are permanent.
--- Pick ListButtons are accent (hover-safe by construction).
+-- color row opens palette page 1: six pick buttons (one per swatch, labels
+-- coloured via markup) plus Next and Back (8 rows, the proven-rendered
+-- capacity at 6/page over 16 swatches = 3 pages).
 setter_log = {}
 calls = {}
 Menu_Mods_Adjust('demo.config', 'accent')
@@ -193,8 +191,8 @@ assert(nrec('add|nextpage|') == 1, 'Next on first page')
 assert(nrec('add|back|') == 1, 'palette back row')
 assert(#setter_log == 0, 'opening palette writes nothing')
 -- the current swatch (#00E000 = swatch 10) carries the ' *' mark, but only on
--- the page that holds it (page 3 at 4/page). Runs BEFORE the pick below
--- mutates the fixture.
+-- the page that holds it (page 2 spans swatches 7-12 at 6/page). Runs BEFORE
+-- the pick below mutates the fixture.
 calls = {}
 Menu_Mods_PickColor('demo.config', 'accent', 2)
 local marked = false
@@ -206,6 +204,40 @@ calls = {}
 Menu_Mods_PickColor('demo.config', 'accent', 1)
 for _, c in ipairs(calls) do
   if c:find('setprop') and c:find('#00E000 *', 1, true) then error('marked off its page') end
+end
+-- PER-ROW SWATCH COLOUR (2026-10-11): the material path is proven impossible,
+-- but the game's own decrypted scripts colour menu text via inline markup -
+-- Menu_Stats.lua: AgentSetProperty('ui_stats_statDescription', 'Text String',
+-- '^font:pexico_large^^glyphScale:.80^^color:#ffff99^' .. title .. '^^ ...').
+-- Every swatch row's label must carry its own colour tag, lowercase hex,
+-- '^^' close, and the current-swatch mark inside the span.
+calls = {}
+Menu_Mods_PickColor('demo.config', 'accent', 1)
+local markedup = {}
+for _, c in ipairs(calls) do
+  local label = c:match('^setprop|sw_%d+|Text String|(.*)$')
+  if label then markedup[#markedup + 1] = label end
+end
+assert(#markedup == 6, 'six swatch labels on page 1, got ' .. #markedup)
+local page1 = {'#ffffff', '#c0c0c0', '#808080', '#404040', '#ffe0a0', '#ffb000'}
+for i, tag in ipairs(page1) do
+  local want = '^color:' .. tag .. '^' .. tag:upper() .. '^^'
+  assert(markedup[i] == want,
+    'swatch ' .. i .. ' label: want ' .. want .. ' got ' .. tostring(markedup[i]))
+end
+-- markup goes RAW through setlabel: EscapeText2 must never see a '^color' tag
+-- (the game bypasses escaping for markup; escaping would eat the tags).
+for _, c in ipairs(calls) do
+  if c:sub(1, 4) == 'esc|' and c:find('^color', 1, true) then
+    error('markup leaked through EscapeText2: ' .. c)
+  end
+end
+-- nav rows stay plain (no markup outside the swatch rows)
+for _, c in ipairs(calls) do
+  local label = c:match('^setprop|(nextpage|prevpage|back)|Text String|(.*)$')
+  if label then
+    assert(not label:find('^color', 1, true), 'nav row must not carry markup')
+  end
 end
 -- last page: Previous present, no Next, covers the tail.
 calls = {}
