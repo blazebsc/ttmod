@@ -4,6 +4,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -85,14 +86,28 @@ void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, co
         }
         // PR 20 negotiation log: granted subset of the manifest's requested
         // permissions (host-API-backed only; LoadLibrary is still arbitrary
-        // code - see the WARNING below, unchanged).
+        // code - see the WARNING below, unchanged). snprintf style like the
+        // surrounding emits: its literals provably survive in this TU.
         {
-            std::string g;
+            char g[256];
+            size_t n = 0;
+            g[0] = '\0';
             for (auto p : ttmod::plugin_grants(profile_id, m.runtime.permissions)) {
-                if (!g.empty()) g += ",";
-                g += ttmod::to_string(p);
+                const char* nm = ttmod::to_string(p);
+                size_t len = strlen(nm);
+                if (n > 0 && n + 1 < sizeof g) {
+                    g[n++] = ',';
+                    g[n] = '\0';
+                }
+                if (n + len < sizeof g) {
+                    memcpy(g + n, nm, len + 1);
+                    n += len;
+                }
             }
-            emit("plugins: " + m.identity.id.str() + " grants: " + (g.empty() ? "(none requested)" : g));
+            char line[384];
+            snprintf(line, sizeof line, "plugins: %s grants: %s", m.identity.id.str().c_str(),
+                     g[0] ? g : "(none requested)");
+            emit(line);
         }
         // M11: manifest-declared plugin path (or legacy plugin.dll), arch gate.
         if (!m.compat.supports_arch(ttmod::Architecture::X86)) {
