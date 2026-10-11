@@ -90,16 +90,57 @@ class LuaVm final : public ScriptVm {
         if (luaL_loadbufferx(L_, code.data(), code.size(), ("@" + name).c_str(), "t") != LUA_OK) {
             return Result<Value>::fail(lua_error_to_result(name));
         }
-        // Shared-VM decision (doc §9): every mod runs in the SAME globals table,
-        // so ttmod.mods.get() is a table lookup rather than a cross-VM call.
-        // Isolation is pcall + disarm, not separate heaps (doc §63).
-        push_env(env);
+        // Shared-VM decision (doc §9): one heap, not one globals table per
+        // mod. Nil env runs in the shared globals (legacy); a mod-id env
+        // runs with that mod's table as _ENV. Isolation is pcall + disarm
+        // + per-mod _ENV, not separate heaps (doc §63).
+        auto penv = push_env(env, name);
+        if (!penv.ok()) return Result<Value>::fail(penv.error());
         // One result value is captured and returned. Doc §31 allows this when
         // the operation's contract says so; entrypoints ignore it, and it is
         // what makes marshaling testable end to end.
         if (lua_pcall(L_, 0, 1, 0) != LUA_OK) return Result<Value>::fail(lua_error_to_result(name));
         Value out = pop_value();
         return Result<Value>::ok(std::move(out));
+    }
+
+    Result<EnvRef> create_env(std::string_view mod_id) override {
+        if (!L_) return Result<EnvRef>::fail(Error{"create-env", "", errcat::kIO, "no vm"});
+        if (mod_id.empty())
+            return Result<EnvRef>::fail(Error{"create-env", "", errcat::kType, "empty mod id"});
+        std::string id(mod_id);
+        auto found = env_by_mod_.find(id);
+        if (found != env_by_mod_.end()) return Result<EnvRef>::ok(EnvRef{found->second}); // idempotent
+        // The env table: writes land here, reads fall through to the shared
+        // globals (ttmod.* services, minus the denied names, stay visible).
+        // __metatable locked so getmetatable cannot reach the globals table
+        // through __index (the casual hole; debug lib is absent anyway).
+        lua_newtable(L_);                                        // [env]
+        lua_newtable(L_);                                        // [env, mt]
+        lua_pushglobaltable(L_);                                 // [env, mt, globals]
+        lua_setfield(L_, -2, "__index");                         // [env, mt]
+        lua_pushboolean(L_, 0);
+        lua_setfield(L_, -2, "__metatable");                     // [env, mt]
+        lua_setmetatable(L_, -2);                                // [env]
+        int ref = luaL_ref(L_, LUA_REGISTRYINDEX);
+        uint32_t slot = next_env_++;
+        env_refs_[slot] = ref;
+        env_mods_[slot] = id;
+        env_by_mod_[id] = slot;
+        return Result<EnvRef>::ok(EnvRef{slot});
+    }
+
+    void release_env(EnvRef r) override {
+        if (!L_ || !r.valid()) return;
+        auto it = env_refs_.find(r.slot);
+        if (it == env_refs_.end()) return;
+        luaL_unref(L_, LUA_REGISTRYINDEX, it->second);
+        env_refs_.erase(it);
+        auto nm = env_mods_.find(r.slot);
+        if (nm != env_mods_.end()) {
+            env_by_mod_.erase(nm->second);
+            env_mods_.erase(nm);
+        }
     }
 
     Result<CallbackRef> retain(const Value& fn) override {
@@ -240,12 +281,27 @@ class LuaVm final : public ScriptVm {
         return e;
     }
 
-    void push_env(const Value& env) {
-        // One shared globals table: the shared-VM decision (doc §9). Nothing is
-        // pushed here - the loaded chunk is already on top and pcall must call
-        // THAT. A future per-mod _ENV sets it via lua_setupvalue, it does not
-        // go on the stack.
-        (void)env;
+    // Selects the loaded chunk's _ENV (the chunk is on top; pcall must call
+    // THAT). Nil = shared globals, no-op. String = mod id: its environment
+    // table must exist (create_env) and becomes _ENV via setupvalue, which
+    // pops it - stack is [chunk] again either way. Anything else, or an
+    // unknown mod id, fails with the chunk popped and nothing run.
+    Result<void> push_env(const Value& env, std::string_view chunk_name) {
+        if (env.kind() == Value::Kind::Nil) return Result<void>::success();
+        if (env.kind() != Value::Kind::String) {
+            lua_pop(L_, 1); // the loaded chunk
+            return Result<void>::fail(
+                Error{"run-chunk", std::string(chunk_name), errcat::kType, "env must be nil or a mod id"});
+        }
+        auto it = env_by_mod_.find(env.as_string());
+        if (it == env_by_mod_.end()) {
+            lua_pop(L_, 1); // the loaded chunk
+            return Result<void>::fail(Error{"run-chunk", std::string(chunk_name), errcat::kMissing,
+                                            "no such env: " + env.as_string()});
+        }
+        lua_rawgeti(L_, LUA_REGISTRYINDEX, env_refs_[it->second]); // [chunk, env]
+        lua_setupvalue(L_, -2, 1);                                 // [chunk], pops env
+        return Result<void>::success();
     }
 
     // Navigates/creates the table chain under the single `ttmod` root, leaving
@@ -322,6 +378,12 @@ class LuaVm final : public ScriptVm {
     int budget_ = 0;
     std::map<uint32_t, int> callbacks_;
     uint32_t next_callback_ = 1;
+    // Per-mod environments (roadmap PR 17): slot -> registry ref of the mod's
+    // _ENV table, plus both lookup directions. Same shape as callbacks_.
+    std::map<uint32_t, int> env_refs_;
+    std::map<uint32_t, std::string> env_mods_;
+    std::map<std::string, uint32_t> env_by_mod_;
+    uint32_t next_env_ = 1;
 };
 
 // ---- Value <-> Lua stack ------------------------------------------------

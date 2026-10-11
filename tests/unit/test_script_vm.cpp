@@ -170,6 +170,15 @@ int main() {
         assert(vm->install_api(1, ApiKey{"log", "x"}, 1).ok()); // accepts, executes nothing
         assert(!vm->call(CallbackRef{1}, nullptr, 0).ok());
         vm->release(CallbackRef{1}); // no-op, must not crash
+        // Envs on the null backend: lifecycle works, execution never does.
+        {
+            auto e = vm->create_env("demo.mod");
+            assert(e.ok() && e.value().valid());
+            assert(!vm->run_chunk("return 1", "main.lua", Value::string("demo.mod")).ok());
+            vm->release_env(e.value()); // no-op, must not crash
+            vm->release_env(EnvRef{});  // invalid ref, must not crash
+            assert(!vm->create_env("").ok()); // empty mod id rejected
+        }
         assert(std::string(to_string(ScriptBackendKind::Lua)) == "lua");
         assert(std::string(to_string(ScriptBackendKind::Null)) == "null");
     }

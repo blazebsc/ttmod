@@ -49,6 +49,12 @@ class NullVm final : public ScriptVm {
         return Result<CallbackRef>::fail(Error{"retain-callback", "", errcat::kIO, "no script backend (null runtime)"});
     }
     void release(CallbackRef) override {}
+    Result<EnvRef> create_env(std::string_view mod_id) override {
+        if (mod_id.empty())
+            return Result<EnvRef>::fail(Error{"create-env", "", errcat::kType, "empty mod id"});
+        return Result<EnvRef>::ok(EnvRef{1}); // dummy: the null backend runs nothing
+    }
+    void release_env(EnvRef) override {}
     Result<Value> call(CallbackRef ref, const Value* args, size_t nargs) override {
         return Result<Value>::fail(Error{"call-callback", "", errcat::kIO, "no script backend (null runtime)"});
     }

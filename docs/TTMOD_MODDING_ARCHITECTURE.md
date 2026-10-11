@@ -22,8 +22,9 @@ markers below before assuming anything is done.
 | Scheduler (Now/Next/At) | `core/scheduler.hpp` §62 | cascade-bounded; no coroutines/promises |
 | Mod run lifecycle | `core/mod_lifecycle.hpp` §36 | Failed/Unloaded are terminal |
 | Versioned API registry, tombstones | `core/script_api.hpp` §34/75 | VM stores tokens, never function pointers |
-| Backend contract | `core/script_vm.hpp` | six ops; Lua-free by construction |
+| Backend contract | `core/script_vm.hpp` | env-aware; Lua-free by construction |
 | **Lua 5.4.7 backend** | `core/script/lua/`, vendored | real VM: executes, marshals, sandboxes, budget |
+| **Per-mod environments** | `ScriptVm::create_env`, Lua `_ENV` tables | one VM, one table per mod; shared `ttmod.*`, isolated writes |
 | Game Lua state registry | `core/game_lua.hpp` §30/57 | observes only; never closes a game state |
 | Native C ABI + plugin loading | `core/plugin_api.h` §15/16 | pre-existing |
 | Dependency-first load order | `core/modplan.hpp` §37 | one resolution, one plan |

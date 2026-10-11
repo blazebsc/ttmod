@@ -1,7 +1,7 @@
 #pragma once
 // The backend-agnostic script VM contract (doc §§4, 9, 53, 55).
 //
-// Six operations, all Result-returning (never exceptions), all called ONLY
+// The operations, all Result-returning (never exceptions), all called ONLY
 // from the script thread. Lua implements this; Luau will implement the same
 // thing later; the binding layer above it is written once so both languages
 // expose identical semantics (doc §53).
@@ -45,6 +45,17 @@ struct CallbackRef {
     }
 };
 
+// Host-side reference to a per-mod environment table. One VM, one table
+// per mod (roadmap PR 17): writes land in the mod's own table, reads fall
+// through to the shared globals, so mods share ttmod.* services without
+// sharing state. Invalid after release_env().
+struct EnvRef {
+    uint32_t slot = 0; // 0 = none (shared globals)
+    [[nodiscard]] bool valid() const noexcept {
+        return slot != 0;
+    }
+};
+
 class ScriptVm {
   public:
     virtual ~ScriptVm() = default;
@@ -52,11 +63,19 @@ class ScriptVm {
     [[nodiscard]] virtual const char* backend() const noexcept = 0;
     [[nodiscard]] virtual size_t bytes_used() const noexcept = 0;
 
-    // Compile + run one chunk. `env` selects the function environment; the
-    // shared-VM decision passes the single globals table, so `env` is always
-    // nil in practice and exists for the future per-mod environment.
+    // Compile + run one chunk. `env` selects the function environment:
+    // Nil = the shared globals table (legacy; every mod sees every mod's
+    // writes); String = a mod id whose environment must already exist
+    // (create_env) - the chunk's _ENV becomes that mod's table. Any other
+    // kind, or an unknown mod id, fails before running anything.
     // Error object = "chunk:line", message = "msg\ntraceback".
     virtual Result<Value> run_chunk(std::string_view source, std::string_view chunk_name, const Value& env) = 0;
+
+    // Per-mod environment lifecycle. Idempotent: creating twice for the same
+    // mod id returns the same environment (reload reuses, release +
+    // recreate gives freshness). Empty mod id fails.
+    virtual Result<EnvRef> create_env(std::string_view mod_id) = 0;
+    virtual void release_env(EnvRef ref) = 0;
 
     // Turn a function Value (produced by CallCtx::take_callback) into a
     // host-side ref, call it, and release it.

@@ -162,6 +162,72 @@ int main() {
         assert(b && b->kind() == Value::Kind::Array && b->at(1).as_number() == 2.0);
     }
 
+    // ---- per-mod environments (roadmap PR 17) --------------------------
+    // One VM, one _ENV table per mod: writes stay in the mod's table,
+    // reads fall through to the shared globals (ttmod.* services visible,
+    // sandbox inherited). Nil env keeps the legacy shared-globals run.
+    EnvRef envA, envB;
+    {
+        auto a = vm->create_env("mod.a");
+        assert(a.ok() && a.value().valid());
+        envA = a.value();
+        auto b = vm->create_env("mod.b");
+        assert(b.ok() && b.value().valid());
+        envB = b.value();
+        assert(envA.slot != envB.slot);
+        auto a2 = vm->create_env("mod.a");
+        assert(a2.ok() && a2.value().slot == envA.slot); // idempotent
+        assert(!vm->create_env("").ok());                // empty mod id rejected
+    }
+    // Unknown mod id fails before running anything (no half-run globals).
+    {
+        auto r = vm->run_chunk("sneaky = 1 return 1", "sneak.lua", Value::string("mod.ghost"));
+        assert(!r.ok());
+        auto g = vm->run_chunk("return sneaky", "read.lua", Value::nil());
+        assert(g.ok() && g.value().is_nil());
+    }
+    // Wrong env kind fails too.
+    assert(!vm->run_chunk("return 1", "n.lua", Value::number(7)).ok());
+    // Isolation: A writes, B and globals read nil.
+    {
+        auto r = vm->run_chunk("mod_only = 42 return mod_only", "w.lua", Value::string("mod.a"));
+        assert(r.ok() && r.value().as_number() == 42.0);
+        auto b = vm->run_chunk("return mod_only", "r.lua", Value::string("mod.b"));
+        assert(b.ok() && b.value().is_nil());
+        auto g = vm->run_chunk("return mod_only", "r.lua", Value::nil());
+        assert(g.ok() && g.value().is_nil());
+    }
+    // Sharing direction: globals (and ttmod.*) are visible through __index.
+    {
+        auto g = vm->run_chunk("shared_flag = 'yes' return 1", "s.lua", Value::nil());
+        assert(g.ok());
+        auto r = vm->run_chunk("return shared_flag", "r.lua", Value::string("mod.a"));
+        assert(r.ok() && r.value().as_string() == "yes");
+        g_log_calls = 0;
+        auto l = vm->run_chunk("ttmod.log.info('from env') return 1", "l.lua", Value::string("mod.a"));
+        assert(l.ok() && g_log_calls == 1 && g_last_message == "from env");
+        auto e = vm->run_chunk("return ttmod.test.echo(6)", "e.lua", Value::string("mod.b"));
+        assert(e.ok() && e.value().as_number() == 6.0);
+    }
+    // Sandbox inherited: load stays nil inside an env, and the env's own
+    // metatable is locked against the casual getmetatable hole.
+    {
+        auto r = vm->run_chunk("return load == nil", "s.lua", Value::string("mod.a"));
+        assert(r.ok() && r.value().as_bool(false));
+        auto m = vm->run_chunk("return getmetatable(_ENV) == false", "m.lua",
+                               Value::string("mod.a"));
+        assert(m.ok() && m.value().as_bool(false));
+    }
+    // Release ends it: the id is unknown again, double release is safe.
+    {
+        vm->release_env(envA);
+        assert(!vm->run_chunk("return 1", "x.lua", Value::string("mod.a")).ok());
+        vm->release_env(envA);   // no-op, must not crash
+        vm->release_env(EnvRef{}); // invalid ref, must not crash
+        // B still works after A is gone.
+        auto r = vm->run_chunk("return 7", "s.lua", Value::string("mod.b"));
+        assert(r.ok() && r.value().as_number() == 7.0);
+    }
     // ---- callback lifecycle --------------------------------------------
     // retain/call/release is the only way a script function reaches the host,
     // and releasing twice is safe.
