@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <string>
 #include <vector>
 
@@ -13,6 +14,7 @@
 #include "ttmod/manifest.hpp"
 #include "ttmod/plugin_api.h"
 #include "ttmod/plugin_grant.hpp"
+#include "ttmod/plugin_lifecycle.hpp"
 #include "events.hpp"
 #include "menu_bridge.hpp"
 #include "mods.hpp"
@@ -32,6 +34,20 @@ static void emit(const std::string& msg) {
 
 static void host_log(const char* msg) {
     emit(msg ? msg : "(null)");
+}
+
+// PR 21 lifetime: the host struct is built PER PLUGIN (stable addresses
+// in a deque - plugins retain the pointer), differing only in subscribe,
+// which records granted tokens into the plugin currently initializing so
+// a failed init can revoke them. The loader initializes sequentially on
+// one thread, so the current-record pointer needs no locking; plugins
+// must subscribe from the init thread (init must be non-blocking
+// anyway). The profile/game STRINGS stay shared - they never differ.
+static ttmod::PluginRecord* g_subscribing = nullptr;
+static int host_subscribe(int event_id, ttmod_event_cb cb, void* ctx) {
+    int tok = ttmod_win::events_subscribe(event_id, cb, ctx);
+    if (g_subscribing != nullptr) ttmod::plugin_note_subscribed(*g_subscribing, tok);
+    return tok;
 }
 
 } // namespace
@@ -58,21 +74,24 @@ void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, co
     // inspection - InitCtx dies with the init thread).
     static ttmod_host host;
     static std::string owned_profile, owned_game;
+    static std::deque<ttmod_host> hosts; // one per initialized plugin; deque keeps addresses stable
     owned_profile = profile_id ? profile_id : "";
     owned_game = game ? game : "";
-    host = ttmod_host{TTMOD_PLUGIN_API_VERSION,
-                      owned_profile.c_str(),
-                      owned_game.c_str(),
-                      season,
-                      host_log,
-                      ttmod_win::events_subscribe,
-                      ttmod_win::events_unsubscribe,
-                      ttmod_win::events_get_state,
-                      ttmod_win::mods_menu_count,
-                      ttmod_win::mods_menu_info,
-                      ttmod_win::menumods_queue_ui_chunk,
-                      (uint32_t)sizeof(ttmod_host),
-                      0};
+    // Never cleared: plugins retain these pointers, and a second init pass
+    // must not dangle the first pass's hosts (append-only, like the ABI).
+    const ttmod_host shared{TTMOD_PLUGIN_API_VERSION,
+                            owned_profile.c_str(),
+                            owned_game.c_str(),
+                            season,
+                            host_log,
+                            host_subscribe,
+                            ttmod_win::events_unsubscribe,
+                            ttmod_win::events_get_state,
+                            ttmod_win::mods_menu_count,
+                            ttmod_win::mods_menu_info,
+                            ttmod_win::menumods_queue_ui_chunk,
+                            (uint32_t)sizeof(ttmod_host),
+                            0};
     for (auto& s : all) {
         const ttmod::ModManifest& m = s.manifest;
         if (!s.has_dll) continue; // resource-only; mods loader owns it
@@ -136,9 +155,24 @@ void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, co
             emit("plugins: " + m.identity.id.str() + " has no ttmod_plugin_init, kept loaded (no init)");
             continue;
         }
-        int rc = init(&host);
-        char done[160];
-        snprintf(done, sizeof done, "plugins: %s initialized (rc=%d)", m.identity.id.str().c_str(), rc);
+        // PR 21 lifetime: per-plugin record + host copy; a nonzero rc
+        // revokes that plugin's subscriptions synchronously, before the
+        // next plugin initializes.
+        ttmod::PluginRecord rec;
+        rec.id = m.identity.id.str();
+        rec.state = ttmod::PluginState::Loaded;
+        hosts.push_back(shared);
+        g_subscribing = &rec;
+        int rc = init(&hosts.back());
+        g_subscribing = nullptr;
+        auto revoke = ttmod::plugin_note_init_result(rec, rc);
+        for (int t : revoke) ttmod_win::events_unsubscribe(t);
+        char done[192];
+        if (revoke.empty())
+            snprintf(done, sizeof done, "plugins: %s initialized (rc=%d)", m.identity.id.str().c_str(), rc);
+        else
+            snprintf(done, sizeof done, "plugins: %s failed (rc=%d, revoked %u callbacks)",
+                     m.identity.id.str().c_str(), rc, (unsigned)revoke.size());
         emit(done);
     }
 }

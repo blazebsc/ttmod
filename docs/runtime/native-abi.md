@@ -31,16 +31,30 @@ non-x86 PEs; `thread_id` is 32-bit LLP64 - noted in the header).
 
 ## Lifecycle
 
-- Load: manifest validated -> arch/PE gates -> runtimes gate (below) ->
-  `LoadLibraryA` -> `ttmod_plugin_init(&host)` -> rc logged.
-- `init` returns 0 on success; nonzero is plugin-reported failure, logged
-  (`initialized (rc=N)`), host takes no further action (isolation: a bad
-  plugin never stops the game or other plugins).
+- States: Discovered -> Loaded (`LoadLibrary` ok) -> Initialized
+  (`init` returned 0) / Failed (`init` returned nonzero). A missing
+  export stays Loaded: kept loaded, never inited. Every state is
+  terminal - nothing unloads, nothing retries, nothing re-inits.
+- When init runs: one sequential pass over the ModPlan
+  dependency-ordered set during framework init, one plugin at a time.
+  The loader builds a host struct per plugin (stable addresses; plugins
+  retain the pointer) differing only in `subscribe`, which records
+  tokens into that plugin's record.
+- Callbacks are valid from `subscribe()` until process end, EXCEPT a
+  failed init: the loader unsubscribes that plugin's tokens
+  synchronously right after the nonzero return, before the next plugin
+  initializes (`failed (rc=N, revoked K callbacks)` in the log). A
+  dispatch on the init thread cannot interleave; a cross-thread dispatch
+  can, so revocation is prompt, not atomic. Check version FIRST in init
+  (the event-log pattern), subscribe after.
+- Nonzero rc otherwise changes nothing: the DLL stays loaded (no live
+  unload path exists and none is planned - unloading with outstanding
+  event callbacks is unsound), the failure is logged, the plugin is
+  never retried. Disabling a mod at runtime requires a restart.
 - `host->log` may be called anytime, including during init, from any
   thread (thread-safe).
-- Shutdown: there is none. No unload, by explicit policy (unloading live
-  native code with outstanding event callbacks is unsound); a safe first
-  release forbids it. Lifetime model is roadmap PR 21's scope.
+- **DO NOT CLAIM DONE:** failed-init revocation is unit-tested but
+  unexercised in-game (no shipped plugin fails init).
 
 ## Capability negotiation
 
@@ -85,5 +99,6 @@ non-x86 PEs; `thread_id` is 32-bit LLP64 - noted in the header).
 
 - Cross-profile grants (only mcsm1 exists; everything else grants
   nothing - correct but unexercised against a second profile).
-- `shutdown`/unload semantics: PR 21, explicitly not this page.
+- Failed-init revocation is unit-tested but unexercised in-game (no
+  shipped plugin fails init).
 - Native script-API registration: PR 34, explicitly not this page.

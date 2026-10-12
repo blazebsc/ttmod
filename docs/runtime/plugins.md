@@ -18,6 +18,9 @@ discovers `plugins/*` → parses manifest (portable `ttmod::parse_manifest`,
 unit-tested in `tests/unit/test_manifest.cpp`) → rejects with reason on:
 missing manifest, bad manifest, api mismatch, game mismatch, missing DLL,
 missing export → `LoadLibraryA` → calls init → logs `initialized (rc=N)`.
+Nonzero rc revokes that plugin's event subscriptions before the next
+plugin inits (`failed (rc=N, revoked K callbacks)`); states are terminal,
+no unload, no retry (native-abi.md).
 A bad plugin never stops the game or other plugins. No unload in M3.
 
 ## Proven log (real game)
