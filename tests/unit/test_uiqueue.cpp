@@ -40,6 +40,18 @@ int main() {
     auto tc = ttmod::uiqueue_take_cmd();
     assert(tc.size() == 1 && tc[0].type == ttmod::UiCommandType::ExecuteChunk && tc[0].code == "t = 1");
     assert(ttmod::uiqueue_take_cmd().empty());
+    // PR 23 hot-path: interleaved push/take loses nothing (the flag is a
+    // hint only; drain + clear happen under one lock), and empty takes
+    // stay empty across repetitions (the LoadResource steady state).
+    assert(ttmod::uiqueue_push("k = 1"));
+    assert(ttmod::uiqueue_push("k = 2"));
+    auto k1 = ttmod::uiqueue_take();
+    assert(k1.size() == 2 && k1[1] == "k = 2");
+    assert(ttmod::uiqueue_push("k = 3"));
+    auto k2 = ttmod::uiqueue_take();
+    assert(k2.size() == 1 && k2[0] == "k = 3");
+    for (int i = 0; i < 5; ++i) assert(ttmod::uiqueue_take().empty());
+    assert(ttmod::uiqueue_take_cmd().empty());
     std::puts("uiqueue: all asserts passed");
     return 0;
 }
