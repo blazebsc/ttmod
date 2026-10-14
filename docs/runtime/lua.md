@@ -66,3 +66,16 @@ plainly:
   (`entrypoint-unreadable`, `entrypoint-dropped`), not a crash.
 - Treat mod game.lua as fully trusted code (same as the engine's own
   scripts); there is no sandbox on this path by design.
+
+## Mixed-runtime mods (PR 33)
+
+One mod may ship all three runtimes (`plugin.dll` + `main.lua` +
+`game.lua`); one init pass runs each part through its own runtime in
+ModPlan order: native init, game.lua queue, TTMod-Lua run (shared VM,
+per-mod env). Runtimes never share objects - native code and Lua meet
+only through events, the chunk queue, marshaled values, and
+`GameObjectHandle`s. TTMod-Lua failures record `ModRunStatus`s that
+surface as menu warnings (`Blocked:` rows); with no real backend yet
+they record Backend failures, which auto-heal when one lands.
+Per-env capability filtering and native script-API registration are
+PR 34, explicitly not this page.

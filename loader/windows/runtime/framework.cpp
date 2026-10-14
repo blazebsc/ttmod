@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <map>
 #include <string>
 #include "ttmod/profile.hpp"
 #include "ttmod/diag.hpp"
@@ -296,6 +297,22 @@ static void init_plugins(const InitCtx& ctx, ttmod::RuntimeOwner* owner) {
     ttmod_win::plugins_init(ctx.all, ctx.prof.c_str(), ctx.game, ctx.season, ctx.logpath.c_str(), owner);
 }
 
+// PR 32/33: bounded file read for script entrypoints (third-party text
+// ingested by the framework; manifest cap, same class as manifests).
+static std::string read_bounded(const std::string& path) {
+    FILE* f = ttmod::file_io::open_read(path);
+    std::string src;
+    if (!f) return src;
+    char b[4096];
+    size_t r = 0;
+    while ((r = fread(b, 1, sizeof b, f)) > 0) {
+        if (src.size() + r > ttmod::packlimits::kMaxManifestBytes) break;
+        src.append(b, r);
+    }
+    fclose(f);
+    return src;
+}
+
 // PR 32: queue enabled mods' telltale-lua entrypoints onto the game thread
 // (existing v5 queue: runs at the next script load + menu replay). ctx.all
 // is the surviving ModPlan-ordered set, so safe-mode/disabled/blocked mods
@@ -319,18 +336,7 @@ static void queue_telltale_entrypoints(const InitCtx& ctx) {
         std::string dir;
         for (auto& s : ctx.all)
             if (s.manifest.identity.id.str() == e.id) dir = s.dir;
-        std::string path = ttmod_win::join(dir, e.entrypoint);
-        FILE* f = ttmod::file_io::open_read(path);
-        std::string src;
-        if (f) {
-            char b[4096];
-            size_t r = 0;
-            while ((r = fread(b, 1, sizeof b, f)) > 0) {
-                if (src.size() + r > ttmod::packlimits::kMaxManifestBytes) break;
-                src.append(b, r);
-            }
-            fclose(f);
-        }
+        std::string src = read_bounded(ttmod_win::join(dir, e.entrypoint));
         if (src.empty()) {
             emit({ttmod::DiagKind::Bridge, "entrypoint-unreadable", e.id, e.entrypoint});
             continue;
@@ -342,12 +348,56 @@ static void queue_telltale_entrypoints(const InitCtx& ctx) {
     }
 }
 
+// PR 33: run enabled mods' TTMod-Lua entrypoints on the shared VM (one
+// environment each, PR 17 runner). Returns per-mod statuses for the menu
+// model; empty when no VM (safe mode - the plan already excluded
+// everything) or no lua mods. With the Null VM every lua mod records a
+// Backend failure (truthful, auto-heals when a real backend lands);
+// failures surface as menu warnings, never crashes.
+static std::vector<ttmod::ModRunStatus> run_ttmod_entrypoints(const InitCtx& ctx, ttmod::RuntimeOwner* owner) {
+    std::vector<ttmod::ModRunStatus> none;
+    ttmod::ScriptVm* vm = owner ? owner->vm() : nullptr;
+    if (!vm) return none;
+    // Selection through the tested collector (PR 33): has-Lua mods map to
+    // Lua, everything else to a non-Lua marker the collector rejects.
+    std::vector<ttmod::ScriptModEntry> cands;
+    std::map<std::string, std::string> dirs;
+    for (auto& s : ctx.all) {
+        const auto& m = s.manifest;
+        bool lua = false;
+        for (auto r : m.runtime.runtimes)
+            if (r == ttmod::Runtime::Lua) lua = true;
+        cands.push_back({m.identity.id.str(), lua ? ttmod::Runtime::Lua : ttmod::Runtime::TelltaleLua,
+                         m.entrypoints.lua, true});
+        dirs[m.identity.id.str()] = s.dir;
+    }
+    std::vector<ttmod::ModScript> items;
+    for (auto& s : ttmod::collect_script_entrypoints(cands, ttmod::Runtime::Lua))
+        items.push_back({s.id, ttmod::Runtime::Lua, s.entrypoint,
+                         read_bounded(ttmod_win::join(dirs[s.id], s.entrypoint))});
+    if (items.empty()) return none;
+    auto statuses = ttmod::run_mod_entrypoints(*vm, items);
+    ttmod::Logger lg;
+    if (lg.open(ctx.logpath)) {
+        char m[128];
+        size_t failed = 0;
+        for (auto& s : statuses)
+            if (s.state == ttmod::ModRunState::Failed) {
+                ++failed;
+                lg.info("scripts: " + s.id + " failed: " + s.last_error_line());
+            }
+        snprintf(m, sizeof m, "scripts: %u ran, %u failed", (unsigned)statuses.size(), (unsigned)failed);
+        lg.info(m);
+    }
+    return statuses;
+}
+
 static void init_mods(const InitCtx& ctx, ttmod::RuntimeOwner* owner) {
     ttmod_win::mods_init(ctx.all, ctx.gamedir.c_str(), ctx.logpath.c_str(), owner);
 }
 
-static void store_menu_snapshot(const InitCtx& ctx) {
-    ttmod_win::mods_store_menu(ctx.all, ctx.disc.disabled, ctx.plan);
+static void store_menu_snapshot(const InitCtx& ctx, const std::vector<ttmod::ModRunStatus>& scripts) {
+    ttmod_win::mods_store_menu(ctx.all, ctx.disc.disabled, ctx.plan, scripts);
 }
 
 static void init_menu(const InitCtx& ctx, ttmod::RuntimeOwner* owner) {
@@ -387,8 +437,9 @@ static DWORD WINAPI InitThread(LPVOID self) {
     build_scanned(ctx);
     init_plugins(ctx, owner);
     queue_telltale_entrypoints(ctx);
+    auto script_status = run_ttmod_entrypoints(ctx, owner);
     init_mods(ctx, owner);
-    store_menu_snapshot(ctx);
+    store_menu_snapshot(ctx, script_status);
     init_menu(ctx, owner);
 
     return 0;

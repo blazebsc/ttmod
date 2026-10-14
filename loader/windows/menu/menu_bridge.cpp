@@ -85,11 +85,13 @@ static std::vector<ttmod::MenuModSnapshot> snapshot() {
             s.packaged = mi.packaged != 0;
         }
         s.schema = m.presentation.config;
-        // PR 29: load failures ride the model, not the log. A missing or
-        // corrupt config file is not fatal: fall back to schema defaults
-        // (an empty ConfigFile means "no overrides").
-        std::string problem;
+        // PR 29/33: load failures ride the model, not the log. Plan
+        // problems win; script failures fill in when loadable.
+        std::string problem, script_warning;
         if (mods_menu_problem(i, &problem)) s.warning = problem;
+        if (s.warning.empty() && mods_menu_script_warning(i, &script_warning)) s.warning = script_warning;
+        // A missing or corrupt config file is not fatal: fall back to
+        // schema defaults (an empty ConfigFile means "no overrides").
         auto cf = ttmod::parse_config_file(read_file(g_gamedir + "\\config\\" + m.identity.id.str() + ".json"));
         s.values = ttmod::config_effective(m.presentation.config, cf.ok() ? cf.value() : ttmod::ConfigFile{});
         out.push_back(s);

@@ -63,6 +63,21 @@ struct ModRunStatus {
 // - Unloaded is terminal too, except that Prepared/Running may stop.
 ModRunState advance(ModRunState from, const char* event);
 
+// Entrypoint selection (PR 32/33): which enabled mods contribute a script
+// file for a given runtime. In ModPlan load order; keeps mods declaring
+// that runtime with a non-empty entrypoint path. Pure selection - reading
+// the file (mod dirs) and running/queueing it is loader-side.
+struct ScriptModEntry {
+    std::string id;
+    Runtime runtime = Runtime::Lua;
+    std::string entrypoint; // manifest-relative path, may be empty
+    bool enabled = true;
+};
+struct SelectedEntrypoint {
+    std::string id;
+    std::string entrypoint; // manifest-relative path, passed through
+};
+std::vector<SelectedEntrypoint> collect_script_entrypoints(const std::vector<ScriptModEntry>& mods, Runtime runtime);
 // Telltale entrypoint selection (PR 32): which enabled mods contribute a
 // game.lua to the game's own Lua states. In ModPlan load order; keeps mods
 // whose manifest declares the telltale-lua runtime with a non-empty

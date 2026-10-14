@@ -26,6 +26,7 @@ markers below before assuming anything is done.
 | **Lua 5.4.7 backend** | `core/script/lua/`, vendored | real VM: executes, marshals, sandboxes, budget |
 | **Per-mod environments** | `ScriptVm::create_env`, Lua `_ENV` tables | one VM, one table per mod; shared `ttmod.*`, isolated writes |
 | **Mod entrypoint runner** | `run_mod_entrypoints` (`mod_lifecycle`) | env per mod, Backend/Entrypoint/Init stages, menu-ready statuses |
+| **Mixed-runtime loading** | framework init: native init + game.lua queue + TTMod-Lua run | one pass, ModPlan order; script failures surface as menu warnings |
 | Game Lua state registry | `core/game_lua.hpp` §30/57 | observes only; never closes a game state |
 | Native C ABI + plugin loading | `core/plugin_api.h` §15/16 | pre-existing |
 | Dependency-first load order | `core/modplan.hpp` §37 | one resolution, one plan |

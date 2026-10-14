@@ -221,6 +221,19 @@ int main() {
         assert(sel[1].id == "mod.e" && sel[1].entrypoint == "e.lua");
         assert(collect_telltale_entrypoints({}).empty());
     }
+    // Generic selection (PR 33): same shape for the TTMod Lua runtime.
+    {
+        std::vector<ScriptModEntry> mods = {
+            {"mod.a", Runtime::Lua, "main.lua", true},
+            {"mod.b", Runtime::Luau, "b.luau", true},
+            {"mod.c", Runtime::Lua, "", true},
+            {"mod.d", Runtime::Lua, "d.lua", false},
+        };
+        auto sel = collect_script_entrypoints(mods, Runtime::Lua);
+        assert(sel.size() == 1 && sel[0].id == "mod.a");
+        auto sel2 = collect_script_entrypoints(mods, Runtime::Luau);
+        assert(sel2.size() == 1 && sel2[0].id == "mod.b");
+    }
 
     std::puts("mod_lifecycle: all asserts passed");
     return 0;

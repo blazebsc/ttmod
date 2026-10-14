@@ -33,6 +33,9 @@ struct MenuEntry {
     // Load problem from the ModPlan (blocked reason), empty when loadable.
     // Disabled-by-user is NOT a problem - enabled=false already says it.
     std::string problem;
+    // Script failure one-liner (PR 33 runner), empty when the mod has no
+    // script status or it ran clean. Plan problems win at snapshot time.
+    std::string script_warning;
     std::vector<ttmod::ConfigOption> schema;
     ttmod::ModManifest manifest;
 };
@@ -74,7 +77,7 @@ void mods_init(const std::vector<ScannedMod>& all, const char* game_root, const 
 }
 
 void mods_store_menu(const std::vector<ScannedMod>& enabled, const std::vector<ttmod::Discovered>& disabled,
-                     const ttmod::ModPlan& plan) {
+                     const ttmod::ModPlan& plan, const std::vector<ttmod::ModRunStatus>& scripts) {
     std::lock_guard<std::mutex> l(g_menu_mtx);
     g_menu.clear();
     // PR 29: the plan's blocked reasons ride along so the menu can show
@@ -84,6 +87,11 @@ void mods_store_menu(const std::vector<ScannedMod>& enabled, const std::vector<t
         auto parsed = ttmod::ModId::parse(id);
         if (!parsed.ok()) return std::string{};
         return plan.blocked_reason(parsed.value());
+    };
+    auto script_for = [&](const std::string& id) {
+        for (auto& s : scripts)
+            if (s.id == id && s.state == ttmod::ModRunState::Failed) return s.last_error_line();
+        return std::string{};
     };
     for (auto& s : enabled) {
         MenuEntry e;
@@ -95,6 +103,7 @@ void mods_store_menu(const std::vector<ScannedMod>& enabled, const std::vector<t
         e.name = s.manifest.presentation.name;
         e.description = s.manifest.presentation.description;
         e.problem = problem_for(e.id);
+        e.script_warning = script_for(e.id);
         e.schema = s.manifest.presentation.config;
         e.manifest = s.manifest;
         g_menu.push_back(std::move(e));
@@ -148,6 +157,14 @@ bool mods_menu_problem(int index, std::string* out) {
     std::lock_guard<std::mutex> l(g_menu_mtx);
     if (index < 0 || (size_t)index >= g_menu.size()) return false;
     *out = g_menu[(size_t)index].problem;
+    return true;
+}
+
+bool mods_menu_script_warning(int index, std::string* out) {
+    if (!out) return false;
+    std::lock_guard<std::mutex> l(g_menu_mtx);
+    if (index < 0 || (size_t)index >= g_menu.size()) return false;
+    *out = g_menu[(size_t)index].script_warning;
     return true;
 }
 

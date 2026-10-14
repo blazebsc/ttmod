@@ -68,6 +68,11 @@ void RuntimeOwner::set_vm(std::unique_ptr<ScriptVm> vm) {
     vm_ = std::move(vm);
 }
 
+ScriptVm* RuntimeOwner::vm() noexcept {
+    if (safe_mode_ || !vm_) return nullptr;
+    return vm_.get();
+}
+
 bool RuntimeOwner::ensure_real_vm() {
     // No-op in core; platform layer overrides
     return false;

@@ -1,4 +1,6 @@
 #include "ttmod/runtime.hpp"
+#include "ttmod/runtime_owner.hpp"
+#include "ttmod/script_vm.hpp"
 #include <cassert>
 #include <cstdio>
 
@@ -22,6 +24,18 @@ int main() {
     assert(std::string(ttmod::to_string(RuntimeMode::Active)) == "active");
     assert(std::string(ttmod::to_string(ProfileStatus::Supported)) == "supported");
     assert(std::string(ttmod::to_string(ttmod::Architecture::X86)) == "x86");
+    // Owner vm() gate (PR 33 wiring): null with no VM, null in safe mode,
+    // live otherwise. Scripts never run without a VM to run on.
+    {
+        ttmod::ScriptApiRegistry api;
+        ttmod::RuntimeOwner owner("mcsm1_pc_x86", "/tmp");
+        assert(owner.vm() == nullptr);
+        assert(std::string(owner.profile_id()) == "mcsm1_pc_x86");
+        owner.set_vm(ttmod::make_null_vm(api));
+        assert(owner.vm() != nullptr);
+        owner.set_safe_mode(true);
+        assert(owner.vm() == nullptr);
+    }
     printf("runtime: capabilities OK\n");
     return 0;
 }
