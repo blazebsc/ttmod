@@ -24,6 +24,7 @@ markers below before assuming anything is done.
 | Versioned API registry, tombstones | `core/script_api.hpp` §34/75 | VM stores tokens, never function pointers |
 | Backend contract | `core/script_vm.hpp` | env-aware; Lua-free by construction |
 | **Lua 5.4.7 backend** | `core/script/lua/`, vendored | real VM: executes, marshals, sandboxes, budget |
+| **Luau backend** | `core/script/luau/`, vendored (PR 31) | mirrors the Lua backend; identical semantics, cross-checked under Wine/i686 |
 | **Per-mod environments** | `ScriptVm::create_env`, Lua `_ENV` tables | one VM, one table per mod; shared `ttmod.*`, isolated writes |
 | **Mod entrypoint runner** | `run_mod_entrypoints` (`mod_lifecycle`) | env per mod, Backend/Entrypoint/Init stages, menu-ready statuses |
 | **Mixed-runtime loading** | framework init: native init + game.lua queue + TTMod-Lua run | one pass, ModPlan order; script failures surface as menu warnings |
@@ -33,7 +34,7 @@ markers below before assuming anything is done.
 
 **Planned**
 
-Luau backend (§55) · TTMod `ttmod.*` binding surface beyond the registry
+TTMod `ttmod.*` binding surface beyond the registry
 (§13, §34) · script thread + `ScriptHost` owner (§4.1, §70) · native plugin
 script-API registration through the host ABI (§75) · cross-VM command
 semantics beyond marshaled values (§11) · game-thread dispatch into real game

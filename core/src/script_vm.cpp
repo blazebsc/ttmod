@@ -12,6 +12,8 @@ const char* to_string(ScriptBackendKind k) {
     switch (k) {
     case ScriptBackendKind::Lua:
         return "lua";
+    case ScriptBackendKind::Luau:
+        return "luau";
     default:
         return "null";
     }

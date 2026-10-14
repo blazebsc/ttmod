@@ -28,6 +28,7 @@ namespace ttmod {
 
 enum class ScriptBackendKind {
     Lua,
+    Luau,
     // No VM: the script layer is inert. Used when safe mode is on, when no
     // mod declares a script runtime, and as the test double - one
     // implementation, two jobs, no separate fake to keep correct.

@@ -92,6 +92,11 @@ std::vector<TelltaleEntrypoint> collect_telltale_entrypoints(const std::vector<T
 
 std::vector<ModRunStatus> run_mod_entrypoints(ScriptVm& vm, const std::vector<ModScript>& mods) {
     std::vector<ModRunStatus> out;
+    // Backend match by what the VM actually is, not a hardcoded runtime:
+    // a Lua mod needs a Lua VM, a Luau mod a Luau VM. Anything else -
+    // including TelltaleLua, which runs on the game's own states, never
+    // here - is a Backend failure on THIS VM.
+    const std::string backend = vm.backend() ? vm.backend() : "";
     for (auto& m : mods) {
         ModRunStatus st;
         st.id = m.id;
@@ -101,9 +106,11 @@ std::vector<ModRunStatus> run_mod_entrypoints(ScriptVm& vm, const std::vector<Mo
             st.errors = 1;
             st.state = advance(st.state, "fail");
         };
-        if (m.runtime != Runtime::Lua) {
+        const bool runnable = (m.runtime == Runtime::Lua && backend == "lua") ||
+                              (m.runtime == Runtime::Luau && backend == "luau");
+        if (!runnable) {
             fail(ModStage::Backend, Error{"run-entrypoint", m.chunk_name, errcat::kType,
-                                          std::string("no backend for runtime ") + to_string(m.runtime)});
+                                          std::string("no ") + to_string(m.runtime) + " backend on this VM"});
         } else if (m.source.empty()) {
             fail(ModStage::Entrypoint, Error{"run-entrypoint", m.chunk_name, errcat::kMissing, "empty chunk"});
         } else if (auto env = vm.create_env(m.id); !env.ok()) {

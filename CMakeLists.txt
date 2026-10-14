@@ -13,6 +13,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Vendored Lua 5.4.7 for the TTMod-owned scripting VM (doc §§2,4,23,71).
 # Kept OUT of ttmod_core and OUT of the CLI: the CLI must stay VM-free.
 add_subdirectory(third_party/lua)
+add_subdirectory(third_party/luau)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(helpers)
@@ -156,6 +157,18 @@ target_link_libraries(ttmod_lua_backend PUBLIC ttmod_core PRIVATE lua54)
 ttmod_add_unit_test(lua_backend tests/script/test_lua_vm.cpp)
 target_link_libraries(test_lua_backend PRIVATE ttmod_lua_backend lua54)
 target_include_directories(test_lua_backend PRIVATE core)
+
+# Script backend: the Luau VM. Same contract, same sandbox shape, same
+# budget mechanism (interrupt counter); see third_party/luau/README.ttmod.md
+# for the bridged API differences.
+add_library(ttmod_luau_backend STATIC core/script/luau/luau_vm.cpp)
+ttmod_apply_warnings(ttmod_luau_backend)
+target_include_directories(ttmod_luau_backend PUBLIC core/include PRIVATE core)
+target_link_libraries(ttmod_luau_backend PUBLIC ttmod_core PRIVATE luau)
+
+ttmod_add_unit_test(luau_backend tests/script/test_luau_vm.cpp)
+target_link_libraries(test_luau_backend PRIVATE ttmod_luau_backend luau)
+target_include_directories(test_luau_backend PRIVATE core)
 find_program(PYTHON3_BIN python3)
 if(PYTHON3_BIN)
   add_test(NAME lua_dis COMMAND ${PYTHON3_BIN} ${CMAKE_SOURCE_DIR}/tests/lua/test_lua_dis.py)
