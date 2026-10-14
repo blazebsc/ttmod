@@ -221,6 +221,21 @@ assert(nrec('pop') == 2 and nrec('create|ui_menu_options') == 1,
 -- target - seen in the 2026-10-11 log).
 assert(CURRENT_MENU ~= nil and CURRENT_MENU.ttmod_kind == 'details' and
   CURRENT_MENU.ttmod_page == nil, 'details rebuilt untagged')
+-- PR 29: the ModPlan's blocked reason rides the model and renders as a
+-- non-interactive row under the version; empty warning = no row.
+ttmod_menu.mods[1].warning = 'conflicts with plain.mod'
+calls = {}
+Menu_Mods_Select('demo.config')
+assert(nrec('add|warn|') == 1, 'warning row present')
+local saw_warn = false
+for _, c in ipairs(calls) do
+  if c:find('setprop|warn|Text String|Blocked: conflicts with plain.mod', 1, true) then saw_warn = true end
+end
+assert(saw_warn, 'warning text identifies the blocker')
+ttmod_menu.mods[1].warning = nil
+calls = {}
+Menu_Mods_Select('demo.config')
+assert(nrec('add|warn|') == 0, 'no warning row when loadable')
 assert(#setter_log == 0, 'opening palette writes nothing')
 -- the current swatch (#00E000 = swatch 10) carries the ' *' mark, but only on
 -- the page that holds it (page 2 spans swatches 7-12 at 6/page). Runs BEFORE

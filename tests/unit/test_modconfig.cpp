@@ -123,6 +123,18 @@ int main() {
     assert(lit.find("value=7") != std::string::npos);
     assert(lit.find("enabled=true") != std::string::npos);
     assert(lit.rfind("}}") == lit.size() - 2);
+    // PR 29 model: warning + meta ride the literal (additive; Lua ignores).
+    {
+        ttmod::MenuModSnapshot w = snap;
+        w.warning = "conflicts with \"other\"";
+        ttmod::MenuMeta meta;
+        meta.safe_mode = true;
+        meta.capabilities = {"menu", "lua-bridge"};
+        std::string lit2 = ttmod::build_menu_literal({w}, 8, meta);
+        assert(lit2.find("warning=\"conflicts with \\\"other\\\"\"") != std::string::npos);
+        assert(lit2.find("meta={safe_mode=true,capabilities={\"menu\",\"lua-bridge\"}}}") !=
+               std::string::npos);
+    }
     // dump for the stock-Lua parse check (see test_menumods_ui.py tail).
     // Path must be creatable anywhere: CI has no /tmp/opencode, and a failed
     // fopen aborted the whole test with no useful message.

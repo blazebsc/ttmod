@@ -291,7 +291,7 @@ std::string serialize_config(const std::vector<ConfigOption>& schema,
     return out;
 }
 
-std::string build_menu_literal(const std::vector<MenuModSnapshot>& mods, unsigned seq) {
+std::string build_menu_literal(const std::vector<MenuModSnapshot>& mods, unsigned seq, const MenuMeta& meta) {
     std::string out = "ttmod_menu={seq=";
     {
         char b[32];
@@ -313,6 +313,8 @@ std::string build_menu_literal(const std::vector<MenuModSnapshot>& mods, unsigne
         append_escaped(out, m.description);
         out += ",enabled=";
         out += m.enabled ? "true" : "false";
+        out += ",warning=";
+        append_escaped(out, m.warning);
         out += ",config={";
         bool cf = true;
         for (auto& o : m.schema) {
@@ -356,7 +358,17 @@ std::string build_menu_literal(const std::vector<MenuModSnapshot>& mods, unsigne
         }
         out += "}}";
     }
-    out += "}}";
+    out += "}";
+    // Meta INSIDE ttmod_menu (additive: Lua key-readers never noticed its
+    // absence, and the stock-Lua parse check still holds).
+    out += ",meta={safe_mode=";
+    out += meta.safe_mode ? "true" : "false";
+    out += ",capabilities={";
+    for (size_t i = 0; i < meta.capabilities.size(); ++i) {
+        if (i) out += ",";
+        append_escaped(out, meta.capabilities[i]);
+    }
+    out += "}}}";
     return out;
 }
 

@@ -111,12 +111,26 @@ struct MenuModSnapshot {
     bool enabled = true;
     bool has_plugin = false;
     bool packaged = false;
+    // Load problem, empty when loadable (PR 29): the ModPlan's blocked
+    // reason ("conflicts with ...", "needs ..."), shown on the details
+    // screen. Disabled-by-user is NOT a problem - enabled=false says it.
+    std::string warning;
     std::vector<ConfigOption> schema;
     std::map<std::string, ConfigValue> values; // effective
 };
 
-// Build `ttmod_menu={seq=N,mods={...}}` literal. Strings Lua-escaped;
-// control chars stripped. seq lets Lua detect staleness.
-std::string build_menu_literal(const std::vector<MenuModSnapshot>& mods, unsigned seq);
+// Runtime status for the menu header (PR 29): what this profile can do
+// plus safe mode. The menu does not act on it yet (future header UI);
+// it is model data with a pinned literal shape, not speculation.
+struct MenuMeta {
+    bool safe_mode = false;
+    std::vector<std::string> capabilities; // to_string(Capability), granted only
+};
+
+// Build `ttmod_menu={seq=N,mods={...},meta={...}}` literal. Strings
+// Lua-escaped; control chars stripped. seq lets Lua detect staleness.
+// The meta param defaults empty (existing callers unaffected).
+std::string build_menu_literal(const std::vector<MenuModSnapshot>& mods, unsigned seq,
+                               const MenuMeta& meta = MenuMeta{});
 
 } // namespace ttmod

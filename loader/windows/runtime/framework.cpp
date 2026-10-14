@@ -297,7 +297,7 @@ static void init_mods(const InitCtx& ctx, ttmod::RuntimeOwner* owner) {
 }
 
 static void store_menu_snapshot(const InitCtx& ctx) {
-    ttmod_win::mods_store_menu(ctx.all, ctx.disc.disabled);
+    ttmod_win::mods_store_menu(ctx.all, ctx.disc.disabled, ctx.plan);
 }
 
 static void init_menu(const InitCtx& ctx, ttmod::RuntimeOwner* owner) {

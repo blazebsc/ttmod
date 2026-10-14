@@ -12,6 +12,8 @@
 #include "ttmod/file_io.hpp"
 #include "ttmod/manifest.hpp"
 #include "ttmod/modconfig.hpp"
+#include "ttmod/runtime.hpp"
+#include "ttmod/runtime_owner.hpp"
 #include "ttmod/validate.hpp"
 #include "ttmod/modstate.hpp"
 #include "ttmod/plugin_api.h"
@@ -39,6 +41,9 @@ static void emit(const std::string& msg) {
     ttmod::Logger log;
     if (log.open(g_logpath)) log.info(msg);
 }
+// PR 29: the runtime owner for menu meta (safe mode + capabilities).
+// Stored, never owned; may be null in tests.
+static ttmod::RuntimeOwner* g_owner = nullptr;
 
 static std::string read_file(const std::string& path) {
     FILE* f = ttmod::file_io::open_read(path);
@@ -80,8 +85,11 @@ static std::vector<ttmod::MenuModSnapshot> snapshot() {
             s.packaged = mi.packaged != 0;
         }
         s.schema = m.presentation.config;
-        // A missing or corrupt config file is not fatal: fall back to
-        // schema defaults (an empty ConfigFile means "no overrides").
+        // PR 29: load failures ride the model, not the log. A missing or
+        // corrupt config file is not fatal: fall back to schema defaults
+        // (an empty ConfigFile means "no overrides").
+        std::string problem;
+        if (mods_menu_problem(i, &problem)) s.warning = problem;
         auto cf = ttmod::parse_config_file(read_file(g_gamedir + "\\config\\" + m.identity.id.str() + ".json"));
         s.values = ttmod::config_effective(m.presentation.config, cf.ok() ? cf.value() : ttmod::ConfigFile{});
         out.push_back(s);
@@ -136,7 +144,18 @@ static int __cdecl fn_refresh(lua_State* L) {
     if (!g_loadstring || !g_pcallk || !g_gettop) return 0;
     unsigned seq = (unsigned)InterlockedIncrement(&g_seq);
     auto snap = snapshot();
-    std::string chunk = ttmod::build_menu_literal(snap, seq);
+    // PR 29 meta: safe mode + granted capabilities, read off the owner.
+    // No owner (tests) = defaults: not safe, no capabilities.
+    ttmod::MenuMeta meta;
+    if (g_owner != nullptr) {
+        meta.safe_mode = g_owner->safe_mode();
+        const char* profile = g_owner->profile_id();
+        for (auto c : {ttmod::Capability::FileOverrides, ttmod::Capability::Plugins, ttmod::Capability::LuaBridge,
+                       ttmod::Capability::Menu, ttmod::Capability::Events, ttmod::Capability::GameState}) {
+            if (ttmod::profile_has(profile, c)) meta.capabilities.push_back(ttmod::to_string(c));
+        }
+    }
+    std::string chunk = ttmod::build_menu_literal(snap, seq, meta);
     bridge_run_chunk(L, g_loadstring, g_pcallk, g_gettop, g_setglobal, g_tolstring, "refresh", chunk.c_str());
     char m[128]; // menu opens are rare; one line each is fine
     snprintf(m, sizeof m, "menumods: refresh seq=%u mods=%u", seq, (unsigned)snap.size());
@@ -255,6 +274,7 @@ static void reg_fn(lua_State* L, LuaPushCClosureFn pushcclosure, LuaSetglobalFn 
 void menumods_init(const char* game_dir, const char* log_path, ttmod::RuntimeOwner* owner) {
     g_gamedir = game_dir ? game_dir : "";
     g_logpath = log_path ? log_path : "";
+    g_owner = owner;
 }
 
 int menumods_queue_ui_chunk(const char* code) {

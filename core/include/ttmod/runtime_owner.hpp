@@ -36,6 +36,11 @@ class RuntimeOwner : public ScriptHost {
     [[nodiscard]] bool safe_mode() const noexcept {
         return safe_mode_;
     }
+    // Profile identity for capability reporting (PR 29 menu meta). The
+    // pointer is the init-owned string and stays valid for the process.
+    [[nodiscard]] const char* profile_id() const noexcept {
+        return profile_id_;
+    }
 
     // Accessors for native plugins (host ABI).
     GameDispatcher& dispatcher() noexcept override {

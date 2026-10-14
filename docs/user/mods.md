@@ -12,7 +12,9 @@ Minecraft Story Mode/mods/
 **In-game** (recommended): launch the game → main menu → **Mods**
 (between Settings and Exit Game). It lists every installed mod with version
 and [ON]/[OFF]; click a mod for details, toggle Enabled, or edit its
-settings. Changes apply after a game restart.
+settings. Changes apply after a game restart. A mod the loader blocked
+(conflict, missing dependency) shows a `Blocked: <reason>` row on its
+details screen instead of failing silently.
 
 **By file**: to disable without deleting, create/edit
 `config/mods.json`:

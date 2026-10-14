@@ -1491,6 +1491,13 @@ function Menu_Mods_Select(id)
         setlabel(h, m.name)
         local ver = Menu_Add(ListButton, 'ver', 'label_OK', 'Menu_Mods_Noop()')
         setlabel(ver, 'Version ' .. tostring(m.version))
+        -- PR 29: load failures ride the model (m.warning from the ModPlan),
+        -- shown as a non-interactive row right under the version. Empty =
+        -- no row (the common case stays byte-identical).
+        if m.warning ~= nil and m.warning ~= '' then
+            local w = Menu_Add(ListButton, 'warn', 'label_OK', 'Menu_Mods_Noop()')
+            setlabel(w, 'Blocked: ' .. tostring(m.warning))
+        end
         local st = m.enabled and 'ON' or 'OFF'
         local en = Menu_Add(ListButton, 'enabled', 'label_OK',
             'Menu_Mods_Toggle("' .. cbquote(m.id) .. '")')

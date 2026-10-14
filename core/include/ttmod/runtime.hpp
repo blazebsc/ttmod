@@ -8,6 +8,23 @@ namespace ttmod {
 // comparing hardcoded profile IDs (Stage E).
 enum class Capability { FileOverrides, Plugins, LuaBridge, Menu, Events, GameState };
 
+inline const char* to_string(Capability c) {
+    switch (c) {
+        case Capability::FileOverrides:
+            return "file-overrides";
+        case Capability::Plugins:
+            return "plugins";
+        case Capability::LuaBridge:
+            return "lua-bridge";
+        case Capability::Menu:
+            return "menu";
+        case Capability::Events:
+            return "events";
+        default:
+            return "game-state";
+    }
+}
+
 // Today exactly one profile exists and it has everything; unknown builds
 // get nothing (fail-safe: init returns early, game continues vanilla).
 // The SET is the seam - adding a game means extending this function.

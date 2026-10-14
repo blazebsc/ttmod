@@ -30,6 +30,9 @@ struct MenuEntry {
     // Display/schema snapshot (from manifest at store time; internal only,
     // never exposed through the plugin ABI).
     std::string name, description;
+    // Load problem from the ModPlan (blocked reason), empty when loadable.
+    // Disabled-by-user is NOT a problem - enabled=false already says it.
+    std::string problem;
     std::vector<ttmod::ConfigOption> schema;
     ttmod::ModManifest manifest;
 };
@@ -70,17 +73,45 @@ void mods_init(const std::vector<ScannedMod>& all, const char* game_root, const 
     emit(sum);
 }
 
-void mods_store_menu(const std::vector<ScannedMod>& enabled, const std::vector<ttmod::Discovered>& disabled) {
+void mods_store_menu(const std::vector<ScannedMod>& enabled, const std::vector<ttmod::Discovered>& disabled,
+                     const ttmod::ModPlan& plan) {
     std::lock_guard<std::mutex> l(g_menu_mtx);
     g_menu.clear();
-    for (auto& s : enabled)
-        g_menu.push_back({s.manifest.identity.id.str(), s.manifest.identity.version.str(), true, s.has_dll, s.packaged,
-                          s.manifest.presentation.name, s.manifest.presentation.description,
-                          s.manifest.presentation.config, s.manifest});
-    for (auto& d : disabled)
-        g_menu.push_back({d.id.str(), d.manifest.identity.version.str(), false, !d.manifest.plugin.path.empty(),
-                          d.packaged(), d.manifest.presentation.name, d.manifest.presentation.description,
-                          d.manifest.presentation.config, d.manifest});
+    // PR 29: the plan's blocked reasons ride along so the menu can show
+    // WHY a mod failed, not just that it is off. Disabled-by-user stays
+    // problem-free (enabled=false says it).
+    auto problem_for = [&](const std::string& id) {
+        auto parsed = ttmod::ModId::parse(id);
+        if (!parsed.ok()) return std::string{};
+        return plan.blocked_reason(parsed.value());
+    };
+    for (auto& s : enabled) {
+        MenuEntry e;
+        e.id = s.manifest.identity.id.str();
+        e.version = s.manifest.identity.version.str();
+        e.enabled = true;
+        e.has_plugin = s.has_dll;
+        e.packaged = s.packaged;
+        e.name = s.manifest.presentation.name;
+        e.description = s.manifest.presentation.description;
+        e.problem = problem_for(e.id);
+        e.schema = s.manifest.presentation.config;
+        e.manifest = s.manifest;
+        g_menu.push_back(std::move(e));
+    }
+    for (auto& d : disabled) {
+        MenuEntry e;
+        e.id = d.id.str();
+        e.version = d.manifest.identity.version.str();
+        e.enabled = false;
+        e.has_plugin = !d.manifest.plugin.path.empty();
+        e.packaged = d.packaged();
+        e.name = d.manifest.presentation.name;
+        e.description = d.manifest.presentation.description;
+        e.schema = d.manifest.presentation.config;
+        e.manifest = d.manifest;
+        g_menu.push_back(std::move(e));
+    }
     std::sort(g_menu.begin(), g_menu.end(), [](const MenuEntry& a, const MenuEntry& b) { return a.id < b.id; });
 }
 
@@ -109,6 +140,14 @@ bool mods_menu_manifest(int index, ttmod::ModManifest* out) {
     std::lock_guard<std::mutex> l(g_menu_mtx);
     if (index < 0 || (size_t)index >= g_menu.size()) return false;
     *out = g_menu[(size_t)index].manifest;
+    return true;
+}
+
+bool mods_menu_problem(int index, std::string* out) {
+    if (!out) return false;
+    std::lock_guard<std::mutex> l(g_menu_mtx);
+    if (index < 0 || (size_t)index >= g_menu.size()) return false;
+    *out = g_menu[(size_t)index].problem;
     return true;
 }
 
