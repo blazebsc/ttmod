@@ -11,10 +11,14 @@
 #include <cstring>
 #include <string>
 #include "ttmod/profile.hpp"
+#include "ttmod/diag.hpp"
 #include "ttmod/file_io.hpp"
+#include "ttmod/package_policy.hpp"
+#include "ttmod/uiqueue.hpp"
 #include "ttmod/log.hpp"
 #include "ttmod/discovery.hpp"
 #include "ttmod/cache.hpp"
+#include "ttmod/mod_lifecycle.hpp"
 #include "ttmod/modstate.hpp"
 #include "ttmod/modplan.hpp"
 #include "ttmod/runtime_owner.hpp"
@@ -292,6 +296,52 @@ static void init_plugins(const InitCtx& ctx, ttmod::RuntimeOwner* owner) {
     ttmod_win::plugins_init(ctx.all, ctx.prof.c_str(), ctx.game, ctx.season, ctx.logpath.c_str(), owner);
 }
 
+// PR 32: queue enabled mods' telltale-lua entrypoints onto the game thread
+// (existing v5 queue: runs at the next script load + menu replay). ctx.all
+// is the surviving ModPlan-ordered set, so safe-mode/disabled/blocked mods
+// are excluded by construction - nothing extra to gate. File reads bounded
+// by the manifest cap (third-party text ingested by the framework).
+static void queue_telltale_entrypoints(const InitCtx& ctx) {
+    std::vector<ttmod::TelltaleMod> mods;
+    for (auto& s : ctx.all) {
+        const auto& m = s.manifest;
+        bool tt = false;
+        for (auto r : m.runtime.runtimes)
+            if (r == ttmod::Runtime::TelltaleLua) tt = true;
+        mods.push_back({m.identity.id.str(), tt, m.entrypoints.telltale_lua, true});
+    }
+    ttmod::Logger lg;
+    bool logopen = lg.open(ctx.logpath);
+    auto emit = [&](const ttmod::DiagEvent& e) {
+        if (logopen) lg.info(ttmod::diag_format(e));
+    };
+    for (auto& e : ttmod::collect_telltale_entrypoints(mods)) {
+        std::string dir;
+        for (auto& s : ctx.all)
+            if (s.manifest.identity.id.str() == e.id) dir = s.dir;
+        std::string path = ttmod_win::join(dir, e.entrypoint);
+        FILE* f = ttmod::file_io::open_read(path);
+        std::string src;
+        if (f) {
+            char b[4096];
+            size_t r = 0;
+            while ((r = fread(b, 1, sizeof b, f)) > 0) {
+                if (src.size() + r > ttmod::packlimits::kMaxManifestBytes) break;
+                src.append(b, r);
+            }
+            fclose(f);
+        }
+        if (src.empty()) {
+            emit({ttmod::DiagKind::Bridge, "entrypoint-unreadable", e.id, e.entrypoint});
+            continue;
+        }
+        if (!ttmod::uiqueue_push(src))
+            emit({ttmod::DiagKind::Bridge, "entrypoint-dropped", e.id, e.entrypoint});
+        else
+            emit({ttmod::DiagKind::Bridge, "entrypoint-queued", e.id, e.entrypoint});
+    }
+}
+
 static void init_mods(const InitCtx& ctx, ttmod::RuntimeOwner* owner) {
     ttmod_win::mods_init(ctx.all, ctx.gamedir.c_str(), ctx.logpath.c_str(), owner);
 }
@@ -336,6 +386,7 @@ static DWORD WINAPI InitThread(LPVOID self) {
 
     build_scanned(ctx);
     init_plugins(ctx, owner);
+    queue_telltale_entrypoints(ctx);
     init_mods(ctx, owner);
     store_menu_snapshot(ctx);
     init_menu(ctx, owner);

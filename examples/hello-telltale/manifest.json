@@ -1,0 +1,10 @@
+{
+    "id": "hello.telltale",
+    "name": "Hello Telltale",
+    "version": "1.0.0",
+    "description": "PR 32 proof: a game.lua that runs on the game's own Lua states.",
+    "api": 1,
+    "games": ["minecraft-story-mode:s1"],
+    "runtimes": ["telltale-lua"],
+    "entrypoints": {"telltale-lua": "game.lua"}
+}

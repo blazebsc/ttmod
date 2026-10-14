@@ -69,6 +69,17 @@ ModRunState advance(ModRunState from, const char* event) {
     return from;
 }
 
+std::vector<TelltaleEntrypoint> collect_telltale_entrypoints(const std::vector<TelltaleMod>& mods) {
+    std::vector<TelltaleEntrypoint> out;
+    for (auto& m : mods) {
+        if (!m.enabled) continue;
+        if (!m.telltale_runtime) continue;
+        if (m.entrypoint.empty()) continue;
+        out.push_back({m.id, m.entrypoint});
+    }
+    return out;
+}
+
 std::vector<ModRunStatus> run_mod_entrypoints(ScriptVm& vm, const std::vector<ModScript>& mods) {
     std::vector<ModRunStatus> out;
     for (auto& m : mods) {

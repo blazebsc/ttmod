@@ -205,6 +205,23 @@ int main() {
         assert(ran == 1);
     }
 
+    // Telltale entrypoint selection (PR 32): enabled + declared runtime +
+    // non-empty path, ModPlan order preserved, nothing else passes.
+    {
+        std::vector<TelltaleMod> mods = {
+            {"mod.a", true, "game.lua", true},
+            {"mod.b", false, "game.lua", true},   // no telltale runtime
+            {"mod.c", true, "", true},            // declared, no entrypoint
+            {"mod.d", true, "d.lua", false},      // disabled
+            {"mod.e", true, "e.lua", true},
+        };
+        auto sel = collect_telltale_entrypoints(mods);
+        assert(sel.size() == 2);
+        assert(sel[0].id == "mod.a" && sel[0].entrypoint == "game.lua");
+        assert(sel[1].id == "mod.e" && sel[1].entrypoint == "e.lua");
+        assert(collect_telltale_entrypoints({}).empty());
+    }
+
     std::puts("mod_lifecycle: all asserts passed");
     return 0;
 }

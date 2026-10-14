@@ -41,3 +41,28 @@ General `onScriptLoaded`-style events beyond resdesc/archive opens, and
 richer Lua-value APIs on top of the v5 chunk queue. M7 file/resdesc/archive
 open events already ship (`events.cpp`, ABI v2); the late-install detour
 timing result below is what the shipped bridge uses.
+
+## Telltale-lua mods (PR 32, advanced)
+
+A mod whose manifest declares the `telltale-lua` runtime with an
+`entrypoints.telltale_lua` game.lua runs ON the game's own Lua states -
+not the TTMod VM. At init, the loader queues each surviving mod's source
+(ModPlan order; safe-mode/disabled/blocked excluded by construction)
+through the v5 chunk queue: it executes on the game script thread at the
+next script load, plus the menu-state replay. Consequences, stated
+plainly:
+
+- The entrypoint runs once per Lua world (engine drain + menu replay),
+  with separate globals each time. Write idempotent entrypoints
+  (guard with a `_TTMOD_LOADED` global) - double side effects are the
+  author's bug, not the loader's.
+- No return channel: results/errors are invisible to the framework.
+  Debug via `ttmod_menu_log(s)` on menu states; engine-state failures
+  vanish into engine tolerance (same as corrupt resdesc).
+- Game-thread rules apply: never block, never yield, never touch Lua
+  from another thread. No raw `lua_State*` is exposed to normal mods -
+  there is nothing to hold.
+- Missing/unreadable entrypoint or a full queue is a Bridge diag event
+  (`entrypoint-unreadable`, `entrypoint-dropped`), not a crash.
+- Treat mod game.lua as fully trusted code (same as the engine's own
+  scripts); there is no sandbox on this path by design.
