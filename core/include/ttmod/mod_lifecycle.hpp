@@ -8,8 +8,11 @@
 // A failed stage produces a structured Failure, never a vague bool (§36).
 #include <cstdint>
 #include <string>
+#include <vector>
 
+#include "ttmod/manifest.hpp"
 #include "ttmod/result.hpp"
+#include "ttmod/script_vm.hpp"
 
 namespace ttmod {
 
@@ -59,5 +62,26 @@ struct ModRunStatus {
 //   a loop).
 // - Unloaded is terminal too, except that Prepared/Running may stop.
 ModRunState advance(ModRunState from, const char* event);
+
+// One script entrypoint to run (PR 30): a mod id, its declared runtime, and
+// the already-loaded source. Loading files is caller-side (only the loader
+// knows mod dirs); this runner owns environments, execution, and status.
+struct ModScript {
+    std::string id;
+    Runtime runtime = Runtime::Lua;
+    std::string chunk_name;
+    std::string source;
+};
+
+// Run every entrypoint on one shared VM, one environment per mod (PR 17).
+// Per mod, in order: wrong runtime -> Backend failure; empty source ->
+// Entrypoint failure (declared but unreadable); env creation failure ->
+// Backend failure; run failure -> Init failure (the Lua backend reports
+// compile and runtime errors identically, so Compile is reserved, not
+// produced); success -> Running. Statuses come back in input order with
+// errors counted and last_error_line() ready for the menu. No logging
+// here (no sink in core) - the caller reports statuses as diag Script
+// events. Never throws, never touches the game.
+std::vector<ModRunStatus> run_mod_entrypoints(ScriptVm& vm, const std::vector<ModScript>& mods);
 
 } // namespace ttmod

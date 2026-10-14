@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "ttmod/mod_lifecycle.hpp"
 #include "ttmod/script_api.hpp"
 #include "ttmod/script_vm.hpp"
 
@@ -178,6 +179,18 @@ int main() {
             vm->release_env(e.value()); // no-op, must not crash
             vm->release_env(EnvRef{});  // invalid ref, must not crash
             assert(!vm->create_env("").ok()); // empty mod id rejected
+        }
+        // Runner on the null backend: every mod fails Backend, structured.
+        {
+            std::vector<ModScript> items = {
+                {"mod.a", Runtime::Lua, "a.lua", "return 1"},
+                {"mod.b", Runtime::Luau, "b.lua", "return 1"},
+            };
+            auto statuses = run_mod_entrypoints(*vm, items);
+            assert(statuses.size() == 2);
+            assert(statuses[0].state == ModRunState::Failed);
+            assert(statuses[1].state == ModRunState::Failed);
+            assert(!statuses[0].last_error_line().empty());
         }
         assert(std::string(to_string(ScriptBackendKind::Lua)) == "lua");
         assert(std::string(to_string(ScriptBackendKind::Null)) == "null");

@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "script/lua/lua_vm.hpp"
+#include "ttmod/mod_lifecycle.hpp"
 #include "ttmod/script_api.hpp"
 
 using namespace ttmod;
@@ -228,6 +229,36 @@ int main() {
         auto r = vm->run_chunk("return 7", "s.lua", Value::string("mod.b"));
         assert(r.ok() && r.value().as_number() == 7.0);
     }
+    // ---- mod entrypoint runner (PR 30) ---------------------------------
+    // Statuses, stages, and per-mod isolation through the public runner.
+    {
+        std::vector<ModScript> items = {
+            {"mod.a", Runtime::Lua, "a.lua", "mod_a_var = 10 return 1"},
+            {"mod.b", Runtime::Lua, "b.lua", "return mod_a_var"},
+            {"mod.bad", Runtime::Lua, "bad.lua", "this is not lua"},
+            {"mod.boom", Runtime::Lua, "boom.lua", "error('kaput')"},
+            {"mod.empty", Runtime::Lua, "empty.lua", ""},
+            {"mod.future", Runtime::Luau, "f.luau", "return 1"},
+        };
+        auto statuses = run_mod_entrypoints(*vm, items);
+        assert(statuses.size() == 6);
+        assert(statuses[0].state == ModRunState::Running); // mod.a ran
+        assert(statuses[1].state == ModRunState::Running); // mod.b ran...
+        assert(statuses[1].id == "mod.b");
+        // ...but in its own env: mod.a's globals are invisible to it.
+        auto chk = vm->run_chunk("return mod_a_var", "chk.lua", Value::string("mod.b"));
+        assert(chk.ok() && chk.value().is_nil());
+        assert(statuses[2].state == ModRunState::Failed); // syntax
+        assert(statuses[3].state == ModRunState::Failed); // runtime error
+        assert(!statuses[3].last_error_line().empty());   // menu one-liner ready
+        assert(statuses[4].state == ModRunState::Failed); // empty source
+        assert(statuses[5].state == ModRunState::Failed); // no Luau backend yet
+        // A failed mod never recovers on rerun... rerun is a fresh status
+        // (the runner is stateless; Failed sticks to its own record).
+        for (auto& s : statuses)
+            if (s.state == ModRunState::Failed) assert(s.errors == 1);
+    }
+
     // ---- callback lifecycle --------------------------------------------
     // retain/call/release is the only way a script function reaches the host,
     // and releasing twice is safe.

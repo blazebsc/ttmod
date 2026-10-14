@@ -69,4 +69,32 @@ ModRunState advance(ModRunState from, const char* event) {
     return from;
 }
 
+std::vector<ModRunStatus> run_mod_entrypoints(ScriptVm& vm, const std::vector<ModScript>& mods) {
+    std::vector<ModRunStatus> out;
+    for (auto& m : mods) {
+        ModRunStatus st;
+        st.id = m.id;
+        st.state = ModRunState::Prepared;
+        auto fail = [&](ModStage stage, Error e) {
+            st.failure = Failure{stage, std::move(e)};
+            st.errors = 1;
+            st.state = advance(st.state, "fail");
+        };
+        if (m.runtime != Runtime::Lua) {
+            fail(ModStage::Backend, Error{"run-entrypoint", m.chunk_name, errcat::kType,
+                                          std::string("no backend for runtime ") + to_string(m.runtime)});
+        } else if (m.source.empty()) {
+            fail(ModStage::Entrypoint, Error{"run-entrypoint", m.chunk_name, errcat::kMissing, "empty chunk"});
+        } else if (auto env = vm.create_env(m.id); !env.ok()) {
+            fail(ModStage::Backend, env.error());
+        } else if (auto r = vm.run_chunk(m.source, m.chunk_name, Value::string(m.id)); !r.ok()) {
+            fail(ModStage::Init, r.error());
+        } else {
+            st.state = advance(st.state, "ok");
+        }
+        out.push_back(std::move(st));
+    }
+    return out;
+}
+
 } // namespace ttmod
