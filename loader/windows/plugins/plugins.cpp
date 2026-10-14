@@ -15,6 +15,7 @@
 #include "ttmod/plugin_api.h"
 #include "ttmod/plugin_grant.hpp"
 #include "ttmod/plugin_lifecycle.hpp"
+#include "ttmod/plugin_bind.hpp"
 #include "ttmod/diag.hpp"
 #include "events.hpp"
 #include "menu_bridge.hpp"
@@ -45,18 +46,48 @@ static void host_log(const char* msg) {
     emit(msg ? msg : "(null)");
 }
 
-// PR 21 lifetime: the host struct is built PER PLUGIN (stable addresses
-// in a deque - plugins retain the pointer), differing only in subscribe,
-// which records granted tokens into the plugin currently initializing so
-// a failed init can revoke them. The loader initializes sequentially on
-// one thread, so the current-record pointer needs no locking; plugins
-// must subscribe from the init thread (init must be non-blocking
-// anyway). The profile/game STRINGS stay shared - they never differ.
-static ttmod::PluginRecord* g_subscribing = nullptr;
+// PR 21/34 lifetime+attribution: the host struct is built PER PLUGIN
+// (stable addresses in a deque - plugins retain the pointer), differing
+// only in subscribe/register_api, which attribute to the plugin currently
+// initializing. The loader initializes sequentially on one thread, so the
+// current-record pointer needs no locking; plugins must subscribe and
+// register from the init thread (init must be non-blocking anyway).
+// Post-init calls still work but are unattributed (no record to charge;
+// failed-init revocation cannot see them) - documented in native-abi.md.
+static ttmod::PluginRecord* g_current_plugin = nullptr;
+static ttmod::RuntimeOwner* g_owner = nullptr;
 static int host_subscribe(int event_id, ttmod_event_cb cb, void* ctx) {
     int tok = ttmod_win::events_subscribe(event_id, cb, ctx);
-    if (g_subscribing != nullptr) ttmod::plugin_note_subscribed(*g_subscribing, tok);
+    if (g_current_plugin != nullptr) ttmod::plugin_note_subscribed(*g_current_plugin, tok);
     return tok;
+}
+// PR 34: native script bindings. Registers through the shared registry
+// (which forces the native/<id> namespace, rejects dupes and bad arity)
+// and installs on the live VM when there is one (Null accepts, real
+// backend trampolines). Returns the slot token, or -1.
+static int host_register_api(const char* ns, const char* name, ttmod_native_cb cb, void* ctx, int min_args,
+                             int max_args) {
+    if (!g_owner || !g_current_plugin || !ns || !name || !cb) return -1;
+    const std::string id = g_current_plugin->id;
+    ttmod::ApiKey key;
+    key.ns = ns;
+    key.name = name;
+    auto tok = g_owner->api_registry().register_fn({ttmod::ApiOwnerKind::Plugin, id},
+                                                   key, ttmod::make_plugin_binding(cb, ctx),
+                                                   (uint32_t)ttmod::kApiVersion, min_args, max_args);
+    if (!tok.ok()) {
+        diag("bind-failed", id, key.dotted() + ": " + tok.error().message);
+        return -1;
+    }
+    if (ttmod::ScriptVm* vm = g_owner->vm()) {
+        ttmod::ApiOwner owner{ttmod::ApiOwnerKind::Plugin, id};
+        ttmod::ApiKey effective{owner.effective_ns(), key.name};
+        if (!vm->install_api(tok.value(), effective, (uint32_t)ttmod::kApiVersion).ok()) {
+            diag("bind-install-failed", id, key.dotted());
+            return -1;
+        }
+    }
+    return (int)tok.value();
 }
 
 } // namespace
@@ -100,7 +131,9 @@ void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, co
                             ttmod_win::mods_menu_info,
                             ttmod_win::menumods_queue_ui_chunk,
                             (uint32_t)sizeof(ttmod_host),
-                            0};
+                            0,
+                            host_register_api};
+    g_owner = owner;
     for (auto& s : all) {
         const ttmod::ModManifest& m = s.manifest;
         if (!s.has_dll) continue; // resource-only; mods loader owns it
@@ -170,9 +203,9 @@ void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, co
         rec.id = m.identity.id.str();
         rec.state = ttmod::PluginState::Loaded;
         hosts.push_back(shared);
-        g_subscribing = &rec;
+        g_current_plugin = &rec;
         int rc = init(&hosts.back());
-        g_subscribing = nullptr;
+        g_current_plugin = nullptr;
         auto revoke = ttmod::plugin_note_init_result(rec, rc);
         for (int t : revoke) ttmod_win::events_unsubscribe(t);
         char done[192];

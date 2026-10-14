@@ -7,8 +7,8 @@
 
 namespace ttmod {
 // Single source of framework version (M23 diagnostics, M17 API policy).
-inline constexpr const char* kVersion = "0.12.0";
-inline constexpr int kApiVersion = 5; // mirrors TTMOD_PLUGIN_API_VERSION
+inline constexpr const char* kVersion = "0.13.0";
+inline constexpr int kApiVersion = 6; // mirrors TTMOD_PLUGIN_API_VERSION
 
 // Bounded version type (Step 3). Deliberately NOT strict SemVer: game mod
 // versions are loose by nature, and existing mods ship "1.0", "2.0-beta",

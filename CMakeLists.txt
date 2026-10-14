@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ttmod VERSION 0.12.0 LANGUAGES C CXX)
+project(ttmod VERSION 0.13.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -101,6 +101,8 @@ ttmod_add_unit_test(plugin_abi tests/unit/test_plugin_abi.cpp)
 ttmod_add_unit_test(plugin_lifecycle tests/unit/test_plugin_lifecycle.cpp)
 
 ttmod_add_unit_test(diag tests/unit/test_diag.cpp)
+
+ttmod_add_unit_test(plugin_bind tests/unit/test_plugin_bind.cpp)
 
 ttmod_add_unit_test(manifest tests/unit/test_manifest.cpp)
 

@@ -15,7 +15,7 @@ int main() {
     // with project() and TTMOD_PLUGIN_API_VERSION). If the ABI revs, this
     // fails until all three move - that is the point.
     assert(ttmod::kApiVersion == TTMOD_PLUGIN_API_VERSION);
-    assert(TTMOD_PLUGIN_API_VERSION == 5);
+    assert(TTMOD_PLUGIN_API_VERSION == 6);
     // Layout, append-only order: api_version first, negotiation pair last.
     // Relative order only - absolute offsets differ between Win32 x86 (the
     // ABI target, 4-byte pointers) and the LP64 test host, so no exact
@@ -29,7 +29,7 @@ int main() {
         offsetof(ttmod_host, unsubscribe), offsetof(ttmod_host, get_state),
         offsetof(ttmod_host, get_mod_count), offsetof(ttmod_host, get_mod_info),
         offsetof(ttmod_host, queue_ui_chunk), offsetof(ttmod_host, struct_size),
-        offsetof(ttmod_host, reserved),
+        offsetof(ttmod_host, reserved), offsetof(ttmod_host, register_api),
     };
     for (size_t i = 0; i < sizeof(offs) / sizeof(offs[0]); ++i) {
         if (i == 0)
@@ -37,6 +37,11 @@ int main() {
         else
             assert(offs[i] > offs[i - 1]);
     }
+    // v6 value struct order (plain C across the boundary).
+    assert(offsetof(ttmod_value, type) == 0);
+    assert(offsetof(ttmod_value, b) > offsetof(ttmod_value, type));
+    assert(offsetof(ttmod_value, n) > offsetof(ttmod_value, b));
+    assert(offsetof(ttmod_value, s) > offsetof(ttmod_value, n));
     // Fixed buffers are platform-independent: pin them exactly.
     assert(sizeof(((ttmod_state*)nullptr)->save_dir) == 256);
     assert(sizeof(((ttmod_modinfo*)nullptr)->id) == 128);

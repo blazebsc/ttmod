@@ -2,18 +2,21 @@
 //   int ttmod_plugin_init(const ttmod_host* host);
 // Return 0 on success. host->log may be called during init.
 // v2 appended subscribe/unsubscribe; v3 appended get_state;
-// v4 appends get_mod_count/get_mod_info; v5 appends queue_ui_chunk.
+// v4 appends get_mod_count/get_mod_info; v5 appends queue_ui_chunk;
+// v6 appends register_api (native script bindings, PR 34).
 // Older plugins keep working.
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
-#define TTMOD_PLUGIN_API_VERSION 5
+#define TTMOD_PLUGIN_API_VERSION 6
 #define TTMOD_PLUGIN_API_V1 1
 #define TTMOD_PLUGIN_API_V2 2
 #define TTMOD_PLUGIN_API_V3 3
 #define TTMOD_PLUGIN_API_V4 4
 #define TTMOD_PLUGIN_API_V5 5
+#define TTMOD_PLUGIN_API_V6 6
 
 #ifdef __cplusplus
 extern "C" {
@@ -56,6 +59,30 @@ struct ttmod_state {
     char save_dir[256];
 };
 
+// Script values across the C boundary (PR 34, v6): nil/bool/number/string
+// cross by value; everything else arrives as TT_UNSUPPORTED (mirrors
+// Value's no-Function rule - doc §58). args strings are BORROWED (valid
+// during the call only, same rule as event strings); ret strings are
+// COPIED by the host during the call, so plugin stack buffers are fine.
+// Layout is plain C (int/double/pointer); field order is pinned by
+// test_plugin_abi.
+typedef enum ttmod_vtype { TT_NIL, TT_BOOL, TT_NUMBER, TT_STRING, TT_UNSUPPORTED } ttmod_vtype;
+
+struct ttmod_value {
+    ttmod_vtype type;
+    int b;          // TT_BOOL
+    double n;       // TT_NUMBER
+    const char* s;  // TT_STRING (borrowed in args, copied out of ret)
+};
+
+// Plugin callback: 0 = ok (ret holds the value), nonzero = failure (err
+// carries the message, err_len bounds it; truncated, never overflowed).
+// Must be non-blocking and reentrant (runs on the script thread); must
+// not throw across the boundary (a throw is caught host-side and reported
+// as a structured error, like every other binding).
+typedef int (*ttmod_native_cb)(void* ctx, const struct ttmod_value* args, int nargs, struct ttmod_value* ret,
+                               char* err, size_t err_len);
+
 struct ttmod_host {
     int api_version;       // == TTMOD_PLUGIN_API_VERSION
     const char* profile_id; // e.g. "mcsm1_pc_x86"
@@ -87,6 +114,16 @@ struct ttmod_host {
     // stable; never insert above this line.
     uint32_t struct_size;
     uint32_t reserved;
+    // v6: register a script binding callable from TTMod Lua as
+    // ttmod.native["<plugin-id>"].<name> (the registry forces the
+    // namespace: a plugin cannot overwrite stable namespaces no matter
+    // what ns it passes). Returns a slot token (>0), or negative on
+    // error (bad key, duplicate, bad arity). Callable during init or
+    // later; duplicate registration fails, it never replaces.
+    // Only valid while the host lives (process lifetime); no unregister
+    // (matches the no-unload policy - PR 21).
+    int (*register_api)(const char* ns, const char* name, ttmod_native_cb cb, void* ctx, int min_args,
+                        int max_args);
 };
 
 // Menu entry for get_mod_info (M11 overlay menus).

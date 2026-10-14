@@ -59,7 +59,7 @@ static DWORD WINAPI watch(LPVOID) {
 
 extern "C" __declspec(dllexport) int ttmod_plugin_init(const ttmod_host* host) {
     if (!host || !host->log) return -1;
-    if (host->api_version != TTMOD_PLUGIN_API_VERSION) return -2;
+    if (host->api_version < 1) return -2;
     g_host = host;
     say("title-mcsm: init, spawning window watch");
     HANDLE t = CreateThread(nullptr, 0, watch, nullptr, 0, nullptr);

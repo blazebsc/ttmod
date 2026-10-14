@@ -11,6 +11,7 @@
 
 #include "script/lua/lua_vm.hpp"
 #include "ttmod/mod_lifecycle.hpp"
+#include "ttmod/plugin_bind.hpp"
 #include "ttmod/script_api.hpp"
 
 using namespace ttmod;
@@ -41,6 +42,19 @@ static Result<Value> api_echo(CallCtx& ctx) {
 
 static Result<Value> api_boom(CallCtx&) {
     return Result<Value>::fail(Error{"test", "", errcat::kIO, "deliberate failure"});
+}
+
+// PR 34 probe: echo arg0 back (borrowed strings survive; reentrant-safe).
+static int bind_echo_cb(void*, const ttmod_value* args, int nargs, ttmod_value* ret, char*, size_t) {
+    if (nargs < 1 || args[0].type != TT_STRING || !args[0].s) return 1;
+    ret->type = TT_STRING;
+    ret->s = args[0].s; // borrowed: the wrapper copies it out immediately
+    return 0;
+}
+
+static int bind_fail_cb(void*, const ttmod_value*, int, ttmod_value*, char* err, size_t err_len) {
+    snprintf(err, err_len, "bind boom");
+    return 2;
 }
 
 static const BindingDesc kBindings[] = {
@@ -265,6 +279,34 @@ int main() {
     {
         assert(!vm->call(CallbackRef{999}, nullptr, 0).ok()); // never retained
         vm->release(CallbackRef{1});                          // no-op, must not crash
+    }
+
+    // ---- native plugin bindings (PR 34) --------------------------------
+    // A plugin C callback registered through the shared registry lands in
+    // Lua under the forced native/<id> namespace; errors surface as Lua
+    // errors with the VM left usable; arity is enforced before the
+    // callback runs; duplicates fail, never replace.
+    {
+        ApiOwner owner{ApiOwnerKind::Plugin, "testmod"};
+        auto tok = api.register_fn(owner, ApiKey{"hello", "ping"}, make_plugin_binding(bind_echo_cb, nullptr),
+                                   (uint32_t)kApiVersion, 1, 1);
+        assert(tok.ok());
+        auto ins = vm->install_api(tok.value(), ApiKey{owner.effective_ns(), "ping"}, (uint32_t)kApiVersion);
+        assert(ins.ok());
+        auto r = vm->run_chunk("return ttmod.native[\"testmod\"].ping(\"hi\")", "bind.lua", Value::nil());
+        assert(r.ok() && r.value().as_string() == "hi");
+        auto w = vm->run_chunk("return ttmod.native[\"testmod\"].ping()", "bind0.lua", Value::nil());
+        assert(!w.ok()); // arity enforced before the callback
+        auto dup = api.register_fn(owner, ApiKey{"hello", "ping"}, make_plugin_binding(bind_echo_cb, nullptr),
+                                   (uint32_t)kApiVersion, 1, 1);
+        assert(!dup.ok());
+        auto tok2 = api.register_fn(owner, ApiKey{"hello", "fail"}, make_plugin_binding(bind_fail_cb, nullptr),
+                                    (uint32_t)kApiVersion, 0, 0);
+        assert(tok2.ok());
+        assert(vm->install_api(tok2.value(), ApiKey{owner.effective_ns(), "fail"}, (uint32_t)kApiVersion).ok());
+        auto f = vm->run_chunk("return ttmod.native[\"testmod\"].fail()", "bindf.lua", Value::nil());
+        assert(!f.ok());
+        assert(vm->run_chunk("return 1", "after.lua", Value::nil()).ok()); // still usable
     }
 
     std::puts("lua_backend: all asserts passed");

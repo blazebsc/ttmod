@@ -11,9 +11,11 @@ non-x86 PEs; `thread_id` is 32-bit LLP64 - noted in the header).
 
 ## Versioning
 
-- `TTMOD_PLUGIN_API_VERSION` (now 5) revs on any field addition. History
+- `TTMOD_PLUGIN_API_VERSION` (now 6) revs on any field addition. History
   is append-only: v2 subscribe/unsubscribe, v3 get_state, v4 mod
-  listing, v5 queue_ui_chunk. Older plugins keep working.
+  listing, v5 queue_ui_chunk, v6 register_api. Older plugins keep
+  working (exact-match version checks in hello-mcsm/title-mcsm were
+  replaced with range checks for exactly this reason).
 - Rule: **append last, never insert or reorder** - every older offset is
   stable. Pinned by `tests/unit/test_plugin_abi.cpp` (relative field
   order; absolute offsets differ on LP64 test hosts so only order is
@@ -78,6 +80,29 @@ non-x86 PEs; `thread_id` is 32-bit LLP64 - noted in the header).
   best-effort. Events dispatch synchronously on the game (caller) thread;
   callbacks must be non-blocking and reentrant; event strings are valid
   during the callback only.
+
+## Native script bindings (v6, PR 34)
+
+`register_api(ns, name, cb, ctx, min_args, max_args)` exposes a plugin C
+function to TTMod Lua as `ttmod.native["<plugin-id>"].<name>` (the
+registry forces the namespace - the passed `ns` is informational; a
+plugin cannot overwrite stable namespaces). Returns a slot token (>0),
+or negative (bad key, duplicate, bad arity).
+
+- Value crossing: nil/bool/number/string by value, everything else
+  `TT_UNSUPPORTED`. Args borrow (valid during the call); ret strings are
+  copied by the host during the call (stack buffers fine).
+- Errors: nonzero return + `err` text surfaces as a Lua error; the VM
+  stays usable. A throwing callback is caught host-side and reported
+  structured (never a C++ exception across the boundary).
+- Callback rules mirror events: non-blocking, reentrant, script thread.
+  Registration is valid during init or later; attribution to the plugin
+  record is init-scoped (same rule as subscribe).
+- `min_args`/`max_args` are enforced by the registry before the callback
+  runs (`-1` max = variadic). Installs on the live VM when present;
+  the Null VM accepts and ignores (real activation with a real backend).
+- hello-mcsm registers `ping` as the copy-paste demo (v6-gated with the
+  `>=` + null-check idiom).
 
 ## Thread rules
 
