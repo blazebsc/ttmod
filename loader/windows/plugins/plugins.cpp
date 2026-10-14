@@ -15,6 +15,7 @@
 #include "ttmod/plugin_api.h"
 #include "ttmod/plugin_grant.hpp"
 #include "ttmod/plugin_lifecycle.hpp"
+#include "ttmod/diag.hpp"
 #include "events.hpp"
 #include "menu_bridge.hpp"
 #include "mods.hpp"
@@ -30,6 +31,14 @@ static std::string g_logpath;
 static void emit(const std::string& msg) {
     ttmod::Logger log;
     if (log.open(g_logpath)) log.info(msg);
+}
+
+// PR 24: structured plugin events (diag|plugin|<code>|<id>|<detail>).
+// Codes reuse the historical words so old greps (rejected, initialized,
+// failed, grants) keep hitting.
+static void diag(const char* code, const std::string& id, const std::string& detail) {
+    ttmod::DiagEvent e{ttmod::DiagKind::Plugin, code, id, detail};
+    emit(ttmod::diag_format(e));
 }
 
 static void host_log(const char* msg) {
@@ -56,7 +65,7 @@ void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, co
                   const char* log_path, ttmod::RuntimeOwner* owner) {
     g_logpath = log_path ? log_path : "";
     if (all.empty()) {
-        emit("plugins: no mods discovered, skipping");
+        diag("no-mods", "", "no mods discovered, skipping");
         return;
     }
     // `all` is already the surviving, dependency-ordered set produced by the
@@ -100,7 +109,7 @@ void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, co
         // instead of executing code the author said isn't there. Empty
         // runtimes = legacy/unspecified = allowed (all shipped mods).
         if (!ttmod::plugin_runtime_allowed(m.runtime.runtimes)) {
-            emit("plugins: " + m.identity.id.str() + " rejected (runtimes declare no native runtime)");
+            diag("rejected-no-native-runtime", m.identity.id.str(), "runtimes declare no native runtime");
             continue;
         }
         // PR 20 negotiation log: granted subset of the manifest's requested
@@ -123,36 +132,35 @@ void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, co
                     n += len;
                 }
             }
-            char line[384];
-            snprintf(line, sizeof line, "plugins: %s grants: %s", m.identity.id.str().c_str(),
-                     g[0] ? g : "(none requested)");
-            emit(line);
+            diag("grants", m.identity.id.str(), g[0] ? g : "(none requested)");
         }
         // M11: manifest-declared plugin path (or legacy plugin.dll), arch gate.
         if (!m.compat.supports_arch(ttmod::Architecture::X86)) {
-            emit("plugins: " + m.identity.id.str() + " rejected (arch " + ttmod::to_string(m.compat.arch) + " != x86)");
+            char r[96];
+            snprintf(r, sizeof r, "arch %s != x86", ttmod::to_string(m.compat.arch));
+            diag("rejected-arch", m.identity.id.str(), r);
             continue;
         }
         std::string dllpath = join(s.dir, s.plugin_rel);
         auto pe = ttmod::parse_pe(dllpath);
         if (!pe.ok() || pe.value().machine != 0x014C) {
-            emit("plugins: " + m.identity.id.str() + " rejected (plugin is not x86 PE)");
+            diag("rejected-not-pe", m.identity.id.str(), "plugin is not x86 PE");
             continue;
         }
-        emit("plugins: " + m.identity.id.str() + " validated");
-        emit("plugins: WARNING " + m.identity.id.str() +
-             " contains native code and can execute arbitrary code (manifest-declared)");
+        diag("validated", m.identity.id.str(), "");
+        diag("native-warning", m.identity.id.str(),
+             "contains native code and can execute arbitrary code (manifest-declared)");
         HMODULE dll = ttmod_win::load_library(dllpath);
         if (!dll) {
             char r[160];
-            snprintf(r, sizeof r, "plugins: %s failed to load (err %lu)", m.identity.id.str().c_str(), GetLastError());
-            emit(r);
+            snprintf(r, sizeof r, "err %lu", GetLastError());
+            diag("load-failed", m.identity.id.str(), r);
             continue;
         }
         using InitFn = int (*)(const ttmod_host*);
         InitFn init = (InitFn)GetProcAddress(dll, "ttmod_plugin_init");
         if (!init) {
-            emit("plugins: " + m.identity.id.str() + " has no ttmod_plugin_init, kept loaded (no init)");
+            diag("no-export", m.identity.id.str(), "kept loaded (no init)");
             continue;
         }
         // PR 21 lifetime: per-plugin record + host copy; a nonzero rc
@@ -169,11 +177,10 @@ void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, co
         for (int t : revoke) ttmod_win::events_unsubscribe(t);
         char done[192];
         if (revoke.empty())
-            snprintf(done, sizeof done, "plugins: %s initialized (rc=%d)", m.identity.id.str().c_str(), rc);
+            snprintf(done, sizeof done, "rc=%d", rc);
         else
-            snprintf(done, sizeof done, "plugins: %s failed (rc=%d, revoked %u callbacks)",
-                     m.identity.id.str().c_str(), rc, (unsigned)revoke.size());
-        emit(done);
+            snprintf(done, sizeof done, "rc=%d, revoked %u callbacks", rc, (unsigned)revoke.size());
+        diag(revoke.empty() ? "initialized" : "failed-revoked", m.identity.id.str(), done);
     }
 }
 
