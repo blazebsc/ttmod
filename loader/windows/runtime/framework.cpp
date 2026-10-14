@@ -20,6 +20,7 @@
 #include "ttmod/discovery.hpp"
 #include "ttmod/cache.hpp"
 #include "ttmod/mod_lifecycle.hpp"
+#include "script/lua/lua_vm.hpp"
 #include "ttmod/modstate.hpp"
 #include "ttmod/modplan.hpp"
 #include "ttmod/runtime_owner.hpp"
@@ -405,6 +406,43 @@ static void init_menu(const InitCtx& ctx, ttmod::RuntimeOwner* owner) {
     ttmod_win::stage(ctx.logpath.c_str(), "init thread done (mods+plugins ready)");
 }
 
+// Production script bindings (PR 30 wiring): the minimal host surface —
+// ttmod.log.info(msg) — so a script mod can prove it ran and talk to the
+// same log everything else does. The fuller ttmod.* surface is planned;
+// this is the one binding verification actually needs.
+static std::string g_script_logpath;
+static ttmod::Result<ttmod::Value> script_log_info(ttmod::CallCtx& c) {
+    ttmod::Logger lg;
+    if (lg.open(g_script_logpath)) lg.info("scripts: " + c.arg_str(0));
+    return ttmod::Result<ttmod::Value>::ok(ttmod::Value::nil());
+}
+static const ttmod::BindingDesc kScriptBindings[] = {
+    {"log", "info", &script_log_info, 1, 1},
+};
+
+// PR 30 wiring: replace the owner's Null placeholder with a real Lua VM
+// (TTMod-owned, never the game's states). Lua mods then run at init via
+// run_ttmod_entrypoints with per-mod envs; failures surface as menu
+// warnings. Luau mods are NOT wired yet (the framework does not link the
+// Luau library; the runner reports no-luau-backend, truthful today).
+// Safe mode never reaches here (prepare returns false and vm() is null).
+static void wire_script_vm(const InitCtx& ctx, ttmod::RuntimeOwner* owner) {
+    if (owner->vm() == nullptr) return; // safe mode / prepare failed: Null-less is fine
+    g_script_logpath = ctx.logpath;
+    auto vm = ttmod::make_lua_vm(owner->api_registry(), nullptr,
+                                 std::span<const ttmod::BindingDesc>(kScriptBindings));
+    if (!vm.ok()) {
+        ttmod::Logger lg;
+        if (lg.open(ctx.logpath))
+            lg.info("[TTMod] script VM create failed, mods will report backend failures: " +
+                    vm.error().message);
+        return; // keep the Null VM: structured failures, never a crash
+    }
+    owner->set_vm(std::move(vm.value()));
+    ttmod::Logger lg;
+    if (lg.open(ctx.logpath)) lg.info("[TTMod] script VM live (lua 5.4, ttmod.log.info bound)");
+}
+
 static DWORD WINAPI InitThread(LPVOID self) {
     g_t0 = GetTickCount();
     ttmod_win::stage_mark_start();
@@ -435,6 +473,7 @@ static DWORD WINAPI InitThread(LPVOID self) {
     }
 
     build_scanned(ctx);
+    wire_script_vm(ctx, owner);
     init_plugins(ctx, owner);
     queue_telltale_entrypoints(ctx);
     auto script_status = run_ttmod_entrypoints(ctx, owner);

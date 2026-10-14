@@ -1,0 +1,10 @@
+{
+    "id": "hello.lua",
+    "name": "Hello TTMod Lua",
+    "version": "1.0.0",
+    "description": "PR 30 wiring proof: a main.lua that runs on the TTMod-owned Lua VM at init.",
+    "api": 1,
+    "games": ["minecraft-story-mode:s1"],
+    "runtimes": ["lua"],
+    "entrypoints": {"lua": "main.lua"}
+}

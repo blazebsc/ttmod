@@ -25,6 +25,7 @@ markers below before assuming anything is done.
 | Backend contract | `core/script_vm.hpp` | env-aware; Lua-free by construction |
 | **Lua 5.4.7 backend** | `core/script/lua/`, vendored | real VM: executes, marshals, sandboxes, budget |
 | **Luau backend** | `core/script/luau/`, vendored (PR 31) | mirrors the Lua backend; identical semantics, cross-checked under Wine/i686 |
+| **Production script VM** | framework init: real Lua 5.4 VM + per-mod env runs | TTMod-Lua mods execute in-game; failures reach the menu |
 | **Per-mod environments** | `ScriptVm::create_env`, Lua `_ENV` tables | one VM, one table per mod; shared `ttmod.*`, isolated writes |
 | **Mod entrypoint runner** | `run_mod_entrypoints` (`mod_lifecycle`) | env per mod, Backend/Entrypoint/Init stages, menu-ready statuses |
 | **Mixed-runtime loading** | framework init: native init + game.lua queue + TTMod-Lua run | one pass, ModPlan order; script failures surface as menu warnings |

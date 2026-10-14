@@ -67,6 +67,30 @@ plainly:
 - Treat mod game.lua as fully trusted code (same as the engine's own
   scripts); there is no sandbox on this path by design.
 
+## TTMod Lua mods (PR 30 wiring — the recommended scripting path)
+
+A mod whose manifest declares the `lua` runtime with an
+`entrypoints.lua` main.lua runs on the **TTMod-owned Lua 5.4 VM** —
+never the game's states. At framework init (after plugins, before the
+menu), the loader replaces the Null placeholder with a real VM and runs
+every enabled Lua mod's entrypoint in its own environment (PR 17):
+writes are invisible to other mods, `ttmod.*` is shared.
+
+- Entry API today: `ttmod.log.info(msg)` → `logs/ttmod.log` as
+  `scripts: <msg>`. Fuller surface (config, events, game dispatch) is
+  planned; a mod needing more today is a native plugin.
+- Script failures surface on the mod's in-game details screen as a
+  `Blocked: <file:line: message>` row and in the log
+  (`scripts: <id> failed: ...`); success logs `scripts: N ran, M failed`.
+- Safe mode: no VM is created, every Lua mod reports a Backend failure
+  (truthful, no silent skips).
+- Plugin-registered bindings (ABI v6) are installed before entrypoints
+  run: `ttmod.native["<plugin-id>"].<fn>` is callable from Lua mods.
+- Luau is NOT wired into the framework yet (library not linked — DLL
+  size); Luau mods report `no luau backend on this VM`, truthful today.
+  `docs/runtime/luau.md` covers the backend that ships ready to wire.
+- See `examples/hello-lua` for the minimal working mod.
+
 ## Mixed-runtime mods (PR 33)
 
 One mod may ship all three runtimes (`plugin.dll` + `main.lua` +
@@ -75,7 +99,6 @@ ModPlan order: native init, game.lua queue, TTMod-Lua run (shared VM,
 per-mod env). Runtimes never share objects - native code and Lua meet
 only through events, the chunk queue, marshaled values, and
 `GameObjectHandle`s. TTMod-Lua failures record `ModRunStatus`s that
-surface as menu warnings (`Blocked:` rows); with no real backend yet
-they record Backend failures, which auto-heal when one lands.
-Per-env capability filtering and native script-API registration are
-PR 34, explicitly not this page.
+surface as menu warnings (`Blocked:` rows). Native script-API
+registration shipped with ABI v6 (PR 34); per-env capability filtering
+remains future work.

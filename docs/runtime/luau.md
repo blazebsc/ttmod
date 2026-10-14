@@ -31,7 +31,9 @@ between safepoints is not counted).
 
 ## Not yet
 
-- The framework DLL does not link the Luau library yet — no production
-  VM wiring exists for either backend (both sit behind the Null VM
-  placeholder). When wiring lands, Luau mods run on the Luau backend
-  and Lua mods on Lua, matched by `vm.backend()` in the runner.
+- The framework DLL links the LUA backend (live since the PR 30 wiring:
+  Lua mods execute in-game, `docs/runtime/lua.md`) but not Luau —
+  the library is ~12 MB and the recommended path is Lua. Luau mods
+  report `no luau backend on this VM` in production today (truthful).
+  Wiring Luau is a one-link change: the runner already matches mod
+  runtime to `vm.backend()`.
