@@ -30,6 +30,15 @@ cp "$T/build-win32/example-plugins/menu-theme/menu-theme.dll" \
    /tmp/opencode/rel_menu-theme/plugins/
 "$T/build/ttmod" package create /tmp/opencode/rel_menu-theme "$R/examples/menu-theme.ttmod" || exit 1
 "$T/build/ttmod" package validate "$R/examples/menu-theme.ttmod" || exit 1
+# Script mods (PR 30/32 - no DLL, just manifest + Lua; package the same way).
+for ex in hello-lua hello-telltale; do
+  rm -rf "/tmp/opencode/rel_$ex"
+  mkdir -p "/tmp/opencode/rel_$ex"
+  cp "$T/examples/$ex/manifest.json" "/tmp/opencode/rel_$ex/"
+  cp "$T/examples/$ex"/*.lua "/tmp/opencode/rel_$ex/"
+  "$T/build/ttmod" package create "/tmp/opencode/rel_$ex" "$R/examples/$ex.ttmod" || exit 1
+  "$T/build/ttmod" package validate "$R/examples/$ex.ttmod" || exit 1
+done
 # Resource-mod template (manifest + instructions; user adds payload files)
 mkdir -p "$R/examples/resource-template/files"
 cp "$T/tests/fixtures/german108-override/manifest.json" "$R/examples/resource-template/manifest.json"
@@ -62,8 +71,14 @@ SAFETY: mods with native plugins log a WARNING on load and can run arbitrary
 code - only use mods you trust. Trouble? Set TTMOD_SAFE_MODE=1 or create an
 empty file config/safe-mode to launch with all mods disabled.
 
-Docs: up ma ass lmao
-Full documentation ships with the source tree under docs/.
+SCRIPT MODS: a mod with "runtimes": ["lua"] + main.lua runs on TTMod's own
+Lua VM at startup (never the game's Lua); see examples/hello-lua.ttmod.
+"telltale-lua" mods run on the game's own Lua states (advanced); see
+examples/hello-telltale.ttmod and docs/runtime/lua.md.
+
+Docs: full documentation ships with the source tree under docs/ -
+runtime docs (lua.md, luau.md, native-abi.md, plugins.md) and user
+guides (docs/user/).
 EOF
 echo "--- verify ---"
 file "$R/dinput8.dll" "$R/ttmod_framework.dll" | sed 's/^/  /'
