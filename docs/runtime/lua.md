@@ -91,6 +91,14 @@ writes are invisible to other mods, `ttmod.*` is shared.
   `docs/runtime/luau.md` covers the backend that ships ready to wire.
 - See `examples/hello-lua` for the minimal working mod.
 
+**CONFIRMED IN-GAME (user session, 2026-10-15, release 0.13.0):** the
+full chain logged on one launch - `script VM live`, `scripts: hello
+from TTMod Lua`, `scripts: 1 ran, 0 failed`, hello-lua listed in the
+in-game Mods menu, hello-telltale running on the game's Lua states
+(once per state - 5 worlds that session, per the documented
+per-world semantics), and PR 24 diag events for the native plugin.
+Script mods are live, not claimed.
+
 ## Mixed-runtime mods (PR 33)
 
 One mod may ship all three runtimes (`plugin.dll` + `main.lua` +
