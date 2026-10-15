@@ -31,7 +31,9 @@ between safepoints is not counted).
 
 ## Not yet
 
-- Nothing structural: the framework links the Luau library and Luau mods
-  run in production (same registry, same bindings, per-mod envs) since
-  the PR 31 wiring. The DLL grew ~7MB for the vendored interpreter -
-  the price of a second backend by design, not accident.
+- Nothing structural. **CONFIRMED IN-GAME (user session, 2026-10-16):**
+  `luau script VM live` + `scripts: hello from Luau` + `scripts: 2 ran,
+  0 failed` in one launch; hello.luau listed in the in-game Mods menu
+  alongside the Lua, telltale and native mods. Luau mods are live,
+  not claimed. The DLL grew ~1.8MB for the vendored interpreter
+  (linker pulls only referenced objects).
