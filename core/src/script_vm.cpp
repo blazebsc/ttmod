@@ -86,18 +86,27 @@ Result<void> install_bindings(ScriptVm& vm, ScriptApiRegistry& api, ScriptHost* 
         key.name = d.name;
         if (!key.valid())
             return Result<void>::fail(Error{"install-bindings", key.dotted(), errcat::kType, "invalid key"});
-        // The binding captures the host, so a ttmod.* function can reach the
-        // dispatcher, the scheduler and mod config without a global.
-        NativeFn fn = d.fn;
-        if (host) {
-            fn = [fn, host](CallCtx& ctx) {
-                ctx.host = host;
-                return fn(ctx);
-            };
+        // One registry, many VMs (PR 31): a key registered for a previous
+        // VM is REUSED here - only the install repeats. Re-registering would
+        // hit the duplicate rejection, which stays correct for plugins.
+        uint32_t token = 0;
+        if (auto existing = api.token_for(key)) {
+            token = *existing;
+        } else {
+            // The binding captures the host, so a ttmod.* function can reach the
+            // dispatcher, the scheduler and mod config without a global.
+            NativeFn fn = d.fn;
+            if (host) {
+                fn = [fn, host](CallCtx& ctx) {
+                    ctx.host = host;
+                    return fn(ctx);
+                };
+            }
+            auto tok = api.register_fn(owner, key, fn, (uint32_t)kApiVersion, d.min_args, d.max_args);
+            if (!tok.ok()) return Result<void>::fail(tok.error());
+            token = tok.value();
         }
-        auto tok = api.register_fn(owner, key, fn, (uint32_t)kApiVersion, d.min_args, d.max_args);
-        if (!tok.ok()) return Result<void>::fail(tok.error());
-        auto ins = vm.install_api(tok.value(), key, (uint32_t)kApiVersion);
+        auto ins = vm.install_api(token, key, (uint32_t)kApiVersion);
         if (!ins.ok()) return ins;
         ++installed;
     }

@@ -250,6 +250,48 @@ int main() {
         assert(!dup.ok());
     }
 
+    // Memory cap (Luau): same contract as the Lua backend - tiny budget,
+    // allocating loop, structured error, VM survives.
+    {
+        LuauVmOptions opt;
+        opt.instruction_budget = 0;   // memory-only cadence
+        opt.memory_budget_mb = 1;
+        // Same registry as the main VM (see the Lua test for the singleton
+        // binding rationale).
+        auto cap = make_luau_vm(api, nullptr, std::span<const BindingDesc>(kBindings), opt);
+        assert(cap.ok());
+        std::unique_ptr<ScriptVm> cap_vm(std::move(cap).value());
+        auto r = cap_vm->run_chunk(
+            "local t = {} while true do t[#t + 1] = string.rep('x', 4096) end",
+            "bomb.luau", Value::nil());
+        assert(!r.ok());
+        assert(r.error().message.find("memory budget") != std::string::npos);
+        assert(cap_vm->run_chunk("return 1", "after.luau", Value::nil()).ok());
+    }
+
+    {
+        // Gate via a binding registered on the main api: mods.read, and the
+        // same permission model holds on Luau (runner is backend-agnostic).
+        auto tok = api.register_fn(ApiOwner{}, ApiKey{"gate", "needread"},
+                                   [](CallCtx&) -> Result<Value> {
+                                       if (!caller_permitted(Permission::ModsRead))
+                                           return Result<Value>::fail(Error{
+                                               "gate", "needread", errcat::kType, "mods.read not granted"});
+                                       return Result<Value>::ok(Value::number(1));
+                                   },
+                                   (uint32_t)kApiVersion, 0, 0);
+        assert(tok.ok());
+        assert(vm->install_api(tok.value(), ApiKey{"gate", "needread"}, (uint32_t)kApiVersion).ok());
+        auto st = run_mod_entrypoints(*vm, {{"mod.nogate", Runtime::Luau, "g.luau",
+                                             "return ttmod.gate.needread()", {}}});
+        assert(st.size() == 1 && st[0].state == ModRunState::Failed);
+        assert(st[0].last_error_line().find("mods.read not granted") != std::string::npos);
+        auto st2 = run_mod_entrypoints(*vm, {{"mod.gated", Runtime::Luau, "g.luau",
+                                              "return ttmod.gate.needread()",
+                                              {Permission::ModsRead}}});
+        assert(st2.size() == 1 && st2[0].state == ModRunState::Running);
+    }
+
     // ---- callback lifecycle --------------------------------------------
     // retain/call/release is the only way a script function reaches the host,
     // and releasing twice is safe.

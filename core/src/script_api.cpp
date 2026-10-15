@@ -108,6 +108,13 @@ const ApiEntry* ScriptApiRegistry::find(const ApiKey& k) const {
     return &entries_.at(it->second);
 }
 
+std::optional<uint32_t> ScriptApiRegistry::token_for(const ApiKey& k) const {
+    std::lock_guard<std::mutex> lock(mtx_);
+    auto it = by_key_.find(k);
+    if (it == by_key_.end()) return std::nullopt;
+    return it->second;
+}
+
 std::vector<ApiKey> ScriptApiRegistry::keys() const {
     std::lock_guard<std::mutex> lock(mtx_);
     std::vector<ApiKey> out;

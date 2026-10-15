@@ -1,6 +1,34 @@
 #include "ttmod/mod_lifecycle.hpp"
 
+#include <algorithm>
+
 namespace ttmod {
+namespace {
+// RAII: install the running mod's declared permissions for the duration of
+// its entrypoint (single VM thread today; thread_local for tomorrow).
+thread_local const std::vector<Permission>* t_caller_perms = nullptr;
+
+struct CallerPermissionsGuard {
+    const std::vector<Permission>& perms;
+    explicit CallerPermissionsGuard(const std::vector<Permission>& p) : perms(p) {
+        t_caller_perms = &perms;
+    }
+    ~CallerPermissionsGuard() {
+        t_caller_perms = nullptr;
+    }
+};
+} // namespace
+
+void set_caller_permissions(const std::vector<Permission>* perms) {
+    t_caller_perms = perms;
+}
+
+bool caller_permitted(Permission p) {
+    // No context = framework/plugin trust (docs: permissions gate MOD script
+    // entrypoints, not the framework's own calls).
+    if (t_caller_perms == nullptr) return true;
+    return std::find(t_caller_perms->begin(), t_caller_perms->end(), p) != t_caller_perms->end();
+}
 
 const char* to_string(ModRunState s) {
     switch (s) {
@@ -115,10 +143,14 @@ std::vector<ModRunStatus> run_mod_entrypoints(ScriptVm& vm, const std::vector<Mo
             fail(ModStage::Entrypoint, Error{"run-entrypoint", m.chunk_name, errcat::kMissing, "empty chunk"});
         } else if (auto env = vm.create_env(m.id); !env.ok()) {
             fail(ModStage::Backend, env.error());
-        } else if (auto r = vm.run_chunk(m.source, m.chunk_name, Value::string(m.id)); !r.ok()) {
-            fail(ModStage::Init, r.error());
         } else {
-            st.state = advance(st.state, "ok");
+            CallerPermissionsGuard guard{m.permissions};
+            auto r = vm.run_chunk(m.source, m.chunk_name, Value::string(m.id));
+            if (!r.ok()) {
+                fail(ModStage::Init, r.error());
+            } else {
+                st.state = advance(st.state, "ok");
+            }
         }
         out.push_back(std::move(st));
     }

@@ -55,7 +55,10 @@ class LuauVm final : public ScriptVm {
             lua_setglobal(L_, name);
         }
         budget_ = opt_.instruction_budget;
-        if (budget_ > 0) {
+        mem_budget_ = opt_.memory_budget_mb;
+        // Interrupt cadence: the instruction budget, or a plain memory-check
+        // cadence when only the memory cap is set (budget 0 = unchecked).
+        if (budget_ > 0 || mem_budget_ > 0) {
             lua_callbacks(L_)->userdata = this;
             lua_callbacks(L_)->interrupt = &LuauVm::interrupt;
         }
@@ -78,6 +81,17 @@ class LuauVm final : public ScriptVm {
         // Same contract as the Lua backend: empty source is a resolution
         // bug, never a silent success.
         if (code.empty()) return Result<Value>::fail(Error{"run-chunk", name, errcat::kMissing, "empty chunk"});
+        // Memory cap pre-flight (approximate cap, by design): collect before
+        // failing at chunk start - uncollected garbage from a previous
+        // chunk's bomb must not wedge the VM (Luau's GC is incremental and
+        // the interrupt fires at call/ret safepoints, so even `return 1`
+        // would otherwise re-trip). Bomb-killing stays in the interrupt.
+        if (mem_budget_ > 0 && bytes_used() > (size_t)mem_budget_ * 1024 * 1024) {
+            lua_gc(L_, LUA_GCCOLLECT, 0);
+            if (bytes_used() > (size_t)mem_budget_ * 1024 * 1024)
+                return Result<Value>::fail(Error{"run-chunk", name, errcat::kIO,
+                                                "memory budget still exceeded after GC"});
+        }
         reset_budget();
         // DIVERGENCE: no luaL_loadbufferx in Luau. Compile source to
         // bytecode (Luau::compile never throws; failures encode into the
@@ -218,10 +232,17 @@ class LuauVm final : public ScriptVm {
     // the budget is an approximate step cap: a `while true do end` trips
     // immediately, while straight-line code between safepoints is not
     // counted. Same option name, same error, documented approximation -
-    // and the same default that makes it generous in practice.
+    // and the same default that makes it generous in practice. The memory
+    // cap is checked at the same cadence (approximate, not an allocation
+    // limit).
     static void interrupt(lua_State* L, int /*gc*/) {
         auto* self = (LuauVm*)lua_callbacks(L)->userdata;
-        if (self && --self->budget_left_ <= 0) {
+        if (self && self->mem_budget_ > 0 &&
+            (size_t)lua_gc(L, LUA_GCCOUNT, 0) * 1024 > (size_t)self->mem_budget_ * 1024 * 1024) {
+            lua_pushstring(L, "ttmod: script exceeded its memory budget");
+            lua_error(L);
+        }
+        if (self && self->budget_ > 0 && --self->budget_left_ <= 0) {
             lua_pushstring(L, "ttmod: script exceeded its instruction budget");
             lua_error(L);
         }
@@ -370,6 +391,7 @@ class LuauVm final : public ScriptVm {
     LuauVmOptions opt_;
     lua_State* L_ = nullptr;
     int budget_ = 0;
+    int mem_budget_ = 0;
     int budget_left_ = 0;
     std::map<uint32_t, int> callbacks_;
     uint32_t next_callback_ = 1;

@@ -1,0 +1,10 @@
+{
+    "id": "hello.luau",
+    "name": "Hello Luau",
+    "version": "1.0.0",
+    "description": "PR 31 wiring proof: a main.luau that runs on the TTMod-owned Luau VM at init.",
+    "api": 1,
+    "games": ["minecraft-story-mode:s1"],
+    "runtimes": ["luau"],
+    "entrypoints": {"luau": "main.luau"}
+}

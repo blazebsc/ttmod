@@ -77,18 +77,25 @@ every enabled Lua mod's entrypoint in its own environment (PR 17):
 writes are invisible to other mods, `ttmod.*` is shared.
 
 - Entry API today: `ttmod.log.info(msg)` → `logs/ttmod.log` as
-  `scripts: <msg>`. Fuller surface (config, events, game dispatch) is
-  planned; a mod needing more today is a native plugin.
+  `scripts: <msg>`; `ttmod.version.string()` → framework version;
+  `ttmod.mods.list()` → installed-mod rows `{id, version, enabled,
+  has_plugin, packaged}` - **gated**: the calling mod's manifest must
+  declare `"permissions": ["mods.read"]`, else the call fails with
+  `mods.read not granted` (PR 17 per-env capability filtering; outside
+  an entrypoint run, framework code is trusted). Memory is capped at
+  256MB per VM (approximate check at budget cadence); instruction budget
+  is the backend default.
 - Script failures surface on the mod's in-game details screen as a
   `Blocked: <file:line: message>` row and in the log
   (`scripts: <id> failed: ...`); success logs `scripts: N ran, M failed`.
 - Safe mode: no VM is created, every Lua mod reports a Backend failure
   (truthful, no silent skips).
 - Plugin-registered bindings (ABI v6) are installed before entrypoints
-  run: `ttmod.native["<plugin-id>"].<fn>` is callable from Lua mods.
-- Luau is NOT wired into the framework yet (library not linked — DLL
-  size); Luau mods report `no luau backend on this VM`, truthful today.
-  `docs/runtime/luau.md` covers the backend that ships ready to wire.
+  run, on BOTH script VMs: `ttmod.native["<plugin-id>"].<fn>` is
+  callable from Lua and Luau mods alike.
+- Luau is wired too (since the PR 31 link-in): Luau mods run on the
+  TTMod-owned Luau VM, same registry, same bindings, same envs. See
+  `examples/hello-luau`.
 - See `examples/hello-lua` for the minimal working mod.
 
 **CONFIRMED IN-GAME (user session, 2026-10-15, release 0.13.0):** the

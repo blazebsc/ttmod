@@ -221,7 +221,14 @@ ttmod_apply_warnings(ttmod_framework)
 ttmod_apply_sanitizers(ttmod_framework)
   target_include_directories(ttmod_framework PUBLIC core/include)
   target_include_directories(ttmod_framework PRIVATE core loader/windows loader/windows/proxy loader/windows/hooks loader/windows/plugins loader/windows/lua loader/windows/menu loader/windows/platform loader/windows/runtime third_party/minhook/include third_party/nlohmann/include)
-  target_link_libraries(ttmod_framework PRIVATE minhook miniz ttmod_lua_backend lua54)
+  target_link_libraries(ttmod_framework PRIVATE minhook miniz ttmod_lua_backend lua54 ttmod_luau_backend luau)
+  # Dual vendored Lua lineage (Lua 5.4 + Luau): both define the debug-info
+  # string `lua_ident`. Neither is dereferenced in our code (both backends
+  # skip lua_getinfo paths; Luau's debug lib is not opened), and the linker
+  # keeps the first definition (lua54, linked first). Allow the one overlap
+  # rather than archive surgery - but ONLY this: any other duplicate is a
+  # real bug the linker must still catch.
+  target_link_options(ttmod_framework PRIVATE -Wl,--allow-multiple-definition)
   # Embedded Mods-menu Lua (generated header, never committed).
   find_package(Python3 COMPONENTS Interpreter)
   add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/menumods_ui.h

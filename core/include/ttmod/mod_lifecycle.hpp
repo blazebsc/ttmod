@@ -103,7 +103,19 @@ struct ModScript {
     Runtime runtime = Runtime::Lua;
     std::string chunk_name;
     std::string source;
+    // Declared permissions (manifest runtime.permissions, converted by the
+    // caller). Bindings gated by caller_permitted() fail for a mod that did
+    // not declare the permission - per-env capability filtering.
+    std::vector<Permission> permissions;
 };
+
+// Caller capability context (PR 17 follow-up): while run_mod_entrypoints
+// executes a mod's chunk, the mod's DECLARED permissions are installed
+// here. Bindings call caller_permitted(p) to gate themselves; outside an
+// entrypoint run (framework code, plugin callbacks, plain run_chunk) there
+// is no context and everything is permitted - framework trust.
+void set_caller_permissions(const std::vector<Permission>* perms);
+[[nodiscard]] bool caller_permitted(Permission p);
 
 // Run every entrypoint on one shared VM, one environment per mod (PR 17).
 // Per mod, in order: wrong runtime -> Backend failure; empty source ->

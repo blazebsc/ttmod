@@ -34,6 +34,9 @@ struct LuauVmOptions {
     // Interrupt budget per chunk/call (safepoint counter, not exact
     // instructions - see reset_budget). 0 disables (not recommended).
     int instruction_budget = 20000000;
+    // Memory cap in MB, checked at the same interrupt cadence (an
+    // approximate cap, not an allocation limit). 0 disables.
+    int memory_budget_mb = 0;
 };
 
 // Creates a TTMod-owned Luau VM with the ttmod.* namespace installed from

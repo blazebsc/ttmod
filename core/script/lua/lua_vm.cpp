@@ -33,6 +33,7 @@ class LuaVm final : public ScriptVm {
             // The game's states are never touched - see game_lua.cpp, which
             // only observes them.
             lua_close(L_);
+            g_hooking_vm = nullptr;
         }
     }
 
@@ -63,9 +64,13 @@ class LuaVm final : public ScriptVm {
             lua_setglobal(L_, name);
         }
         budget_ = opt_.instruction_budget;
-        if (budget_ > 0) {
-            lua_sethook(L_, &LuaVm::hook, LUA_MASKCOUNT, budget_);
+        mem_budget_ = opt_.memory_budget_mb;
+        // Hook cadence: the instruction budget, or a plain memory-check
+        // cadence when only the memory cap is set (budget 0 = unchecked).
+        if (budget_ > 0 || mem_budget_ > 0) {
+            lua_sethook(L_, &LuaVm::hook, LUA_MASKCOUNT, budget_ > 0 ? budget_ : 100000);
         }
+        g_hooking_vm = this;
         return Result<void>::success();
     }
 
@@ -86,6 +91,16 @@ class LuaVm final : public ScriptVm {
         // empty source means the entrypoint was resolved wrongly, and silently
         // "succeeding" is how a mod ends up doing nothing.
         if (code.empty()) return Result<Value>::fail(Error{"run-chunk", name, errcat::kMissing, "empty chunk"});
+        // Memory cap pre-flight (approximate cap, by design): if the heap is
+        // over budget at chunk START, collect first - a previous chunk's
+        // uncollected garbage must not wedge the VM - and only fail when a
+        // full collect cannot get under. Bomb-killing stays in the hook.
+        if (mem_budget_ > 0 && bytes_used() > (size_t)mem_budget_ * 1024 * 1024) {
+            lua_gc(L_, LUA_GCCOLLECT, 0);
+            if (bytes_used() > (size_t)mem_budget_ * 1024 * 1024)
+                return Result<Value>::fail(Error{"run-chunk", name, errcat::kIO,
+                                                "memory budget still exceeded after GC"});
+        }
         reset_budget();
         if (luaL_loadbufferx(L_, code.data(), code.size(), ("@" + name).c_str(), "t") != LUA_OK) {
             return Result<Value>::fail(lua_error_to_result(name));
@@ -213,8 +228,20 @@ class LuaVm final : public ScriptVm {
         // Budget exhausted: error out of the running chunk instead of letting
         // a runaway script hang the script thread. doc §62: the scheduler's
         // cascade bound is not preemption; THIS is.
+        if (g_hooking_vm != nullptr) {
+            auto* self = g_hooking_vm;
+            if (self->mem_budget_ > 0 &&
+                (size_t)lua_gc(L, LUA_GCCOUNT, 0) * 1024 > (size_t)self->mem_budget_ * 1024 * 1024) {
+                luaL_error(L, "ttmod: script exceeded its memory budget");
+                return;
+            }
+        }
         luaL_error(L, "ttmod: script exceeded its instruction budget");
     }
+    // The hook is a static (Lua ABI) but needs the option values; the VM
+    // registers itself here at create(). Single-threaded VM use (the script
+    // thread) makes a plain static safe.
+    static LuaVm* g_hooking_vm;
 
     // Raises the ttmod.* entry point from inside the VM. Always safe to call
     // from Lua (a mod uses pcall); never safe to call across a TTMod Result
@@ -376,6 +403,7 @@ class LuaVm final : public ScriptVm {
     LuaVmOptions opt_;
     lua_State* L_ = nullptr;
     int budget_ = 0;
+    int mem_budget_ = 0;
     std::map<uint32_t, int> callbacks_;
     uint32_t next_callback_ = 1;
     // Per-mod environments (roadmap PR 17): slot -> registry ref of the mod's
@@ -385,6 +413,9 @@ class LuaVm final : public ScriptVm {
     std::map<std::string, uint32_t> env_by_mod_;
     uint32_t next_env_ = 1;
 };
+
+// Defined outside the class (integral static).
+LuaVm* LuaVm::g_hooking_vm = nullptr;
 
 // ---- Value <-> Lua stack ------------------------------------------------
 // One function per Value::Kind, so the mapping is exhaustive by construction

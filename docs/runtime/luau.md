@@ -31,9 +31,7 @@ between safepoints is not counted).
 
 ## Not yet
 
-- The framework DLL links the LUA backend (live since the PR 30 wiring:
-  Lua mods execute in-game, `docs/runtime/lua.md`) but not Luau —
-  the library is ~12 MB and the recommended path is Lua. Luau mods
-  report `no luau backend on this VM` in production today (truthful).
-  Wiring Luau is a one-link change: the runner already matches mod
-  runtime to `vm.backend()`.
+- Nothing structural: the framework links the Luau library and Luau mods
+  run in production (same registry, same bindings, per-mod envs) since
+  the PR 31 wiring. The DLL grew ~7MB for the vendored interpreter -
+  the price of a second backend by design, not accident.

@@ -56,6 +56,8 @@ static void host_log(const char* msg) {
 // failed-init revocation cannot see them) - documented in native-abi.md.
 static ttmod::PluginRecord* g_current_plugin = nullptr;
 static ttmod::RuntimeOwner* g_owner = nullptr;
+static ttmod::ScriptVm* g_luau_vm = nullptr; // PR 31 wiring; null = none
+
 static int host_subscribe(int event_id, ttmod_event_cb cb, void* ctx) {
     int tok = ttmod_win::events_subscribe(event_id, cb, ctx);
     if (g_current_plugin != nullptr) ttmod::plugin_note_subscribed(*g_current_plugin, tok);
@@ -79,11 +81,19 @@ static int host_register_api(const char* ns, const char* name, ttmod_native_cb c
         diag("bind-failed", id, key.dotted() + ": " + tok.error().message);
         return -1;
     }
+    // Install on both live VMs (PR 31): Lua first (must succeed), then
+    // Luau when present - same key, same token, both trampolines dispatch
+    // through the one registry entry.
     if (ttmod::ScriptVm* vm = g_owner->vm()) {
         ttmod::ApiOwner owner{ttmod::ApiOwnerKind::Plugin, id};
         ttmod::ApiKey effective{owner.effective_ns(), key.name};
         if (!vm->install_api(tok.value(), effective, (uint32_t)ttmod::kApiVersion).ok()) {
             diag("bind-install-failed", id, key.dotted());
+            return -1;
+        }
+        if (g_luau_vm != nullptr &&
+            !g_luau_vm->install_api(tok.value(), effective, (uint32_t)ttmod::kApiVersion).ok()) {
+            diag("bind-install-failed", id, key.dotted() + " (luau)");
             return -1;
         }
     }
@@ -215,6 +225,11 @@ void plugins_init(const std::vector<ScannedMod>& all, const char* profile_id, co
             snprintf(done, sizeof done, "rc=%d, revoked %u callbacks", rc, (unsigned)revoke.size());
         diag(revoke.empty() ? "initialized" : "failed-revoked", m.identity.id.str(), done);
     }
+}
+
+// Outside the anonymous namespace: declared in plugins.hpp (PR 31 wiring).
+void plugins_set_luau_vm(ttmod::ScriptVm* vm) {
+    g_luau_vm = vm;
 }
 
 } // namespace ttmod_win

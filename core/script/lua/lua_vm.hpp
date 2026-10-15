@@ -27,6 +27,9 @@ struct LuaVmOptions {
     bool sandbox_globals = true;
     // Instruction budget per chunk/call. 0 disables (not recommended).
     int instruction_budget = 20000000;
+    // Memory cap in MB, checked at the same hook cadence as the instruction
+    // budget (an approximate cap, not an allocation limit). 0 disables.
+    int memory_budget_mb = 0;
 };
 
 // Creates a TTMod-owned Lua 5.4 VM with the ttmod.* namespace installed from

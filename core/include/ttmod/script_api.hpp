@@ -20,6 +20,7 @@
 #include <functional>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -119,6 +120,10 @@ class ScriptApiRegistry {
     void unregister_owner(const ApiOwner& owner);
 
     [[nodiscard]] const ApiEntry* find(const ApiKey& k) const;
+    // Token for an already-registered key (PR 31): one registry, many VMs -
+    // install_bindings reuses the token to install the same entry into a
+    // second VM instead of re-registering (duplicates are rejected).
+    [[nodiscard]] std::optional<uint32_t> token_for(const ApiKey& k) const;
     [[nodiscard]] std::vector<ApiKey> keys() const; // sorted, deterministic
 
     // Called by the VM trampoline. Arity-checked and never throws: a plugin

@@ -20,7 +20,9 @@
 #include "ttmod/discovery.hpp"
 #include "ttmod/cache.hpp"
 #include "ttmod/mod_lifecycle.hpp"
+#include "ttmod/version.hpp"
 #include "script/lua/lua_vm.hpp"
+#include "script/luau/luau_vm.hpp"
 #include "ttmod/modstate.hpp"
 #include "ttmod/modplan.hpp"
 #include "ttmod/runtime_owner.hpp"
@@ -355,29 +357,70 @@ static void queue_telltale_entrypoints(const InitCtx& ctx) {
 // everything) or no lua mods. With the Null VM every lua mod records a
 // Backend failure (truthful, auto-heals when a real backend lands);
 // failures surface as menu warnings, never crashes.
+// PR 31 wiring: the second, Luau script VM. Process-lifetime static (no
+// unload path exists for anything else either - PR 21); safe mode never
+// creates it (wire_script_vm guards). Null when creation fails: Luau mods
+// then report Backend failures from the runner (truthful, no crashes).
+static ttmod::ScriptVm* g_luau_vm = nullptr;
+
 static std::vector<ttmod::ModRunStatus> run_ttmod_entrypoints(const InitCtx& ctx, ttmod::RuntimeOwner* owner) {
     std::vector<ttmod::ModRunStatus> none;
     ttmod::ScriptVm* vm = owner ? owner->vm() : nullptr;
     if (!vm) return none;
-    // Selection through the tested collector (PR 33): has-Lua mods map to
-    // Lua, everything else to a non-Lua marker the collector rejects.
+    // Selection through the tested collector (PR 33): one pass per script
+    // runtime; a non-Lua/Luau runtime maps to a marker the collector
+    // rejects. Entry mods map by runtime, dirs retained for file reads.
     std::vector<ttmod::ScriptModEntry> cands;
     std::map<std::string, std::string> dirs;
+    std::map<std::string, std::vector<ttmod::Permission>> perms; // declared (PR 17 filtering)
     for (auto& s : ctx.all) {
         const auto& m = s.manifest;
-        bool lua = false;
-        for (auto r : m.runtime.runtimes)
-            if (r == ttmod::Runtime::Lua) lua = true;
-        cands.push_back({m.identity.id.str(), lua ? ttmod::Runtime::Lua : ttmod::Runtime::TelltaleLua,
-                         m.entrypoints.lua, true});
+        ttmod::Runtime rt = ttmod::Runtime::TelltaleLua; // collector rejects
+        for (auto r : m.runtime.runtimes) {
+            if (r == ttmod::Runtime::Lua || r == ttmod::Runtime::Luau) {
+                rt = r;
+                break;
+            }
+        }
+        cands.push_back({m.identity.id.str(), rt,
+                         rt == ttmod::Runtime::Lua ? m.entrypoints.lua
+                                                   : (rt == ttmod::Runtime::Luau ? m.entrypoints.luau : ""),
+                         true});
         dirs[m.identity.id.str()] = s.dir;
+        perms[m.identity.id.str()] = m.runtime.permissions;
     }
-    std::vector<ttmod::ModScript> items;
+    // Lua mods on the owner VM (created first); Luau mods on the Luau VM.
+    // No VM for a runtime = every selected mod records a Backend failure
+    // with the runner's matching message (no silent skips).
+    std::vector<ttmod::ModRunStatus> statuses;
+    std::vector<ttmod::ModScript> lua_items;
     for (auto& s : ttmod::collect_script_entrypoints(cands, ttmod::Runtime::Lua))
-        items.push_back({s.id, ttmod::Runtime::Lua, s.entrypoint,
-                         read_bounded(ttmod_win::join(dirs[s.id], s.entrypoint))});
-    if (items.empty()) return none;
-    auto statuses = ttmod::run_mod_entrypoints(*vm, items);
+        lua_items.push_back({s.id, ttmod::Runtime::Lua, s.entrypoint,
+                             read_bounded(ttmod_win::join(dirs[s.id], s.entrypoint)),
+                             perms.count(s.id) ? perms[s.id] : std::vector<ttmod::Permission>{}});
+    if (!lua_items.empty()) {
+        auto st = ttmod::run_mod_entrypoints(*vm, lua_items);
+        statuses.insert(statuses.end(), st.begin(), st.end());
+    }
+    std::vector<ttmod::ModScript> luau_items;
+    for (auto& s : ttmod::collect_script_entrypoints(cands, ttmod::Runtime::Luau))
+        luau_items.push_back({s.id, ttmod::Runtime::Luau, s.entrypoint,
+                              read_bounded(ttmod_win::join(dirs[s.id], s.entrypoint)),
+                              perms.count(s.id) ? perms[s.id] : std::vector<ttmod::Permission>{}});
+    if (!luau_items.empty()) {
+        if (g_luau_vm != nullptr) {
+            auto st = ttmod::run_mod_entrypoints(*g_luau_vm, luau_items);
+            statuses.insert(statuses.end(), st.begin(), st.end());
+        } else {
+            for (auto& i : luau_items)
+                statuses.push_back(ttmod::ModRunStatus{
+                    i.id, ttmod::ModRunState::Failed,
+                    {ttmod::ModStage::Backend,
+                     {"run-entrypoint", i.chunk_name, ttmod::errcat::kType, "no Luau VM (create failed)"}},
+                    1});
+        }
+    }
+    if (statuses.empty()) return none;
     ttmod::Logger lg;
     if (lg.open(ctx.logpath)) {
         char m[128];
@@ -416,8 +459,36 @@ static ttmod::Result<ttmod::Value> script_log_info(ttmod::CallCtx& c) {
     if (lg.open(g_script_logpath)) lg.info("scripts: " + c.arg_str(0));
     return ttmod::Result<ttmod::Value>::ok(ttmod::Value::nil());
 }
+// ttmod.version: read-only, ungated (knowing the host version harms nothing).
+static ttmod::Result<ttmod::Value> script_version(ttmod::CallCtx&) {
+    return ttmod::Result<ttmod::Value>::ok(ttmod::Value::string(ttmod::kVersion));
+}
+// ttmod.mods.list: gated on the CALLING MOD's declared mods.read (PR 17
+// capability filtering - undeclared -> structured refusal). Reads the menu
+// store, the same source of truth the in-game list renders.
+static ttmod::Result<ttmod::Value> script_mods_list(ttmod::CallCtx&) {
+    if (!ttmod::caller_permitted(ttmod::Permission::ModsRead))
+        return ttmod::Result<ttmod::Value>::fail(
+            ttmod::Error{"mods", "list", ttmod::errcat::kType, "mods.read not granted"});
+    auto items = std::make_shared<ttmod::Value::ArrayVec>();
+    int n = ttmod_win::mods_menu_count();
+    for (int i = 0; i < n; ++i) {
+        ttmod_modinfo mi{};
+        if (ttmod_win::mods_menu_info(i, &mi) != 0) continue;
+        auto fields = std::make_shared<ttmod::Value::Fields>();
+        fields->emplace_back("id", ttmod::Value::string(mi.id));
+        fields->emplace_back("version", ttmod::Value::string(mi.version));
+        fields->emplace_back("enabled", ttmod::Value::boolean(mi.enabled != 0));
+        fields->emplace_back("has_plugin", ttmod::Value::boolean(mi.has_plugin != 0));
+        fields->emplace_back("packaged", ttmod::Value::boolean(mi.packaged != 0));
+        items->push_back(ttmod::Value::object(fields));
+    }
+    return ttmod::Result<ttmod::Value>::ok(ttmod::Value::array(items));
+}
 static const ttmod::BindingDesc kScriptBindings[] = {
     {"log", "info", &script_log_info, 1, 1},
+    {"version", "string", &script_version, 0, 0},
+    {"mods", "list", &script_mods_list, 0, 0},
 };
 
 // PR 30 wiring: replace the owner's Null placeholder with a real Lua VM
@@ -429,8 +500,12 @@ static const ttmod::BindingDesc kScriptBindings[] = {
 static void wire_script_vm(const InitCtx& ctx, ttmod::RuntimeOwner* owner) {
     if (owner->vm() == nullptr) return; // safe mode / prepare failed: Null-less is fine
     g_script_logpath = ctx.logpath;
+    // Memory caps (both VMs): 256MB default - generous for mods, bounded
+    // for the game process. Instruction budget stays the backend default.
+    ttmod::LuaVmOptions lopt;
+    lopt.memory_budget_mb = 256;
     auto vm = ttmod::make_lua_vm(owner->api_registry(), nullptr,
-                                 std::span<const ttmod::BindingDesc>(kScriptBindings));
+                                 std::span<const ttmod::BindingDesc>(kScriptBindings), lopt);
     if (!vm.ok()) {
         ttmod::Logger lg;
         if (lg.open(ctx.logpath))
@@ -440,7 +515,25 @@ static void wire_script_vm(const InitCtx& ctx, ttmod::RuntimeOwner* owner) {
     }
     owner->set_vm(std::move(vm.value()));
     ttmod::Logger lg;
-    if (lg.open(ctx.logpath)) lg.info("[TTMod] script VM live (lua 5.4, ttmod.log.info bound)");
+    bool logopen = lg.open(ctx.logpath);
+    if (logopen) lg.info("[TTMod] script VM live (lua 5.4, ttmod.log.info bound)");
+    // PR 31 wiring: the Luau VM - same registry (plugin bindings install on
+    // both via plugins_set_luau_vm), same bindings table, process-lifetime.
+    // Creation failure is logged and leaves g_luau_vm null: Luau mods then
+    // record Backend failures (truthful, the Lua path is unaffected).
+    ttmod::LuauVmOptions uopt;
+    uopt.memory_budget_mb = 256;
+    auto luau = ttmod::make_luau_vm(owner->api_registry(), nullptr,
+                                    std::span<const ttmod::BindingDesc>(kScriptBindings), uopt);
+    if (luau.ok()) {
+        static std::unique_ptr<ttmod::ScriptVm> luau_holder; // process lifetime, like the owner
+        luau_holder = std::move(luau.value());
+        g_luau_vm = luau_holder.get();
+        ttmod_win::plugins_set_luau_vm(g_luau_vm);
+        if (logopen) lg.info("[TTMod] luau script VM live");
+    } else if (logopen) {
+        lg.info("[TTMod] luau VM create failed, luau mods report backend failures: " + luau.error().message);
+    }
 }
 
 static DWORD WINAPI InitThread(LPVOID self) {
