@@ -168,6 +168,22 @@ bool mods_menu_script_warning(int index, std::string* out) {
     return true;
 }
 
+// Review 2026-10-16: attach runner statuses AFTER the store is built - the
+// store must exist before script entrypoints run (ttmod.mods.list() reads
+// it), so the one-liners fill in separately instead of forcing a re-store.
+void mods_store_script_warnings(const std::vector<ttmod::ModRunStatus>& scripts) {
+    std::lock_guard<std::mutex> l(g_menu_mtx);
+    for (auto& s : scripts) {
+        if (s.state != ttmod::ModRunState::Failed) continue;
+        for (auto& e : g_menu) {
+            if (e.id == s.id) {
+                e.script_warning = s.last_error_line();
+                break;
+            }
+        }
+    }
+}
+
 bool mods_resolve(const wchar_t* requested, wchar_t* out_path) {
     std::string req, replacement, winner;
     if (!mods_try(requested, req, replacement, winner)) return false;

@@ -234,6 +234,19 @@ int main() {
         auto sel2 = collect_script_entrypoints(mods, Runtime::Luau);
         assert(sel2.size() == 1 && sel2[0].id == "mod.b");
     }
+    // Dual-runtime mod (review 2026-10-16): one id declaring BOTH Lua and
+    // Luau contributes one candidate PER runtime - the per-runtime collect
+    // passes each pick their own entrypoint, neither is dropped.
+    {
+        std::vector<ScriptModEntry> dual = {
+            {"mod.both", Runtime::Lua, "main.lua", true},
+            {"mod.both", Runtime::Luau, "main.luau", true},
+        };
+        auto lua = collect_script_entrypoints(dual, Runtime::Lua);
+        auto luau = collect_script_entrypoints(dual, Runtime::Luau);
+        assert(lua.size() == 1 && lua[0].id == "mod.both" && lua[0].entrypoint == "main.lua");
+        assert(luau.size() == 1 && luau[0].id == "mod.both" && luau[0].entrypoint == "main.luau");
+    }
 
     std::puts("mod_lifecycle: all asserts passed");
     return 0;

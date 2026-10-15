@@ -18,7 +18,12 @@ DepResolution resolve_dependencies(const std::vector<ModManifest>& mods) {
     for (auto& m : mods) {
         const ModId& id = m.identity.id;
         if (by_id.count(id)) {
-            out.problems.push_back({id, "duplicate", "duplicate ID, kept first"});
+            // Policy (review 2026-10-16): REJECT ALL instances of a
+            // duplicate id. The problem is recorded against the id, and
+            // blocked() is id-keyed, so every instance is blocked - a
+            // "kept winner" would be unpredictable across sources and the
+            // old "kept first" message lied about the actual effect.
+            out.problems.push_back({id, "duplicate", "duplicate ID (all instances rejected)"});
             continue;
         }
         by_id[id] = &m;
@@ -27,41 +32,44 @@ DepResolution resolve_dependencies(const std::vector<ModManifest>& mods) {
     // so knock-on blocks (dep of a blocked mod) propagate.
     std::map<ModId, bool> blocked;
     for (auto& [id, _] : by_id) blocked[id] = false;
-    bool changed = true;
-    while (changed) {
-        changed = false;
-        for (auto& [id, m] : by_id) {
-            if (blocked[id]) continue;
-            auto block = [&](const std::string& cat, const std::string& msg) {
-                blocked[id] = true;
-                out.problems.push_back({id, cat, msg});
-                changed = true;
-            };
-            for (auto& [dep, spec] : m->deps.depends) {
-                auto it = by_id.find(dep);
-                if (it == by_id.end()) {
-                    block("missing", "missing dependency: " + dep.str());
-                    break;
+    auto propagate_blocks = [&]() {
+        bool changed = true;
+        while (changed) {
+            changed = false;
+            for (auto& [id, m] : by_id) {
+                if (blocked[id]) continue;
+                auto block = [&](const std::string& cat, const std::string& msg) {
+                    blocked[id] = true;
+                    out.problems.push_back({id, cat, msg});
+                    changed = true;
+                };
+                for (auto& [dep, spec] : m->deps.depends) {
+                    auto it = by_id.find(dep);
+                    if (it == by_id.end()) {
+                        block("missing", "missing dependency: " + dep.str());
+                        break;
+                    }
+                    if (blocked[dep]) {
+                        block("missing", "dependency blocked: " + dep.str());
+                        break;
+                    }
+                    if (!spec.satisfied_by(it->second->identity.version)) {
+                        block("version", "dependency " + dep.str() + " version " + it->second->identity.version.str() +
+                                             " does not satisfy " + spec.str());
+                        break;
+                    }
                 }
-                if (blocked[dep]) {
-                    block("missing", "dependency blocked: " + dep.str());
-                    break;
-                }
-                if (!spec.satisfied_by(it->second->identity.version)) {
-                    block("version", "dependency " + dep.str() + " version " + it->second->identity.version.str() +
-                                         " does not satisfy " + spec.str());
-                    break;
-                }
-            }
-            if (blocked[id]) continue;
-            for (auto& c : m->deps.conflicts) {
-                if (by_id.count(c)) {
-                    block("conflict", "conflicts with present mod: " + c.str());
-                    break;
+                if (blocked[id]) continue;
+                for (auto& c : m->deps.conflicts) {
+                    if (by_id.count(c)) {
+                        block("conflict", "conflicts with present mod: " + c.str());
+                        break;
+                    }
                 }
             }
         }
-    }
+    };
+    propagate_blocks();
     // Cycle detection over unblocked edges (iterative DFS, id-ordered).
     // Only the members of each cycle are blocked, not their ancestors.
     std::map<ModId, int> color; // 0 unvisited, 1 in-stack, 2 done
@@ -95,6 +103,12 @@ DepResolution resolve_dependencies(const std::vector<ModManifest>& mods) {
     };
     for (auto& [id, _] : by_id)
         if (color[id] == 0 && !blocked[id]) visit(id);
+    // Cycle members are blocked now - re-propagate so their DEPENDENTS are
+    // blocked too. Without this, C depending on a cycle member stayed
+    // unblocked (its dep check ran before the cycle was found) and reached
+    // the runtime. Blocking only removes nodes from the graph, so it cannot
+    // create new cycles: one more pass to the fixed point is sufficient.
+    propagate_blocks();
     // Topological load order (deps first), id-deterministic; blocked last.
     std::map<ModId, bool> emitted;
     std::function<void(const ModId&)> emit = [&](const ModId& id) {

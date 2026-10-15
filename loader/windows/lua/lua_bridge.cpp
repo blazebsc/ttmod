@@ -643,10 +643,13 @@ void lua_bridge_init(const char* profile_id, const char* log_path, ttmod::Runtim
 }
 
 void lua_bridge_shutdown() {
+    // LOADER-LOCK POLICY (review 2026-10-16): called from DllMain DETACH
+    // under the loader lock. Flag-only: other threads are NOT suspended by
+    // the loader lock, so clearing the observation registry there could
+    // race a concurrent hook observation. The flag makes every hook a
+    // no-op; the observations (plain data, no resources) die with the
+    // process. No Lua calls, no frees, no locks.
     InterlockedExchange(&g_dead, 1);
-    // Drops our observations only. The game still owns every state; nothing
-    // here closes or frees one.
-    g_states.clear();
 }
 
 } // namespace ttmod_win

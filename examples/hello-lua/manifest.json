@@ -6,5 +6,6 @@
     "api": 1,
     "games": ["minecraft-story-mode:s1"],
     "runtimes": ["lua"],
+    "permissions": ["mods.read"],
     "entrypoints": {"lua": "main.lua"}
 }

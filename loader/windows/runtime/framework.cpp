@@ -41,7 +41,8 @@
 static DWORD g_t0 = 0;
 static char g_exitlog[MAX_PATH] = {};
 // RuntimeOwner pointer, set by InitThread, used by hooks and loader components.
-// Heap-allocated so it persists beyond InitThread; freed in DllMain detach.
+// Heap-allocated so it persists beyond InitThread; NEVER freed (loader-lock
+// policy, review 2026-10-16: DETACH does not destruct it - the OS reclaims).
 ttmod::RuntimeOwner* g_runtime_owner = nullptr;
 
 // Exit-time evidence (raw Win32 only: no msvcrt, no hooks, no alloc).
@@ -300,20 +301,12 @@ static void init_plugins(const InitCtx& ctx, ttmod::RuntimeOwner* owner) {
     ttmod_win::plugins_init(ctx.all, ctx.prof.c_str(), ctx.game, ctx.season, ctx.logpath.c_str(), owner);
 }
 
-// PR 32/33: bounded file read for script entrypoints (third-party text
-// ingested by the framework; manifest cap, same class as manifests).
-static std::string read_bounded(const std::string& path) {
-    FILE* f = ttmod::file_io::open_read(path);
-    std::string src;
-    if (!f) return src;
-    char b[4096];
-    size_t r = 0;
-    while ((r = fread(b, 1, sizeof b, f)) > 0) {
-        if (src.size() + r > ttmod::packlimits::kMaxManifestBytes) break;
-        src.append(b, r);
-    }
-    fclose(f);
-    return src;
+// PR 32/33: bounded entrypoint reads moved to core file_io
+// (read_file_bounded): distinct unreadable/oversized errors, never a
+// truncated prefix (review 2026-10-16), unit-testable on Linux. Same
+// manifest-class cap - third-party text ingested by the framework.
+static ttmod::Result<std::string> read_entrypoint(const std::string& path) {
+    return ttmod::file_io::read_file_bounded(path, (size_t)ttmod::packlimits::kMaxManifestBytes);
 }
 
 // PR 32: queue enabled mods' telltale-lua entrypoints onto the game thread
@@ -339,12 +332,20 @@ static void queue_telltale_entrypoints(const InitCtx& ctx) {
         std::string dir;
         for (auto& s : ctx.all)
             if (s.manifest.identity.id.str() == e.id) dir = s.dir;
-        std::string src = read_bounded(ttmod_win::join(dir, e.entrypoint));
-        if (src.empty()) {
-            emit({ttmod::DiagKind::Bridge, "entrypoint-unreadable", e.id, e.entrypoint});
+        auto rd = read_entrypoint(ttmod_win::join(dir, e.entrypoint));
+        if (!rd.ok()) {
+            // Unreadable and oversized are distinct (review 2026-10-16): a
+            // truncated script must NEVER reach the game's Lua.
+            emit({ttmod::DiagKind::Bridge,
+                  rd.error().category == ttmod::errcat::kLimit ? "entrypoint-oversized" : "entrypoint-unreadable",
+                  e.id, e.entrypoint + ": " + rd.error().message});
             continue;
         }
-        if (!ttmod::uiqueue_push(src))
+        if (rd.value().empty()) {
+            emit({ttmod::DiagKind::Bridge, "entrypoint-empty", e.id, e.entrypoint});
+            continue;
+        }
+        if (!ttmod::uiqueue_push(rd.value()))
             emit({ttmod::DiagKind::Bridge, "entrypoint-dropped", e.id, e.entrypoint});
         else
             emit({ttmod::DiagKind::Bridge, "entrypoint-queued", e.id, e.entrypoint});
@@ -369,23 +370,27 @@ static std::vector<ttmod::ModRunStatus> run_ttmod_entrypoints(const InitCtx& ctx
     if (!vm) return none;
     // Selection through the tested collector (PR 33): one pass per script
     // runtime; a non-Lua/Luau runtime maps to a marker the collector
-    // rejects. Entry mods map by runtime, dirs retained for file reads.
+    // rejects. A mod may declare BOTH script runtimes (review 2026-10-16:
+    // the old loop broke at the first match and silently dropped the other
+    // entrypoint) - one candidate PER declared runtime, each carrying its
+    // own entrypoint; the per-runtime collect passes below pick their own.
     std::vector<ttmod::ScriptModEntry> cands;
     std::map<std::string, std::string> dirs;
     std::map<std::string, std::vector<ttmod::Permission>> perms; // declared (PR 17 filtering)
     for (auto& s : ctx.all) {
         const auto& m = s.manifest;
-        ttmod::Runtime rt = ttmod::Runtime::TelltaleLua; // collector rejects
+        bool any_script = false;
         for (auto r : m.runtime.runtimes) {
-            if (r == ttmod::Runtime::Lua || r == ttmod::Runtime::Luau) {
-                rt = r;
-                break;
+            if (r == ttmod::Runtime::Lua && !m.entrypoints.lua.empty()) {
+                cands.push_back({m.identity.id.str(), r, m.entrypoints.lua, true});
+                any_script = true;
+            } else if (r == ttmod::Runtime::Luau && !m.entrypoints.luau.empty()) {
+                cands.push_back({m.identity.id.str(), r, m.entrypoints.luau, true});
+                any_script = true;
             }
         }
-        cands.push_back({m.identity.id.str(), rt,
-                         rt == ttmod::Runtime::Lua ? m.entrypoints.lua
-                                                   : (rt == ttmod::Runtime::Luau ? m.entrypoints.luau : ""),
-                         true});
+        if (!any_script)
+            cands.push_back({m.identity.id.str(), ttmod::Runtime::TelltaleLua, "", true}); // collector rejects
         dirs[m.identity.id.str()] = s.dir;
         perms[m.identity.id.str()] = m.runtime.permissions;
     }
@@ -393,20 +398,38 @@ static std::vector<ttmod::ModRunStatus> run_ttmod_entrypoints(const InitCtx& ctx
     // No VM for a runtime = every selected mod records a Backend failure
     // with the runner's matching message (no silent skips).
     std::vector<ttmod::ModRunStatus> statuses;
+    // Entrypoint read: unreadable/oversized -> Entrypoint-stage failure with
+    // the reader's exact error; empty file -> the runner's empty-chunk
+    // Entrypoint failure. Never a truncated prefix (review 2026-10-16).
+    auto fail_read = [&](const ttmod::SelectedEntrypoint& s, const ttmod::Error& e) {
+        statuses.push_back(ttmod::ModRunStatus{
+            s.id, ttmod::ModRunState::Failed,
+            {ttmod::ModStage::Entrypoint, e}, 1});
+    };
     std::vector<ttmod::ModScript> lua_items;
-    for (auto& s : ttmod::collect_script_entrypoints(cands, ttmod::Runtime::Lua))
-        lua_items.push_back({s.id, ttmod::Runtime::Lua, s.entrypoint,
-                             read_bounded(ttmod_win::join(dirs[s.id], s.entrypoint)),
+    for (auto& s : ttmod::collect_script_entrypoints(cands, ttmod::Runtime::Lua)) {
+        auto rd = read_entrypoint(ttmod_win::join(dirs[s.id], s.entrypoint));
+        if (!rd.ok()) {
+            fail_read(s, rd.error());
+            continue;
+        }
+        lua_items.push_back({s.id, ttmod::Runtime::Lua, s.entrypoint, std::move(rd.value()),
                              perms.count(s.id) ? perms[s.id] : std::vector<ttmod::Permission>{}});
+    }
     if (!lua_items.empty()) {
         auto st = ttmod::run_mod_entrypoints(*vm, lua_items);
         statuses.insert(statuses.end(), st.begin(), st.end());
     }
     std::vector<ttmod::ModScript> luau_items;
-    for (auto& s : ttmod::collect_script_entrypoints(cands, ttmod::Runtime::Luau))
-        luau_items.push_back({s.id, ttmod::Runtime::Luau, s.entrypoint,
-                              read_bounded(ttmod_win::join(dirs[s.id], s.entrypoint)),
+    for (auto& s : ttmod::collect_script_entrypoints(cands, ttmod::Runtime::Luau)) {
+        auto rd = read_entrypoint(ttmod_win::join(dirs[s.id], s.entrypoint));
+        if (!rd.ok()) {
+            fail_read(s, rd.error());
+            continue;
+        }
+        luau_items.push_back({s.id, ttmod::Runtime::Luau, s.entrypoint, std::move(rd.value()),
                               perms.count(s.id) ? perms[s.id] : std::vector<ttmod::Permission>{}});
+    }
     if (!luau_items.empty()) {
         if (g_luau_vm != nullptr) {
             auto st = ttmod::run_mod_entrypoints(*g_luau_vm, luau_items);
@@ -494,8 +517,8 @@ static const ttmod::BindingDesc kScriptBindings[] = {
 // PR 30 wiring: replace the owner's Null placeholder with a real Lua VM
 // (TTMod-owned, never the game's states). Lua mods then run at init via
 // run_ttmod_entrypoints with per-mod envs; failures surface as menu
-// warnings. Luau mods are NOT wired yet (the framework does not link the
-// Luau library; the runner reports no-luau-backend, truthful today).
+// warnings. Luau mods run on the Luau VM (same wiring; the library is
+// linked since PR 31's completion - see docs/runtime/luau.md).
 // Safe mode never reaches here (prepare returns false and vm() is null).
 static void wire_script_vm(const InitCtx& ctx, ttmod::RuntimeOwner* owner) {
     if (owner->vm() == nullptr) return; // safe mode / prepare failed: Null-less is fine
@@ -569,9 +592,14 @@ static DWORD WINAPI InitThread(LPVOID self) {
     wire_script_vm(ctx, owner);
     init_plugins(ctx, owner);
     queue_telltale_entrypoints(ctx);
-    auto script_status = run_ttmod_entrypoints(ctx, owner);
     init_mods(ctx, owner);
-    store_menu_snapshot(ctx, script_status);
+    // Menu store BEFORE script entrypoints (review 2026-10-16): the store is
+    // what ttmod.mods.list() reads, so populating it after the runner meant
+    // scripts saw an EMPTY list at startup. Script statuses attach after the
+    // run, keeping the menu's Blocked rows without re-storing everything.
+    store_menu_snapshot(ctx, {});
+    auto script_status = run_ttmod_entrypoints(ctx, owner);
+    ttmod_win::mods_store_script_warnings(script_status);
     init_menu(ctx, owner);
 
     return 0;
@@ -583,12 +611,15 @@ BOOL APIENTRY DllMain(HMODULE self, DWORD reason, LPVOID) {
         HANDLE t = CreateThread(nullptr, 0, InitThread, self, 0, nullptr);
         if (t) CloseHandle(t);
     } else if (reason == DLL_PROCESS_DETACH) {
+        // LOADER-LOCK POLICY (review 2026-10-16): DETACH runs under the OS
+        // loader lock, with other threads still running. Complex teardown
+        // there (owner shutdown: destroying mutexes, closing the script
+        // VMs, stopping the dispatcher) can deadlock or race - and is
+        // pointless at process exit, where the OS reclaims everything. We
+        // do not support unloading the framework from a live process (PR
+        // 21 policy), so detach does the one safe thing: arm the dead flag
+        // (every hook becomes a no-op) and write the exit dump.
         ttmod_win::lua_bridge_shutdown();
-        if (g_runtime_owner) {
-            g_runtime_owner->shutdown();
-            delete g_runtime_owner;
-            g_runtime_owner = nullptr;
-        }
         exit_dump();
     }
     return TRUE; // never block the game

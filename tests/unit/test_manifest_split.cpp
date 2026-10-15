@@ -46,6 +46,12 @@ int main() {
         assert(r.ok());
         assert(r.value().unknown_fields.size() == 2);
         assert(r.value().unknown_fields[0] == "future");
+        // "entrypoints" is KNOWN (review 2026-10-16): it used to be reported
+        // as unknown despite being parsed and validated.
+        auto e = ttmod::read_raw_manifest(
+            "{\"id\":\"a\",\"api\":1,\"runtimes\":[\"lua\"],"
+            "\"entrypoints\":{\"lua\":\"main.lua\"}}");
+        assert(e.ok() && e.value().unknown_fields.empty());
     }
 
     // Layer 2 owns every semantic rule.

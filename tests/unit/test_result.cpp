@@ -8,6 +8,7 @@
 
 #include "ttmod/cache.hpp"
 #include "ttmod/detect.hpp"
+#include "ttmod/file_io.hpp"
 #include "ttmod/manifest.hpp"
 #include "ttmod/modconfig.hpp"
 #include "ttmod/modstate.hpp"
@@ -126,6 +127,49 @@ int main() {
     assert(std::string(ttmod::errcat::kSyntax) != ttmod::errcat::kIO);
     assert(std::string(ttmod::errcat::kTraversal) != ttmod::errcat::kMissing);
     assert(std::string(ttmod::errcat::kLimit) != ttmod::errcat::kDuplicate);
+
+    // Windows filename aliases (review 2026-10-16): the FS strips trailing
+    // dots/spaces and reserves device-name bases, so these must be REJECTED -
+    // "payload.dll." must not count as a distinct, safe entry.
+    assert(!ttmod::validate_mod_relative_path("payload.dll.").ok());   // trailing dot alias
+    assert(!ttmod::validate_mod_relative_path("file.lua ").ok());      // trailing space alias
+    assert(!ttmod::validate_mod_relative_path("con.txt").ok());         // reserved base
+    assert(!ttmod::validate_mod_relative_path("archives/NUL").ok());    // reserved base, nested
+    assert(!ttmod::validate_mod_relative_path("COM1").ok());            // bare device
+    assert(!ttmod::validate_mod_relative_path("aux.lua").ok());         // case-insensitive
+    assert(ttmod::validate_mod_relative_path("payload.dll").ok());      // clean still passes
+    assert(ttmod::validate_mod_relative_path("conduct.lua").ok());      // prefix, not alias
+    // GamePath: traversal, ADS, POSIX/UNC absolutes, aliases rejected;
+    // drive-absolute passes through (the resolver checks game-root).
+    assert(!ttmod::validate_game_path("archives/../x").ok());           // traversal
+    assert(!ttmod::validate_game_path("x:stream").ok());                // ADS
+    assert(!ttmod::validate_game_path("/etc/passwd").ok());             // POSIX-absolute
+    assert(!ttmod::validate_game_path("//srv/share").ok());            // UNC
+    assert(!ttmod::validate_game_path("con.txt").ok());                 // reserved
+    assert(ttmod::validate_game_path("archives/x.lua").ok());           // root-relative
+    assert(ttmod::validate_game_path("C:/games/mcsm/archives/x.lua").ok()); // drive-absolute
+
+    // Bounded whole-file read (review 2026-10-16): distinct outcomes, never
+    // a truncated prefix - the failure mode the old reader had.
+    {
+        const std::string p = "/tmp/opencode_ttmod_result_read";
+        FILE* f = fopen(p.c_str(), "wb");
+        assert(f && fputs("hello script", f) >= 0);
+        fclose(f);
+        auto rd = ttmod::file_io::read_file_bounded(p, 1024);
+        assert(rd.ok() && rd.value() == "hello script");
+        auto over = ttmod::file_io::read_file_bounded(p, 4); // 12 > 4
+        assert(!over.ok());
+        assert(std::string(over.error().category) == ttmod::errcat::kLimit); // NOT a prefix
+        auto gone = ttmod::file_io::read_file_bounded(p + ".missing", 1024);
+        assert(!gone.ok() && std::string(gone.error().category) == ttmod::errcat::kIO);
+        f = fopen(p.c_str(), "wb"); // empty file: readable, distinct from unreadable
+        assert(f);
+        fclose(f);
+        auto empty = ttmod::file_io::read_file_bounded(p, 1024);
+        assert(empty.ok() && empty.value().empty());
+        std::remove(p.c_str());
+    }
 
     std::puts("result: all asserts passed");
     return 0;

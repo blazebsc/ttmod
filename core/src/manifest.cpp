@@ -28,7 +28,7 @@ struct Notes {
 
 const char* const kKnownFields[] = {"id",       "version",     "name",    "description",    "plugin", "arch",
                                     "api",      "priority",    "enabled", "package_format", "games",  "conflicts",
-                                    "runtimes", "permissions", "depends", "files",          "config"};
+                                    "runtimes", "permissions", "depends", "files",          "config", "entrypoints"};
 
 bool known_field(const std::string& k) {
     for (auto* f : kKnownFields)
@@ -341,11 +341,14 @@ Result<ModManifest> validate_manifest(const RawManifest& raw) {
     if (raw.files) {
         for (auto& [from, to] : *raw.files) {
             // Both sides cross into filesystem paths. The replacement must be
-            // a safe mod-relative subpath; the game path is a game-side key
-            // (root-relative or absolute) validated by the resolver, not here.
+            // a safe mod-relative subpath; the game key has its own rule
+            // (root-relative or drive-absolute, no traversal/ADS/aliases -
+            // the resolver then only checks absolute keys stay under root).
+            auto gk = validate_game_path(from);
+            if (!gk.ok()) return fail("bad files source [" + from + "]: " + gk.error().message, gk.error().category);
             auto rp = validate_mod_relative_path(to);
             if (!rp.ok()) return fail("bad files[" + from + "]: " + rp.error().message, rp.error().category);
-            m.overrides.files.emplace_back(from, std::move(rp).value());
+            m.overrides.files.emplace_back(std::move(gk).value(), std::move(rp).value());
         }
     }
 

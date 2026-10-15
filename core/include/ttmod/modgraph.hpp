@@ -24,8 +24,9 @@ struct DepResolution {
     bool blocked(const ModId& id) const;
 };
 
-// mods: enabled + api/game-valid manifests. Duplicate IDs: first wins,
-// rest flagged. Conflict = conflicting id present in the same set.
+// mods: enabled + api/game-valid manifests. Duplicate IDs: ALL instances
+// rejected (id-keyed problems block every source of the id). Conflict =
+// conflicting id present in the same set.
 DepResolution resolve_dependencies(const std::vector<ModManifest>& mods);
 
 } // namespace ttmod

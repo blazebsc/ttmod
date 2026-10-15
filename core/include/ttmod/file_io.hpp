@@ -8,6 +8,8 @@
 #include <cstdio>
 #include <string>
 
+#include "ttmod/result.hpp"
+
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -164,6 +166,31 @@ inline bool write_file_atomic(const std::string& path, const std::string& text) 
         return false;
     }
     return true;
+}
+
+// Bounded whole-file read (review 2026-10-16): entrypoint scripts cross from
+// third-party files into the framework. Distinct outcomes, never a truncated
+// prefix: kIO unreadable, kLimit size exceeded, ok empty (an empty file IS
+// readable; callers decide whether emptiness is meaningful). Max bytes is a
+// hard cap - one byte over fails.
+inline Result<std::string> read_file_bounded(const std::string& path, size_t max_bytes) {
+    FILE* f = open_read(path);
+    if (!f) return Result<std::string>::fail(Error{"read-script", path, errcat::kIO, "cannot open"});
+    std::string out;
+    char buf[4096];
+    size_t r = 0;
+    while ((r = fread(buf, 1, sizeof buf, f)) > 0) {
+        if (out.size() + r > max_bytes) {
+            fclose(f);
+            return Result<std::string>::fail(
+                Error{"read-script", path, errcat::kLimit, "exceeds size limit"});
+        }
+        out.append(buf, r);
+    }
+    bool err = ferror(f) != 0;
+    fclose(f);
+    if (err) return Result<std::string>::fail(Error{"read-script", path, errcat::kIO, "read error"});
+    return Result<std::string>::ok(std::move(out));
 }
 
 } // namespace file_io

@@ -221,11 +221,75 @@ int main() {
         assert(r3.blocked(mid("x")) && r3.blocked(mid("y")));
         auto r4 = ttmod::resolve_dependencies({mk("d", "1.0"), mk("d", "2.0")});
         assert(r4.blocked(mid("d")));
-        // duplicates keep going exactly once in load order
+        // Duplicate policy (review 2026-10-16): ALL instances rejected -
+        // id-keyed problems block every source of the id, and the message
+        // says so. One entry per id in load order (blocked tail).
+        bool dupmsg = false;
+        for (auto& p : r4.problems)
+            if (p.mod == mid("d") && p.category == "duplicate") {
+                dupmsg = p.message.find("all instances rejected") != std::string::npos;
+            }
+        assert(dupmsg);
+        // duplicates appear exactly once in load order
         int dcount = 0;
         for (auto& id : r4.load_order)
             if (id == mid("d")) ++dcount;
         assert(dcount == 1);
+    }
+    {
+        // CYCLE DEPENDENT PROPAGATION (review 2026-10-16, the bug): A<->B
+        // cycle, C depends on A. The old code blocked only cycle members -
+        // C's dependency check ran BEFORE the cycle was found, so C stayed
+        // unblocked and reached the runtime. C must now be blocked too.
+        ttmod::ModManifest a = mk("a", "1.0"), b = mk("b", "1.0"), c = mk("c", "1.0");
+        a.deps.depends = {{mid("b"), con("")}};
+        b.deps.depends = {{mid("a"), con("")}};
+        c.deps.depends = {{mid("a"), con("")}};
+        auto r = ttmod::resolve_dependencies({a, b, c});
+        assert(r.blocked(mid("a")) && r.blocked(mid("b")));
+        assert(r.blocked(mid("c"))); // THE regression: dependent of a cycle member
+        bool dep_blocked = false;
+        for (auto& p : r.problems)
+            if (p.mod == mid("c") && p.category == "missing") dep_blocked = true;
+        assert(dep_blocked);
+        // (load_order also carries blocked mods, appended last by contract;
+        // ModPlan filters them out. blocked(c) is the regression proof.)
+    }
+    {
+        // Longer chain off a cycle: A<->B, C->A, D->C, E->D. All blocked.
+        ttmod::ModManifest a = mk("a", "1.0"), b = mk("b", "1.0"), c = mk("c", "1.0"), d = mk("d", "1.0"),
+                               e = mk("e", "1.0");
+        a.deps.depends = {{mid("b"), con("")}};
+        b.deps.depends = {{mid("a"), con("")}};
+        c.deps.depends = {{mid("a"), con("")}};
+        d.deps.depends = {{mid("c"), con("")}};
+        e.deps.depends = {{mid("d"), con("")}};
+        auto r = ttmod::resolve_dependencies({a, b, c, d, e});
+        assert(r.blocked(mid("a")) && r.blocked(mid("b")) && r.blocked(mid("c")) && r.blocked(mid("d")) &&
+               r.blocked(mid("e")));
+        // No unblocked survivor: every load_order entry is one of the blocked.
+        for (auto& id : r.load_order)
+            assert(r.blocked(id));
+    }
+    {
+        // Multiple independent cycles: A<->B, X<->Y, C depends on X, Z clean.
+        // Both cycles blocked, C blocked, Z survives alone in load order.
+        ttmod::ModManifest a = mk("a", "1.0"), b = mk("b", "1.0"), x = mk("x", "1.0"), y = mk("y", "1.0"),
+                               c = mk("c", "1.0"), z = mk("z", "1.0");
+        a.deps.depends = {{mid("b"), con("")}};
+        b.deps.depends = {{mid("a"), con("")}};
+        x.deps.depends = {{mid("y"), con("")}};
+        y.deps.depends = {{mid("x"), con("")}};
+        c.deps.depends = {{mid("x"), con("")}};
+        auto r = ttmod::resolve_dependencies({a, b, x, y, c, z});
+        assert(r.blocked(mid("a")) && r.blocked(mid("b")));
+        assert(r.blocked(mid("x")) && r.blocked(mid("y")));
+        assert(r.blocked(mid("c")));
+        assert(!r.blocked(mid("z")));
+        // z is the only survivor; blocked mods follow in the tail (contract).
+        assert(!r.load_order.empty() && r.load_order[0] == mid("z"));
+        for (size_t i = 1; i < r.load_order.size(); ++i)
+            assert(r.blocked(r.load_order[i]));
     }
     std::puts("manifest: all asserts passed");
     return 0;

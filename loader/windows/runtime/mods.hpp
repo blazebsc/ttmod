@@ -31,6 +31,10 @@ bool mods_menu_problem(int index, std::string* out);
 // Script failure one-liner for snapshot assembly (PR 33; internal).
 // Same contract; plan problems win at merge time in the bridge.
 bool mods_menu_script_warning(int index, std::string* out);
+// Attach runner failure lines to already-stored entries (review
+// 2026-10-16: the store is built BEFORE scripts run so ttmod.mods.list()
+// sees the plan; statuses fill in after without re-storing).
+void mods_store_script_warnings(const std::vector<ttmod::ModRunStatus>& scripts);
 // Hot-path lookup: requested = original CreateFileW path (wide).
 // Returns true + out_path (wide, caller-sized MAX_PATH buffer) on override.
 bool mods_resolve(const wchar_t* requested, wchar_t* out_path);

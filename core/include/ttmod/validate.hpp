@@ -32,4 +32,12 @@ bool is_valid_mod_id(std::string_view id);
 // redirect at runtime. Checked where the OS permits (documented limitation).
 Result<std::string> validate_mod_relative_path(std::string_view path);
 
+// Game-side override key (the `from` side of "files"): root-relative or
+// drive-absolute. Dedicated rule (review 2026-10-16): rejects traversal
+// ('..' components), ADS colons, POSIX/UNC absolutes, and Windows
+// alias/reserved names - the resolver then only has to check that
+// absolute keys stay under the game root. Canonical output is
+// forward-slashed; drive-qualified keys pass through for the resolver's
+// root check.
+Result<std::string> validate_game_path(std::string_view path);
 } // namespace ttmod
