@@ -7,11 +7,9 @@
 //
 // No log line reliably separates "title up" from "menu up" (menu scripts
 // pre-warm during boot, so every candidate signal fires early), so there
-// is no stand-down: volleys dense early (~4-10s, so the gap between
-// the title appearing and the next shot stays under a second) plus two
-// late ones (25s/45s, slow-boot cover), then silence. Shots use a corner
-// click (inert in menus) plus Enter/Space; worst case the volleys miss
-// and the game behaves stock. Enter/Space;
+// is no stand-down: volleys at ~8s/15s/25s/40s (early ones catch the
+// logo splash if it is press-skippable, later ones the title and slow
+// boots), then silence. Shots use a corner click (inert in menus) plus Enter/Space;
 // worst case the volleys miss and the game behaves stock.
 //
 // Init never blocks (spawns a thread, returns 0).
@@ -47,13 +45,13 @@ static void press_once() {
 }
 
 static DWORD WINAPI watch(LPVOID) {
-    say("skip-title-press: watching boot (dense volleys ~4-10s, late 25s/45s)");
+    say("skip-title-press: watching boot (volleys at ~8s/15s/25s/40s)");
     int shots = 0;
     for (int i = 0; i < 90; ++i) { // ~90s at 1s
         Sleep(1000);
         int elapsed = i + 1;
-        int at[] = {4, 5, 6, 7, 8, 9, 10, 25, 45};
-        if (shots < 9 && elapsed >= at[shots]) {
+        int at[] = {8, 15, 25, 40};
+        if (shots < 4 && elapsed >= at[shots]) {
             press_once();
             ++shots;
         }
