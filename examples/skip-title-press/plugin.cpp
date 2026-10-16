@@ -7,9 +7,10 @@
 //
 // No log line reliably separates "title up" from "menu up" (menu scripts
 // pre-warm during boot, so every candidate signal fires early), so there
-// is no stand-down: exactly two volleys (12s, 25s), then silence. Shots
-// use a corner click (inert in menus) plus Enter/Space; worst case the
-// volleys miss and the game behaves stock.
+// is no stand-down: volleys at ~5s/8s/12s/25s (early ones catch the
+// logo splash if it is press-skippable, later ones the title), then
+// silence. Shots use a corner click (inert in menus) plus Enter/Space;
+// worst case the volleys miss and the game behaves stock.
 //
 // Init never blocks (spawns a thread, returns 0).
 #include "ttmod/plugin_api.h"
@@ -44,12 +45,13 @@ static void press_once() {
 }
 
 static DWORD WINAPI watch(LPVOID) {
-    say("skip-title-press: watching for title (volleys at ~12s/25s)");
+    say("skip-title-press: watching boot (volleys at ~5s/8s/12s/25s)");
     int shots = 0;
     for (int i = 0; i < 90; ++i) { // ~90s at 1s
         Sleep(1000);
         int elapsed = i + 1;
-        if (shots < 2 && elapsed >= 12 + shots * 13) {
+        int at[] = {5, 8, 12, 25};
+        if (shots < 4 && elapsed >= at[shots]) {
             press_once();
             ++shots;
         }
