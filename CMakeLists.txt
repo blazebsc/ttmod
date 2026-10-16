@@ -265,6 +265,8 @@ ttmod_apply_sanitizers(ttmod_framework)
   ttmod_add_example_plugin(modcount modcount)
   # Named after the mod, matching manifest "plugin": "plugins/menu-theme.dll".
   ttmod_add_example_plugin(menu_theme menu-theme OUTPUT_NAME menu-theme)
+  # Timed auto-press for the press-anywhere title screen (no Lua path in time).
+  ttmod_add_example_plugin(skip_title_press skip-title-press OUTPUT_NAME skip-title)
   # Drop-in names: dinput8.dll / ttmod_framework.dll (no lib prefix).
   set_target_properties(dinput8 PROPERTIES PREFIX "" SUFFIX ".dll")
   set_target_properties(ttmod_framework PROPERTIES PREFIX "" SUFFIX ".dll")
