@@ -74,3 +74,6 @@ Locally, the equivalent of the format gate is
 version-sensitive — CI prints the resolved version in its log.
 
 ## Build output
+`build-win32/` holds the two deployed artifacts (`dinput8.dll` +
+`ttmod_framework.dll`); `build/` holds the Linux test binaries
+(including the `ttmod` CLI).

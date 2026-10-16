@@ -183,7 +183,7 @@ Confirm: `plugins: <id> validated` and `plugins: <id> initialized
 (rc=0)`. Zero `plugins:` lines = the declared path is wrong; a
 `plugins/` folder with no `"plugin"` key loads as resource-only,
 silently.
-Details: `../runtime/native-abi.md`, `../runtime/plugins.md`.
+Details: `../runtime/native-abi.md`.
 Working example: `examples/menu-theme/`.
 
 ## Shared: one mod, several ways
@@ -214,6 +214,13 @@ Never write that file yourself — the framework owns it.
 }
 ```
 
+Types: `bool` `int` (`min`/`max`/`step`) `float` `string` `enum`
+(`options`) `color` (`#RRGGBB` — the menu row opens a 16-swatch palette
+instead of a text box). Enable/disable stays in framework-owned
+`config/mods.json` — never write it yourself. Effective rule, one
+query everywhere: manifest `enabled` is the default, `config/mods.json`
+wins when present (logged as `Skipped: <id>: disabled`).
+
 ## Shared: dependencies, enable/disable, packaging
 
 - `"depends": [{"id": "base.mod", "version": "2.0"}]`,
@@ -230,5 +237,6 @@ Never write that file yourself — the framework owns it.
 
 Scene/character/dialogue APIs, archived-script overrides (the engine
 reads those past the file layer), general Lua-value APIs beyond the
-documented `ttmod.*`, MCSM Season 2. Policy for what gets added and
+documented `ttmod.*`, MCSM Season 2 support (profile defined, not
+implemented — see `docs/games/mcsm2.md`). Policy for what gets added and
 why: `../runtime/api-policy.md`.

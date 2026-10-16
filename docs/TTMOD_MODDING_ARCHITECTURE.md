@@ -2804,8 +2804,8 @@ Addresses, signatures, calling conventions, state identification, and capabiliti
 
 ## TTMod VM
 
-- [ ] Embed Lua.
-- [ ] Embed Luau.
+- [x] Embed Lua.
+- [x] Embed Luau.
 - [ ] Define language-independent API behavior.
 - [ ] Define script lifecycle.
 - [ ] Define scheduling.

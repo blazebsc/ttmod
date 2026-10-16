@@ -46,7 +46,7 @@ Runtime ownership                        started
 Script abstraction                      started
 Game Lua integration                     still profile/hook heavy
 TTMod Lua backend                         exists for Lua 5.4
-Luau backend                              not implemented yet
+Luau backend                              shipped (PR 31, in-game 2026-10-16)
 Native plugin ABI                         needs formalization
 Cross-runtime bridge                     planned
 ```
@@ -1073,6 +1073,9 @@ The most important conceptual boundary is:
 But each runtime keeps its own ownership, lifecycle, state, and object model.
 
 ## 26. Immediate Next Three PRs
+
+> Done (closed by ADR-008/007/009 + the 34-PR roadmap, all shipped).
+> Kept as evidence; do not extend.
 
 After the current work, the strongest next sequence is:
 

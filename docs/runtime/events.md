@@ -32,7 +32,7 @@ event path (the title-mcsm poll is a demo-plugin choice, not architecture).
 ## Plugin ABI v2 (additive, v1-compatible)
 Host appends `subscribe/unsubscribe`; v1 plugins (first 5 fields) verified
 working unchanged (`hello.mcsm initialized (rc=0)` next to v2 subscribers).
-Loader accepts manifest api 1..5 (anything in `1..TTMOD_PLUGIN_API_VERSION`). `subscribe` returns token or -1.
+Loader accepts manifest api 1..6 (anything in `1..TTMOD_PLUGIN_API_VERSION`). `subscribe` returns token or -1.
 
 ## Lifetime rule (learned the hard way)
 The `ttmod_host` passed to `ttmod_plugin_init` MUST be static/global: plugins
@@ -44,13 +44,9 @@ worked by luck of intact stack).
 Subscribes to all three; logs first 3 per category + every 100th total.
 Proven: `resdesc #99`, `archive #145`, `other #1 ok=0` in a normal boot.
 
-## State summary (struct-derived, never parsed from log text)
-`events_state_summary()` snapshots the live `GameTracker` struct and formats
-one line (`state: episodes=[...] archives=.. resdesc=.. saves=.. others=..
-save_dir=..`) with `snprintf` only. `exit_dump()` writes that line to
-`ttmod.exit.log` at detach, plus a structured JSON twin from
-`events_snapshot_json()` (same snapshot, portable `format_snapshot_json()`
-renderer — the primary machine artifact). Nothing greps `ttmod.log`/`CreateFileW#` for live
-counts; `ttmod map` replays old logs for forensics only (extraction, then the
-same struct feed). `menumods-lua:` lines are UI trace only, never a count
-source. All rendered lines stay byte-identical so existing grep keeps working.
+## State summary
+Canonical reference: `game-state.md` (surface, one-classifier rule,
+semantics, threading). Short version: `events_state_summary()` snapshots
+the live `GameTracker` struct; `exit_dump()` writes the human line plus a
+structured JSON twin to `ttmod.exit.log` at detach. Nothing greps
+`ttmod.log` for live counts.

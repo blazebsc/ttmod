@@ -21,8 +21,11 @@
 - Strict JSON (vendored nlohmann/json): malformed input, trailing
   garbage, duplicate keys, and oversize documents are rejected.
   Unknown manifest fields are skipped (additive-only policy).
-- Package caps: 512 MB file, 4096 entries, 64 MB/entry, 256 MB total,
-  1 MB manifest. Symlinks/special files rejected.
+- Package caps (`package_policy.hpp`, quoted by constant name so this
+  can't drift): 512 MB file (`kMaxPackageBytes`), 4096 entries
+  (`kMaxEntries`), 32 MB/entry (`kMaxEntryBytes`), 96 MB total
+  (`kMaxTotalUncompressedBytes`), 1 MB manifest (`kMaxManifestBytes`).
+  Symlinks/special files rejected.
 - Atomic persistent writes (config) and transactional cache extraction:
   a crash never leaves parseable-looking partial state.
 - Hook hot paths do no I/O, parsing, or unbounded allocation.

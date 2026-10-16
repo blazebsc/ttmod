@@ -1,5 +1,9 @@
 # docs/games/mcsm2.md - mostly Unknown (honest)
 
+> Frozen research log (blocked: no exe). Current S2 status lives in
+> `mcsm1-support.md` ("Explicitly not supported"); this file is
+> evidence, not reference.
+
 - What we have: `Minecraft - Story Mode - Season Two [FitGirl Repack].zip` (3.4 GB, 14 entries, FitGirl `fg-*.bin` + `setup.exe`). NOT installed - no exe to inspect. Do NOT claim arch/build.
 - External evidence: Season 2 PC requires **Windows 7 SP1 64-bit**, 3 GB RAM, 15 GB disk (Steam page via wiki). Released 2017-07-11, Telltale Tool, Lua. Strongly suggests **x64** PC build, but status = hypothesis until exe is installed and `parse_pe` is run.
 - TTG-Tools and Texture Tool both list MCSM2 support - resource pipeline likely shared, versions may differ.

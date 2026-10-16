@@ -115,5 +115,6 @@ per-mod env). Runtimes never share objects - native code and Lua meet
 only through events, the chunk queue, marshaled values, and
 `GameObjectHandle`s. TTMod-Lua failures record `ModRunStatus`s that
 surface as menu warnings (`Blocked:` rows). Native script-API
-registration shipped with ABI v6 (PR 34); per-env capability filtering
-remains future work.
+registration shipped with ABI v6 (PR 34). Per-env capability filtering
+gates `ttmod.mods.list` on the calling mod's manifest today
+(`mods.read`); extending it to native-registered bindings is future work.

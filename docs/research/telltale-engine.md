@@ -118,8 +118,15 @@ A mod is a folder in `mods/` with `manifest.json`, or a `.zip` package. Config l
 Oracle: the human launches the real game, clicks through the in-game Mods menu, and the framework writes
 every decision to `logs/ttmod.log`. Verified working in the real game: mod discovery, enable/disable,
 per-mod config, resource overrides, the in-game Mods menu (list -> details -> config rows), and
-config-driven label tinting. **Not** verified: hover/press tint states (revert to stock - open),
-MCSM2, and any offline script decryption.
+config-driven label tinting. **Not** verified: MCSM2, and any offline
+script decryption. (Hover/press tint states were closed by ADR-001/002:
+engine-owned, out of scope.)
+
+## History
+Pipeline research in chronological order (all frozen, dead ends kept):
+`runtime.md` (M1 probes) → `runtime/load-resource.md` (M2 detour) →
+`runtime/lua-pipeline.md` (M6 hunter diary) → the shipped Mods menu
+(`../runtime/in-game-mod-menu.md`).
 
 ## Gotchas
 

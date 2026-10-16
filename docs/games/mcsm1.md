@@ -1,5 +1,8 @@
 # docs/games/mcsm1.md - observed, not assumed
 
+> Frozen M-era observation log. Current build status lives in
+> `mcsm1-support.md`; this file is evidence, not reference.
+
 Source: `Minecraft - Story Mode/MinecraftStoryMode.exe` + `archives/` in this workspace.
 
 - Format: PE32, i386 (machine 0x014C, opt magic 0x10B), GUI, 6 sections.

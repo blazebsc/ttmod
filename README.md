@@ -24,8 +24,8 @@
 You may also place an unpacked mod directory containing `manifest.json`
 directly into `mods/` for development/testing - same system, no repackaging.
 
-Mod format, discovery, state, and security: `docs/runtime/mod-packages.md`,
-`docs/runtime/mod-discovery.md`. Making your own mod, all five ways:
+Mod format, discovery, state, and security: `docs/runtime/mod-packages.md`.
+Making your own mod, all five ways:
 `docs/user/making-mods.md`.
 
 ## Developer builds

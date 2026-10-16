@@ -1,6 +1,8 @@
 # docs/third-party.md
 
-Licensing matrix. Status as of 2026-10-02. MinHook, miniz, and Dear ImGui are vendored (licenses kept); everything else is reference-only.
+Licensing matrix. Status as of 2026-10-16. MinHook, miniz, Dear ImGui,
+nlohmann/json, Lua 5.4.7, and Luau are vendored (licenses kept);
+everything else is reference-only.
 
 | Project | URL | License | Use |
 |---|---|---|---|
@@ -17,5 +19,6 @@ Licensing matrix. Status as of 2026-10-02. MinHook, miniz, and Dear ImGui are ve
 | Dear ImGui (Omar Cornut) | https://github.com/ocornut/imgui | MIT (LICENSE kept) | **Vendored** under `third_party/imgui` (src + include). Compiled into the win32 runtime. |
 | nlohmann/json (Niels Lohmann) | https://github.com/nlohmann/json | MIT (LICENSE.txt kept) | **Vendored** under `third_party/nlohmann` (single header v3.11.3). Strict JSON parsing for manifests/configs; semantic validation stays in core. |
 | Lua 5.4.7 (Lua.org, PUC-Rio) | https://www.lua.org/ftp/lua-5.4.7.tar.gz | MIT (see `third_party/lua/README.ttmod.md`) | **Vendored** under `third_party/lua` (src/, byte-identical to the upstream release). Powers the TTMod-owned scripting VM (doc §§2,4,23,71). Built as a static lib with `lua.c` excluded and POSIX modules off; see the README for why it is vendored rather than found on the system. |
+| Luau (Roblox) | https://github.com/luau-lang/luau | MIT (LICENSE.txt kept) | **Vendored** under `third_party/luau` (Common/VM/Ast/Compiler/Bytecode only). Powers the TTMod-owned Luau scripting VM alongside Lua 5.4. |
 
 Rules: prefer MIT reuse with attribution → clean-room reimplementation → external process → GPL integration only if whole-work license permits. Uncertain = document, don't copy.

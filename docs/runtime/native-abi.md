@@ -80,6 +80,41 @@ non-x86 PEs; `thread_id` is 32-bit LLP64 - noted in the header).
   best-effort. Events dispatch synchronously on the game (caller) thread;
   callbacks must be non-blocking and reentrant; event strings are valid
   during the callback only.
+- Example (file/resdesc/archive open events — request paths, override
+  info, success flag):
+```c
+host->subscribe(TTMOD_EVENT_RESDESC_OPEN, my_cb, ctx);
+```
+
+## Script execution (v5)
+
+`queue_ui_chunk(source)` runs your Lua on the game's script thread —
+the superpower for "all kinds of mods". Minimal use:
+
+```c
+if (host->api_version >= 5 && host->queue_ui_chunk) {
+    host->queue_ui_chunk("if ttmod_menu_log then "
+                         "ttmod_menu_log('my mod: hello from Lua') end");
+}
+```
+
+Contract (read before using):
+- This call only QUEUES (thread-safe, non-blocking). Chunks run at the
+  next script-resource load, on that Lua state, via the bridge's
+  balanced-stack path. The loader never touches Lua from its own
+  threads; plugins never should either.
+- No return channel: results/errors are invisible to the plugin. Debug
+  via `ttmod_menu_log(s)` — registered on every captured state, lands
+  in ttmod.log as `menumods-lua: <s>`.
+- Fixed queue (16): flooding drops chunks (-1 returned, logged).
+  Queued chunks also replay on the menu state (history holds 64).
+- Engine menu idioms that are PROVEN safe live in
+  `docs/runtime/in-game-mod-menu.md` (Menu_Create/Populate/Menu_Push,
+  Clone_Find on widget.agent). Click-callback DoStrings swallow errors —
+  wrap risky engine calls in pcall and log.
+- Demo: `examples/event-log/plugin.cpp` queues a chunk at init; the
+  `menumods-lua: event-log: Lua chunk ran on the script thread` line in
+  ttmod.log is the live proof.
 
 ## Native script bindings (v6, PR 34)
 
@@ -126,4 +161,12 @@ or negative (bad key, duplicate, bad arity).
   nothing - correct but unexercised against a second profile).
 - Failed-init revocation is unit-tested but unexercised in-game (no
   shipped plugin fails init).
-- Native script-API registration: PR 34, explicitly not this page.
+
+## History (M3 proof log, frozen)
+
+```text
+plugins: discovered hello-mcsm
+plugins: hello.mcsm validated
+hello-mcsm: hello from minecraft-story-mode (profile mcsm1_pc_x86, api 1)
+plugins: hello.mcsm initialized (rc=0)
+```

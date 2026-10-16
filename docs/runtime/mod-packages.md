@@ -23,9 +23,23 @@ special files, exactly one root manifest, case-fold dedupe, every declared
 `ttmod package validate` / `ttmod package info` expose this offline.
 
 ## Discovery (`mods/`, automatic, no CLI)
-`.zip` + unpacked dirs with `manifest.json`; junk ignored silently;
-api/game/state gating; duplicate IDs keep the unpacked dir (dev override);
-every decision logged (`[TTMod] Skipped: id: reason`). Deterministic order.
+Single canonical source: `<game>/mods/`, scanned once per launch by
+portable `discover_mods()` (unit-tested). Legacy `plugins/` +
+`mods/`-as-scanned-dirs loader paths are retired; everything flows
+through discovery + `ttmod/cache/`.
+
+| Found in `mods/` | Behavior |
+|---|---|
+| `Foo.zip` (valid) | validated → cached → loaded like an unpacked mod |
+| `Foo/` + `manifest.json` | used in place (dev/test, no repackaging) |
+| `Foo.zip` + `Foo/` same ID | directory wins, package skipped (logged) |
+| `README`/screenshots/`.dll`/dotfiles | ignored silently |
+| broken `.zip` / bad manifest | skipped with `id: reason` |
+| disabled (state or manifest) | skipped, counted, no runtime effect |
+
+Order: id-sorted, deterministic. State (`config/mods.json`) applies
+before depends/conflicts. Every decision logged
+(`[TTMod] Skipped: id: reason`).
 
 ## Cache (`ttmod/cache/<id>/`, framework-owned)
 Validated packages extract here when new/changed (size+mtime marker); stale

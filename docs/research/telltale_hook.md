@@ -1,5 +1,8 @@
 # docs/research/telltale_hook.md - reference analysis (no code copied)
 
+> Frozen snapshot of an external repo (cloned 2026-09-16). Route notes
+> also live in `telltale-engine.md`.
+
 Source: https://github.com/HW12Dev/telltale_hook @ main (2 commits), cloned 2026-09-16 to /tmp only.
 License: **no LICENSE file → treat as all-rights-reserved. Reference only.**
 

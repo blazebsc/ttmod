@@ -1,5 +1,8 @@
 # docs/research/runtime/load-resource.md - ScriptManager::LoadResource (M2, VERIFIED)
 
+> Frozen investigation log. Live onboarding: `../telltale-engine.md`;
+> shipped bridge reference: `../../runtime/in-game-mod-menu.md`.
+
 ## Status
 **Resolved, validated, and fired once (m2e run, 32 resdesc paths); detour
 code path since REMOVED.** MinHook detours on unpacked game code hang Wine

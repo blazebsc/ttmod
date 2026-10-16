@@ -1,5 +1,9 @@
 # docs/research/runtime/lua-pipeline.md - MCSM1 script pipeline (M6)
 
+> Frozen hunter diary (dead ends kept as evidence). Live onboarding:
+> `../telltale-engine.md`; shipped menu reference:
+> `../../runtime/in-game-mod-menu.md`.
+
 ## Status
 Pipeline mapped through boot; script modification proven at the encrypted-byte
 level via M5; Lua VM internals (states, bindings) remain Unknown.

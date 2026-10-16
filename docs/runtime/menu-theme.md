@@ -22,6 +22,13 @@ so the colour can be changed in-game; it applies on restart.
 
 ## How it works (two layers)
 
+> Build diary (dated per-build narratives with log evidence — frozen,
+> do not rewrite). The canonical menu-stack model (lock-yield, Replace
+> misread, Refresh paging, single-table aliasing, back=rebuild) lives in
+> `in-game-mod-menu.md`; what follows is how this mod discovered and
+> uses it, including theme-specific conclusions (un-tagging,
+> `TTMOD_ASSIGN_ONLY`, `Menu_Mods_BackFromPicker`) that live only here.
+
 **Layer 1 — Lua paint** (`loader/windows/menu/menumods_ui.lua`): the `Menu_Add`
 wrapper routes every created widget through `TTMOD_THEME_WIDGET`, which writes
 the accent (0..1 floats, named `{r,g,b,a}` fields — the engine's actual

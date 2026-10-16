@@ -1,10 +1,11 @@
 # M17 API stability policy
 
 ## Versioning
-- Plugin ABI: integer versions, append-only fields. Host v5 loads manifests
-  api 1–5; v1–v4 plugins run unmodified (proven in Wine side-by-side).
-  - v5 appended `queue_ui_chunk` (Lua execution; EXPERIMENTAL - contract in
-    `docs/runtime/plugins.md`).
+- Plugin ABI: integer versions, append-only fields. Host v6 loads manifests
+  api 1–6; v1–v5 plugins run unmodified (proven in Wine side-by-side).
+  - v5 appended `queue_ui_chunk` (Lua execution; contract in
+    `docs/runtime/native-abi.md`); v6 appended `register_api`
+    (plugin-provided script bindings).
 - Manifest schema: additive optional fields only. Unknown fields are SKIPPED
   (parsers), never errors - old manifests keep working.
 - Package format: `package_format` int, default 1; >1 rejected (can't fake
@@ -26,4 +27,4 @@
 - Docs mark every surface with its tier (this file is the index).
 - Hook surface grows demand-driven only: a hook is a contract + a patch
   site risk on a packed exe. Add hooks when a real mod needs them, not
-  speculatively (Fabric-API lesson; see plugins.md v5 for the growth path).
+  speculatively (Fabric-API lesson; see native-abi.md for the growth path).

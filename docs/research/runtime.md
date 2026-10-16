@@ -1,5 +1,8 @@
 # docs/research/runtime.md
 
+> Frozen M1-era probe notebook. Live onboarding: `telltale-engine.md`;
+> shipped menu/bridge reference: `../runtime/in-game-mod-menu.md`.
+
 ## Status
 - Known: MCSM1 is x86 PE32; proxy-DLL injection is plausible (telltale_hook ships `dinput8.dll`+`telltale_hook.dll` next to exe, incl. `MINECRAFTSTORYMODE` build). (M1-era note: hooks have since shipped - CreateFileW IAT + late MinHook detours on `lua_newstate` / `ScriptManager::LoadResource`, vendored MinHook.)
 - Observed: Lua 5.2.3 strings + `\x1bLEo` encrypted scripts; FMOD + VERSION imports; no `luaL_*` exports in strings (statically linked / renamed - needs disassembly).

@@ -13,3 +13,4 @@ would reopen it.
 - [007](007-version-grammar.md) - bounded version grammar, prerelease ignored, not SemVer
 - [008](008-result-access-contract.md) - Result access: explicit, ref-qualified, move via std::move(r).value()
 - [009](009-manifest-authoritative.md) - validated manifests are authoritative
+- [010](010-vm-built.md) - TTMod-owned Lua/Luau VMs built (closes ADR-005)

@@ -19,7 +19,7 @@
 - [ ] full `tools/wine_matrix.sh`: all exit 0, originals md5-OK, dir clean
 
 ## Docs & legal
-- [ ] README user-first; user/{install,mods,troubleshooting}.md current
+- [ ] README user-first; docs/user/install.md current (install + use + troubleshooting)
 - [ ] `docs/third-party.md` lists miniz (MIT) + MinHook (BSD) + imgui (MIT) + references
 - [ ] release contains no game files, no proprietary assets, no dumps
 - [ ] LICENSE + THIRD-PARTY.txt in release dir
