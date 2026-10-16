@@ -33,15 +33,15 @@ void setup() {
           "\"files\":{\"a.txt\":\"files/a.txt\"}}");
     wfile("/tmp/opencode_ttmod_discovery/src/pkgdir/files/a.txt", "pkg");
     assert(ttmod::create_package("/tmp/opencode_ttmod_discovery/src/pkgdir",
-                                 std::string(kD) + "/pkgmod.ttmod")
+                                 std::string(kD) + "/pkgmod.zip")
                .ok());
     // junk: ignored silently
     wfile(std::string(kD) + "/README.txt", "hi");
     wfile(std::string(kD) + "/random.dll", "MZ");
-    wfile(std::string(kD) + "/other.zip", "PK");
+    wfile(std::string(kD) + "/other.dat", "PK");
     wfile(std::string(kD) + "/.hidden", "x");
     // broken package
-    wfile(std::string(kD) + "/broken.ttmod", "not a zip");
+    wfile(std::string(kD) + "/broken.zip", "not a zip");
     // unpacked dir without manifest: ignored
     char cmd2[512];
     snprintf(cmd2, sizeof cmd2, "mkdir -p %s/screenshots %s/empty", kD, kD);
@@ -63,7 +63,7 @@ void setup() {
           "{\"id\":\"dup.mod\",\"api\":1,\"games\":[\"minecraft-story-mode:s1\"],\"files\":{}}");
     wfile("/tmp/opencode_ttmod_discovery/src/dupsrc/files/a.txt", "x");
     assert(ttmod::create_package("/tmp/opencode_ttmod_discovery/src/dupsrc",
-                                 std::string(kD) + "/dup.ttmod")
+                                 std::string(kD) + "/dup.zip")
                .ok());
 }
 
@@ -97,10 +97,10 @@ int main() {
         ttmod::read_source_manifest({"empty", std::string(kD) + "/empty", ttmod::ModSourceKind::Directory});
     assert(!empty_manifest.ok());
     auto broken_package =
-        ttmod::read_source_manifest({"broken.ttmod", std::string(kD) + "/broken.ttmod", ttmod::ModSourceKind::Package});
+        ttmod::read_source_manifest({"broken.zip", std::string(kD) + "/broken.zip", ttmod::ModSourceKind::Package});
     assert(!broken_package.ok() && broken_package.error().operation == "inspect-package");
     auto valid_package =
-        ttmod::read_source_manifest({"pkgmod.ttmod", std::string(kD) + "/pkgmod.ttmod", ttmod::ModSourceKind::Package});
+        ttmod::read_source_manifest({"pkgmod.zip", std::string(kD) + "/pkgmod.zip", ttmod::ModSourceKind::Package});
     assert(valid_package.ok() && valid_package.value().has_value());
     assert(valid_package.value()->identity.id.str() == "pkg.mod");
 
@@ -116,14 +116,14 @@ int main() {
     };
     assert(invalid_has("bad: invalid manifest"));
     assert(invalid_has("empty: invalid manifest"));
-    assert(skipped_has(d, "broken.ttmod: invalid package"));
+    assert(skipped_has(d, "broken.zip: invalid package"));
     assert(skipped_has(d, "g.mod: game not supported"));
     assert(skipped_has(d, "unsupported API"));
-    // junk silent: no skipped lines for README/random.dll/other.zip/screenshots
+    // junk silent: no skipped lines for README/random.dll/other.dat/screenshots
     for (auto& s : d.skipped) {
         assert(s.find("README") == std::string::npos);
         assert(s.find("random.dll") == std::string::npos);
-        assert(s.find("other.zip") == std::string::npos);
+        assert(s.find("other.dat") == std::string::npos);
         assert(s.find("screenshots") == std::string::npos);
     }
     assert(!invalid_has("screenshots"));
@@ -145,7 +145,7 @@ int main() {
             found_dis = true;
             assert(m.packaged());
             assert(m.source.kind == ttmod::ModSourceKind::Package);
-            assert(m.source.path.ends_with("pkgmod.ttmod"));
+            assert(m.source.path.ends_with("pkgmod.zip"));
         }
     assert(found_dis);
     // empty dir

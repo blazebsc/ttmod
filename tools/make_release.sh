@@ -1,6 +1,6 @@
 #!/bin/sh
 # Build a clean TTMod release. Usage: sh tools/make_release.sh [outdir]
-# Produces <outdir>/TTMod-<version>/ with framework DLLs, example .ttmod
+# Produces <outdir>/TTMod-<version>/ with framework DLLs, example .zip
 # packages (built from source, no game content), README.txt, LICENSE.txt.
 # Verifies PE arch + package validity. Never touches game files.
 set -u
@@ -19,8 +19,8 @@ for ex in hello-mcsm title-mcsm event-log; do
   mkdir -p "/tmp/opencode/rel_$ex"
   cp "$T/examples/$ex/manifest.json" "/tmp/opencode/rel_$ex/"
   cp "$T/build-win32/example-plugins/$ex/plugin.dll" "/tmp/opencode/rel_$ex/plugin.dll"
-  "$T/build/ttmod" package create "/tmp/opencode/rel_$ex" "$R/examples/$ex.ttmod" || exit 1
-  "$T/build/ttmod" package validate "$R/examples/$ex.ttmod" || exit 1
+  "$T/build/ttmod" package create "/tmp/opencode/rel_$ex" "$R/examples/$ex.zip" || exit 1
+  "$T/build/ttmod" package validate "$R/examples/$ex.zip" || exit 1
 done
 # menu-theme declares "plugin": "plugins/menu-theme.dll"
 rm -rf /tmp/opencode/rel_menu-theme
@@ -28,16 +28,16 @@ mkdir -p /tmp/opencode/rel_menu-theme/plugins
 cp "$T/examples/menu-theme/manifest.json" /tmp/opencode/rel_menu-theme/
 cp "$T/build-win32/example-plugins/menu-theme/menu-theme.dll" \
    /tmp/opencode/rel_menu-theme/plugins/
-"$T/build/ttmod" package create /tmp/opencode/rel_menu-theme "$R/examples/menu-theme.ttmod" || exit 1
-"$T/build/ttmod" package validate "$R/examples/menu-theme.ttmod" || exit 1
+"$T/build/ttmod" package create /tmp/opencode/rel_menu-theme "$R/examples/menu-theme.zip" || exit 1
+"$T/build/ttmod" package validate "$R/examples/menu-theme.zip" || exit 1
 # Script mods (PR 30/32 - no DLL, just manifest + Lua; package the same way).
 for ex in hello-lua hello-telltale; do
   rm -rf "/tmp/opencode/rel_$ex"
   mkdir -p "/tmp/opencode/rel_$ex"
   cp "$T/examples/$ex/manifest.json" "/tmp/opencode/rel_$ex/"
   cp "$T/examples/$ex"/*.lua "/tmp/opencode/rel_$ex/"
-  "$T/build/ttmod" package create "/tmp/opencode/rel_$ex" "$R/examples/$ex.ttmod" || exit 1
-  "$T/build/ttmod" package validate "$R/examples/$ex.ttmod" || exit 1
+  "$T/build/ttmod" package create "/tmp/opencode/rel_$ex" "$R/examples/$ex.zip" || exit 1
+  "$T/build/ttmod" package validate "$R/examples/$ex.zip" || exit 1
 done
 # Resource-mod template (manifest + instructions; user adds payload files)
 mkdir -p "$R/examples/resource-template/files"
@@ -48,8 +48,8 @@ Example resource mod template.
    listed in manifest.json), e.g. files/archives/_resdesc_50_German108.lua
 2. Edit manifest.json id/name as needed.
 3. Either drop this folder into the game's mods/ (development) or package it:
-     ttmod package create resource-template MyMod.ttmod
-   and drop MyMod.ttmod into mods/.
+     ttmod package create resource-template MyMod.zip
+   and drop MyMod.zip into mods/.
 Only replace files you understand; keep the original game files untouched
 (they stay untouched - overrides live in your mod).
 EOF
@@ -61,7 +61,7 @@ TTMod $VER - native modding framework for Minecraft: Story Mode (Season 1).
 INSTALL
 1. Copy dinput8.dll and ttmod_framework.dll next to MinecraftStoryMode.exe.
 2. Launch the game once (creates mods/, config/, logs/).
-3. Drop .ttmod files from examples/ (or your own) into mods/.
+3. Drop .zip files from examples/ (or your own) into mods/.
 4. Launch the game. See logs/ttmod.log to confirm mods loaded.
 
 UNINSTALL: delete the two DLLs (plus mods/, config/, logs/, ttmod/ if wanted).
@@ -72,9 +72,9 @@ code - only use mods you trust. Trouble? Set TTMOD_SAFE_MODE=1 or create an
 empty file config/safe-mode to launch with all mods disabled.
 
 SCRIPT MODS: a mod with "runtimes": ["lua"] + main.lua runs on TTMod's own
-Lua VM at startup (never the game's Lua); see examples/hello-lua.ttmod.
+Lua VM at startup (never the game's Lua); see examples/hello-lua.zip.
 "telltale-lua" mods run on the game's own Lua states (advanced); see
-examples/hello-telltale.ttmod and docs/runtime/lua.md.
+examples/hello-telltale.zip and docs/runtime/lua.md.
 
 Docs: full documentation ships with the source tree under docs/ -
 runtime docs (lua.md, luau.md, native-abi.md, plugins.md) and user

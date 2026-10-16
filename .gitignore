@@ -9,3 +9,4 @@ test-results/
 luac.out
 __pycache__/
 .idea/
+/build-win32-dbg/

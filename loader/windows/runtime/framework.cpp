@@ -174,7 +174,7 @@ static void read_modstate(InitCtx& ctx) {
         ctx.season = 1;
     }
 
-    // M11 canonical discovery: game-root/mods (.ttmod + unpacked dirs).
+    // M11 canonical discovery: game-root/mods (.zip + unpacked dirs).
     {
         std::string sp = ttmod_win::join(ctx.gamedir, "config\\mods.json");
         FILE* f = ttmod::file_io::open_read(sp);

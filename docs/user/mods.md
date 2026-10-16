@@ -3,7 +3,7 @@
 ## Where mods go
 ```text
 Minecraft Story Mode/mods/
-├── SomeMod.ttmod        # packaged: just drop it in
+├── SomeMod.zip           # packaged: just drop it in
 └── DevMod/              # unpacked: manifest.json + files/ + plugins/
 ```
 
@@ -33,7 +33,7 @@ to bring it back.
 Delete the file entry (or the whole file) to re-enable to manifest default.
 
 ## Remove
-Delete the `.ttmod` (or folder) from `mods/`. Next launch it's gone; stale
+Delete the `.zip` (or folder) from `mods/`. Next launch it's gone; stale
 cache under `ttmod/cache/` is cleaned automatically.
 
 ## If a mod breaks the game

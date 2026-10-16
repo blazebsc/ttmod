@@ -30,7 +30,7 @@ Profile: mcsm1_pc_x86 status=supported
 ```
 
 ## 4. Install a mod
-Drop a `.ttmod` file (or an unpacked mod folder with `manifest.json`) into
+Drop a `.zip` file (or an unpacked mod folder with `manifest.json`) into
 `mods/` and launch the game. No commands needed.
 
 ## 5. Uninstall everything

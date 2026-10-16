@@ -24,10 +24,10 @@ subpaths only (no `..`, `:`, leading `/`). Higher `priority` wins conflicts.
 
 ## 2. packaged mod
 ```sh
-ttmod package create mymod/ mymod.ttmod   # deterministic ZIP
-ttmod package validate mymod.ttmod
+ttmod package create mymod/ mymod.zip   # deterministic ZIP
+ttmod package validate mymod.zip
 ```
-Drop the `.ttmod` (or the unpacked dir) into the game's `mods/`. Same system.
+Drop the `.zip` (or the unpacked dir) into the game's `mods/`. Same system.
 
 ## 3. Native plugin mod
 Add `"plugin": "plugins/my.dll"` (+ optional `"arch": "x86"`) and ship the

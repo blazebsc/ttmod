@@ -111,7 +111,7 @@ sh tools/verify_win32.sh build-win32
 cp build-win32/dinput8.dll build-win32/ttmod_framework.dll "<game dir>/"
 ```
 
-A mod is a folder in `mods/` with `manifest.json`, or a `.ttmod` zip. Config lives in `config/<mod-id>.json`.
+A mod is a folder in `mods/` with `manifest.json`, or a `.zip` package. Config lives in `config/<mod-id>.json`.
 
 ## Verification
 

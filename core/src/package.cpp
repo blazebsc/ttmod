@@ -1,4 +1,4 @@
-// .ttmod package handling (portable, miniz). See package.hpp.
+// .zip package handling (portable, miniz). See package.hpp.
 #include "ttmod/package.hpp"
 #include "ttmod/file_io.hpp"
 #include "ttmod/pathnorm.hpp"

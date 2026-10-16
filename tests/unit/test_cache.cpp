@@ -29,11 +29,11 @@ int main() {
     wfile(std::string(kD) + "/src/m/manifest.json",
           "{\"id\":\"c.mod\",\"version\":\"1.0.0\",\"api\":1,\"files\":{\"a.txt\":\"files/a.txt\"}}");
     wfile(std::string(kD) + "/src/m/files/a.txt", "v1");
-    assert(ttmod::create_package(std::string(kD) + "/src/m", std::string(kD) + "/m.ttmod").ok());
+    assert(ttmod::create_package(std::string(kD) + "/src/m", std::string(kD) + "/m.zip").ok());
     std::string cache = std::string(kD) + "/cache";
 
     // First sync extracts.
-    auto s1r = ttmod::sync_package_cache(cache, {{mid("c.mod"), std::string(kD) + "/m.ttmod"}});
+    auto s1r = ttmod::sync_package_cache(cache, {{mid("c.mod"), std::string(kD) + "/m.zip"}});
     assert(s1r.ok());
     auto s1 = s1r.value();
     assert(s1.effective.count(mid("c.mod")));
@@ -46,7 +46,7 @@ int main() {
     assert(std::string(b) == "v1");
 
     // Second sync: fresh, no re-extract (no "cached from package" line).
-    auto s2r = ttmod::sync_package_cache(cache, {{mid("c.mod"), std::string(kD) + "/m.ttmod"}});
+    auto s2r = ttmod::sync_package_cache(cache, {{mid("c.mod"), std::string(kD) + "/m.zip"}});
     assert(s2r.ok());
     auto s2 = s2r.value();
     for (auto& l : s2.log) assert(l.find("cached from package") == std::string::npos);
@@ -64,22 +64,22 @@ int main() {
     assert(!gone); // stale removed
 
     // Missing package file: skipped with log, ok stays true.
-    auto s4r = ttmod::sync_package_cache(cache, {{mid("ghost"), std::string(kD) + "/nope.ttmod"}});
+    auto s4r = ttmod::sync_package_cache(cache, {{mid("ghost"), std::string(kD) + "/nope.zip"}});
     assert(s4r.ok() && s4r.value().effective.empty());
 
     // Transactional replacement: a bad package must NOT destroy the live
     // cache. Sync good content, then point a fresh sync at a corrupt
     // package for the same id and verify the old tree survives.
     {
-        auto good = ttmod::sync_package_cache(cache, {{mid("c.mod"), std::string(kD) + "/m.ttmod"}});
+        auto good = ttmod::sync_package_cache(cache, {{mid("c.mod"), std::string(kD) + "/m.zip"}});
         assert(good.ok());
         assert(good.value().effective.count(mid("c.mod")));
         FILE* f1 = fopen((cache + "/c.mod/files/a.txt").c_str(), "rb");
         assert(f1);
         fclose(f1);
         // Corrupt package for the same id: extraction fails.
-        wfile(std::string(kD) + "/bad.ttmod", "not a zip at all");
-        auto bad = ttmod::sync_package_cache(cache, {{mid("c.mod"), std::string(kD) + "/bad.ttmod"}});
+        wfile(std::string(kD) + "/bad.zip", "not a zip at all");
+        auto bad = ttmod::sync_package_cache(cache, {{mid("c.mod"), std::string(kD) + "/bad.zip"}});
         assert(bad.ok());                      // per-mod failure is logged, not fatal
         assert(bad.value().effective.empty()); // not usable this round
         // The previous cache is still on disk and intact.
@@ -87,7 +87,7 @@ int main() {
         assert(f2); // live cache survived the failed replacement
         fclose(f2);
         // And a later good sync brings it back.
-        auto again = ttmod::sync_package_cache(cache, {{mid("c.mod"), std::string(kD) + "/m.ttmod"}});
+        auto again = ttmod::sync_package_cache(cache, {{mid("c.mod"), std::string(kD) + "/m.zip"}});
         assert(again.ok() && again.value().effective.count(mid("c.mod")));
     }
 

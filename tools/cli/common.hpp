@@ -14,7 +14,7 @@ struct Listed {
     bool ok = true; // false for entries whose manifest failed to parse
 };
 
-// <gamedir>/mods: *.ttmod (inspect) + */manifest.json, id-sorted.
+// <gamedir>/mods: *.zip (inspect) + */manifest.json, id-sorted.
 // Walk implementation is core scan_mod_sources; display shaping is here.
 std::vector<Listed> scan_mods_dir(const std::string& gamedir);
 

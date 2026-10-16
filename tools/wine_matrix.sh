@@ -75,8 +75,8 @@ echo "### 9 M11 packaged mod (drop-in, disable, delete)"
 rm -rf "$G/mods" && mkdir -p /tmp/opencode/m11m/files
 cp "$T/tests/fixtures/german108-override/manifest.json" /tmp/opencode/m11m/
 cp "$A107" /tmp/opencode/m11m/files/_resdesc_50_German108.lua
-"$T/build/ttmod" package create /tmp/opencode/m11m /tmp/opencode/m11m.ttmod
-mkdir -p "$G/mods" && cp /tmp/opencode/m11m.ttmod "$G/mods/"
+"$T/build/ttmod" package create /tmp/opencode/m11m /tmp/opencode/m11m.zip
+mkdir -p "$G/mods" && cp /tmp/opencode/m11m.zip "$G/mods/"
 run_case packaged
 chk packaged "Valid mods: 1|cached from package|override: german" 5
 mkdir -p "$G/config"
@@ -84,8 +84,8 @@ printf '{\n    "german108.override": {"enabled": false}\n}\n' > "$G/config/mods.
 run_case packaged-disabled
 chk packaged-disabled "Disabled: 1" 2
 if grep -q "override: german" "$LOG" 2>/dev/null; then echo "FAIL: override fired while disabled"; fi
-rm "$G/mods/m11m.ttmod"
-ls "$G/mods/"*.ttmod 2>/dev/null || echo "(no packages left)"
+rm "$G/mods/m11m.zip"
+ls "$G/mods/"*.zip 2>/dev/null || echo "(no packages left)"
 run_case packaged-deleted
 chk packaged-deleted "Valid mods: 0" 1
 echo "### 10 M20 hybrid mod (native plugin + files override)"

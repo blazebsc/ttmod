@@ -4,7 +4,7 @@
 
 - **Fully trusted:** the game install you point TTMod at, your own config
   files, mods you wrote.
-- **Untrusted:** every `.ttmod` package and unpacked mod dir from anyone
+- **Untrusted:** every `.zip` package and unpacked mod dir from anyone
   else — manifests, paths, configs, ZIP structure, sizes. All of it is
   validated before use (see below); validation failures disable the mod,
   never the game.

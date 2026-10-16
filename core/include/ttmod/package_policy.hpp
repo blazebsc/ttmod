@@ -1,7 +1,7 @@
 #pragma once
 // Package resource limits (Step: package safety). One place, no drift.
 //
-// These bound what an untrusted .ttmod can cost us in disk, memory and
+// These bound what an untrusted .zip package can cost us in disk, memory and
 // inodes. They are deliberately generous for real mod content (a voice
 // archive is tens of MB) while still refusing the classic archive bombs:
 // too many entries, one huge entry, and total expansion far beyond the
@@ -21,7 +21,7 @@
 
 namespace ttmod::packlimits {
 
-// Whole .ttmod file on disk.
+// Whole .zip package file on disk.
 inline constexpr uint64_t kMaxPackageBytes = 512ull << 20; // 512 MiB
 // Entries in the central directory.
 inline constexpr uint32_t kMaxEntries = 4096;

@@ -8,7 +8,7 @@
 
 namespace ttmod {
 
-// .ttmod = ZIP containing a mod directory (manifest.json at root).
+// .zip = ZIP containing a mod directory (manifest.json at root).
 // All functions are portable (miniz, vendored) and never execute content.
 
 struct PackEntry {

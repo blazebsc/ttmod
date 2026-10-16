@@ -1,7 +1,7 @@
 # M11 mod packages + discovery (PROVEN under Wine)
 
 ## Format
-`.ttmod` = standard ZIP (open with any archive tool). Layout = unpacked mod:
+`.zip` = standard ZIP (open with any archive tool). Layout = unpacked mod:
 ```text
 manifest.json          # required at root, package_format 1 (default)
 files/...              # resource overrides (game-path -> payload)
@@ -23,7 +23,7 @@ special files, exactly one root manifest, case-fold dedupe, every declared
 `ttmod package validate` / `ttmod package info` expose this offline.
 
 ## Discovery (`mods/`, automatic, no CLI)
-`.ttmod` + unpacked dirs with `manifest.json`; junk ignored silently;
+`.zip` + unpacked dirs with `manifest.json`; junk ignored silently;
 api/game/state gating; duplicate IDs keep the unpacked dir (dev override);
 every decision logged (`[TTMod] Skipped: id: reason`). Deterministic order.
 
@@ -50,5 +50,5 @@ Manifest-declared plugins only (never stray DLLs); PE arch verified;
 Packages are NOT sandboxed - stated in logs, CLI info, and here.
 
 ## Proven (§33 + matrix case 9)
-drop-in .ttmod → cached → override consumed → disable → silent →
+drop-in .zip → cached → override consumed → disable → silent →
 delete → gone + cache cleaned → unpacked identical → originals md5-OK.

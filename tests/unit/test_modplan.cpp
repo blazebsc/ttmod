@@ -74,8 +74,8 @@ int main() {
     {
         Discovery d;
         auto m = mk("pkg.mod", "1.0");
-        const std::string package_path = "/mods/pkg.mod.ttmod";
-        d.mods.push_back({m.identity.id, ModSource{"pkg.mod.ttmod", package_path, ModSourceKind::Package}, m});
+        const std::string package_path = "/mods/pkg.mod.zip";
+        d.mods.push_back({m.identity.id, ModSource{"pkg.mod.zip", package_path, ModSourceKind::Package}, m});
         ModPlan p = build_plan(d, CacheSync{}); // empty cache
         assert(p.load_order.empty());
         assert(!p.skipped.empty());

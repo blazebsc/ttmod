@@ -1,8 +1,8 @@
 // ttmod CLI (portable dev/advanced tool; normal users just drop mods/).
 //   ttmod detect <exe>
-//   ttmod package create <moddir> <out.ttmod>
-//   ttmod package validate <file.ttmod>
-//   ttmod package info <file.ttmod>
+//   ttmod package create <moddir> <out.zip>
+//   ttmod package validate <file.zip>
+//   ttmod package info <file.zip>
 //   ttmod mods list <gamedir>
 //   ttmod mods info <gamedir> <id>
 //   ttmod mods enable|disable <gamedir> <id>
@@ -15,7 +15,7 @@
 int cmd_usage() {
     std::puts("usage: ttmod <detect|package|inspect|map> ...\n"
               "  detect <exe>\n"
-              "  package create <moddir> <out.ttmod>\n"
+              "  package create <moddir> <out.zip>\n"
               "  package validate <file>\n"
               "  package info <file>\n"
               "  inspect <file.ttarch2>\n"

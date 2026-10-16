@@ -10,11 +10,11 @@
 namespace ttmod {
 
 // Canonical drop-in discovery for <game>/mods (portable, tested).
-// Recognizes: *.ttmod (validated, manifest read from ZIP) and unpacked dirs
+// Recognizes: *.zip (validated, manifest read from ZIP) and unpacked dirs
 // containing manifest.json. Ignores everything else (README, screenshots,
-// random DLLs, non-.ttmod zips, dotfiles).
+// random DLLs, dotfiles).
 // Applies ModState (disabled -> skipped, recorded) and validates api/game.
-// Duplicate IDs: unpacked dir wins over .ttmod (dev override), rest rejected;
+// Duplicate IDs: unpacked dir wins over .zip (dev override), rest rejected;
 // all decisions recorded in skipped[] as user-friendly reasons.
 enum class ModSourceKind { Directory, Package };
 
@@ -28,8 +28,8 @@ struct ModSource {
 };
 
 // One directory walk, shared by runtime discovery and the CLI: every
-// *.ttmod file and every subdirectory (hidden/OS-metadata skipped), sorted
-// by name. Junk (README, DLLs, zips) never enters. Callers validate.
+// *.zip file and every subdirectory (hidden/OS-metadata skipped), sorted
+// by name. Junk (README, DLLs) never enters. Callers validate.
 std::vector<ModSource> scan_mod_sources(const std::string& mods_dir, int* entries_seen = nullptr);
 
 // The one place that turns a source into a manifest.

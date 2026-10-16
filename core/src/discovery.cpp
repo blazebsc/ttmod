@@ -24,8 +24,8 @@ std::vector<ModSource> scan_mod_sources(const std::string& mods_dir, int* entrie
         std::string name = e.path().filename().string();
         if (name.empty() || name[0] == '.') continue; // hidden/OS metadata
         if (e.is_regular_file(ec)) {
-            if (e.path().extension() == ".ttmod") out.push_back({name, e.path().string(), ModSourceKind::Package});
-            // else: README/screenshots/random DLLs/zips ignored silently
+            if (e.path().extension() == ".zip") out.push_back({name, e.path().string(), ModSourceKind::Package});
+            // else: README/screenshots/random DLLs ignored silently
         } else if (e.is_directory(ec)) {
             out.push_back({name, e.path().string(), ModSourceKind::Directory});
         }

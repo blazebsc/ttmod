@@ -1408,7 +1408,7 @@ Telltale Lua
 A mod packaged as:
 
 ```text
-my-mod.ttmod
+my-mod.zip
 ```
 
 and an unpacked development mod:
