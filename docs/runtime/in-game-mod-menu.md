@@ -108,11 +108,7 @@ Latent for months (freed-but-mapped stack kept reading "fine"),
 detonated by the c133f94 init reorder changing allocation
 patterns. Fix: RuntimeOwner owns `std::string` copies
 (runtime_owner.hpp); the `const char*` ctor API is unchanged.
-
-Lesson: a comment claiming "stays valid for the process" is not a
-lifetime guarantee. Anyone handing a `c_str()` into a long-lived
-object must hand over ownership. Fix shipped in
-runtime_owner.hpp; in-game confirmation recorded in git history.
+Confirmed in-game 2026-10-16: Mods menu opens, all 4 mods listed.
 
 ## Remaining (cosmetic / future - do not claim done)
 - Nothing blocking: button + screen labels both read "Mods" (header via the
