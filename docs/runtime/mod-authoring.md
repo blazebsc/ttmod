@@ -1,5 +1,8 @@
 # TTMod Mod Authoring Guide (M18 - only implemented features)
 
+Start at `docs/user/making-mods.md` (all five mod kinds, minimal
+complete examples). This page is the reference behind it.
+
 ## 1. Resource-only mod (simplest)
 ```text
 mymod/
@@ -95,5 +98,7 @@ read that answer; log `Skipped: <id>: disabled` lines only render it.
 
 ## 8. What NOT to rely on
 Scene/character/dialogue APIs (don't exist), archived-script overrides
-(engine reads those past CreateFileW), general Lua-value APIs (only ABI v5
-`queue_ui_chunk` for UI chunks exists), MCSM2 (detection only). See tier policy in `api-policy.md`.
+(engine reads those past CreateFileW), Lua-value APIs beyond the
+documented `ttmod.*` surface (ABI v6 has `queue_ui_chunk` for UI chunks
++ `register_api` for plugin-provided script bindings, nothing else),
+MCSM2 (detection only). See tier policy in `api-policy.md`.

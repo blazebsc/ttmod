@@ -1,7 +1,7 @@
 # Luau runtime (PR 31)
 
-**Status:** IMPLEMENTED (backend + tests; production wiring follows the
-script thread + real-VM work, same as the Lua backend). Mods select it
+**Status:** IMPLEMENTED and live in-game (see confirmation under
+"Not yet" below — that section title is history). Mods select it
 with `"runtimes": ["luau"]` + `"entrypoints": {"luau": "main.luau"}`.
 
 Same contract as the Lua backend (`core/script/luau/luau_vm.cpp` mirrors

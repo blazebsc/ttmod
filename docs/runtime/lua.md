@@ -1,4 +1,4 @@
-# Lua / script runtime (M6 - researched, exposed via runtime bridge)
+# Lua / script runtimes (shipped: TTMod Lua VM, Luau VM, telltale game.lua)
 
 ## What is proven
 > 2026-10-01 update: the in-game Mods menu SHIPPED using this bridge -

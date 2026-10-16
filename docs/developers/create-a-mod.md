@@ -1,12 +1,13 @@
-# docs/developers/create-a-mod.md - see runtime/mod-authoring.md
+# docs/developers/create-a-mod.md - see docs/user/making-mods.md
 
-The mod-authoring guide lives at:
+The mod-making guide lives at:
 
 ```text
-docs/runtime/mod-authoring.md
+docs/user/making-mods.md
 ```
 
-It covers manifest fields, priorities, dependencies, resource overrides,
-packaged vs unpacked mods, native plugins, events, and what is NOT
-implemented. This stub exists so the path in the milestone spec resolves;
-do not fork the documentation.
+It walks all five ways to make a mod (resource files, Lua, Luau,
+game Lua, native plugin) with complete minimal examples. Reference
+detail (manifest fields, priorities, dependencies, validation,
+events) lives in `docs/runtime/mod-authoring.md`. This stub exists so
+the path in the milestone spec resolves; do not fork the documentation.

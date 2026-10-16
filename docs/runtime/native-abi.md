@@ -1,6 +1,6 @@
 # Native plugin ABI (roadmap PR 20): formal contract
 
-**Status:** IMPLEMENTED (v5). This page is the contract; `plugins.md` keeps
+**Status:** IMPLEMENTED (v6 current). This page is the contract; `plugins.md` keeps
 the build history and proven-log.
 
 ## Boundary
