@@ -1,0 +1,10 @@
+{
+    "id": "skip.title",
+    "name": "Skip Title Screen",
+    "version": "1.0.0",
+    "description": "Auto-presses past the press-anywhere title screen (timed input volleys, then silence).",
+    "api": 1,
+    "games": ["minecraft-story-mode:s1"],
+    "plugin": "plugins/skip-title.dll",
+    "arch": "x86"
+}

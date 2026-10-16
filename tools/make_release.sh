@@ -30,6 +30,14 @@ cp "$T/build-win32/example-plugins/menu-theme/menu-theme.dll" \
    /tmp/opencode/rel_menu-theme/plugins/
 "$T/build/ttmod" package create /tmp/opencode/rel_menu-theme "$R/examples/menu-theme.zip" || exit 1
 "$T/build/ttmod" package validate "$R/examples/menu-theme.zip" || exit 1
+# skip-title-press declares "plugin": "plugins/skip-title.dll"
+rm -rf /tmp/opencode/rel_skip-title-press
+mkdir -p /tmp/opencode/rel_skip-title-press/plugins
+cp "$T/examples/skip-title-press/manifest.json" /tmp/opencode/rel_skip-title-press/
+cp "$T/build-win32/example-plugins/skip-title-press/skip-title.dll" \
+   /tmp/opencode/rel_skip-title-press/plugins/
+"$T/build/ttmod" package create /tmp/opencode/rel_skip-title-press "$R/examples/skip-title-press.zip" || exit 1
+"$T/build/ttmod" package validate "$R/examples/skip-title-press.zip" || exit 1
 # Script mods (PR 30/32 - no DLL, just manifest + Lua; package the same way).
 for ex in hello-lua hello-telltale; do
   rm -rf "/tmp/opencode/rel_$ex"
