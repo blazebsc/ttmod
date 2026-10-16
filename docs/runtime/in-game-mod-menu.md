@@ -91,6 +91,29 @@ UI_ListButton.lua (decrypt+disasm pipeline below).
    `ttmod_appended = nil` on the 'play' row.
 5. Blank screen: rows added pre-push (see idiom above). Fix: Populate.
 
+## 2026-10-16: Mods-click crash (post-0.13.0, review-fix build)
+Symptom: game hard-crashed the instant the Mods button was clicked
+(two identical minidumps, both `0xc0000005` in `strlen`). Init was
+clean (all script proof lines present), so the menu-open path was
+blamed first; parsing Wine minidumps by hand (module list + stack
+scan + nm/addr2line against the exact deployed DLL) pinned it:
+
+`fn_refresh` -> meta -> `profile_has(g_owner->profile_id(), ...)`
+-> `strlen` on a dead pointer.
+
+Root cause: `RuntimeOwner` stored `InitCtx::prof.c_str()` (init
+thread's stack) as a raw `const char*` member. The owner outlives
+`InitCtx`; the first dereference after init dies is the Mods click.
+Latent for months (freed-but-mapped stack kept reading "fine"),
+detonated by the c133f94 init reorder changing allocation
+patterns. Fix: RuntimeOwner owns `std::string` copies
+(runtime_owner.hpp); the `const char*` ctor API is unchanged.
+
+Lesson: a comment claiming "stays valid for the process" is not a
+lifetime guarantee. Anyone handing a `c_str()` into a long-lived
+object must hand over ownership. Fix shipped in
+runtime_owner.hpp; in-game confirmation recorded in git history.
+
 ## Remaining (cosmetic / future - do not claim done)
 - Nothing blocking: button + screen labels both read "Mods" (header via the
   'ui_header_header' clone found in disassembled UI_Header.lua). The dlog

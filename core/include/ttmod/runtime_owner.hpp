@@ -36,10 +36,13 @@ class RuntimeOwner : public ScriptHost {
     [[nodiscard]] bool safe_mode() const noexcept {
         return safe_mode_;
     }
-    // Profile identity for capability reporting (PR 29 menu meta). The
-    // pointer is the init-owned string and stays valid for the process.
+    // Profile identity for capability reporting (PR 29 menu meta). Owned
+    // copy, not a borrowed pointer: InitThread hands us c_str()s of
+    // stack-local InitCtx strings, and the owner outlives that frame
+    // (in-game crash 2026-10-16: Mods click read the dead init-thread
+    // stack through a borrowed profile pointer).
     [[nodiscard]] const char* profile_id() const noexcept {
-        return profile_id_;
+        return profile_id_.c_str();
     }
 
     // Accessors for native plugins (host ABI).
@@ -73,8 +76,8 @@ class RuntimeOwner : public ScriptHost {
     void shutdown();
 
   private:
-    const char* profile_id_;
-    const char* log_path_;
+    std::string profile_id_;
+    std::string log_path_;
     GameLuaRuntime lua_rt_;
     GameDispatcher dispatch_;
     ScriptApiRegistry api_;
